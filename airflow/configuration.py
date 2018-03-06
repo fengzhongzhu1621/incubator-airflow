@@ -13,8 +13,10 @@
 # limitations under the License.
 #
 from __future__ import absolute_import
+# 开启除法浮点运算
 from __future__ import division
 from __future__ import print_function
+# 把你当前模块所有的字符串（string literals）转为unicode
 from __future__ import unicode_literals
 
 import copy
