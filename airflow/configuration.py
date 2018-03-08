@@ -62,6 +62,7 @@ def generate_fernet_key():
     except ImportError:
         pass
     try:
+        # 产生了一个32位随机数，并用base64编码，并解码为unicode编码
         key = Fernet.generate_key().decode()
     except NameError:
         key = "cryptography_not_found_storing_passwords_in_plain_text"
@@ -77,6 +78,8 @@ def expand_env_var(env_var):
     if not env_var:
         return env_var
     while True:
+        # 1. 根据环境变量替换env_var
+        # 2. 把env_var中包含的”~”和”~user”转换成用户目录
         interpolated = os.path.expanduser(os.path.expandvars(str(env_var)))
         if interpolated == env_var:
             return interpolated
@@ -104,6 +107,8 @@ def run_command(command):
 
     return output
 
+
+# 读取默认配置
 _templates_dir = os.path.join(os.path.dirname(__file__), 'config_templates')
 with open(os.path.join(_templates_dir, 'default_airflow.cfg')) as f:
     DEFAULT_CONFIG = f.read()
@@ -125,6 +130,7 @@ class AirflowConfigParser(ConfigParser):
 
     def __init__(self, *args, **kwargs):
         ConfigParser.__init__(self, *args, **kwargs)
+        # 读取格式化后的文件
         self.read_string(parameterized_config(DEFAULT_CONFIG))
         self.is_validated = False
 
@@ -147,6 +153,7 @@ class AirflowConfigParser(ConfigParser):
         if (
                 self.get("core", "executor") != 'SequentialExecutor' and
                 "sqlite" in self.get('core', 'sql_alchemy_conn')):
+            # sqlite数据库只能使用SequentialExecutor
             raise AirflowConfigException(
                 "error: cannot use sqlite with the {}".format(
                     self.get('core', 'executor')))
@@ -155,11 +162,13 @@ class AirflowConfigParser(ConfigParser):
             self.getboolean("webserver", "authenticate") and
             self.get("webserver", "owner_mode") not in ['user', 'ldapgroup']
         ):
+            # 如果开启了webserver认证，则dag所有人只能是user, ldapgroup
             raise AirflowConfigException(
                 "error: owner_mode option should be either "
                 "'user' or 'ldapgroup' when filtering by owner is set")
 
         elif (
+            # 如果开启了webserver认证，启用了ldapgroup，则认证后端必须是ldap_auth
             self.getboolean("webserver", "authenticate") and
             self.get("webserver", "owner_mode").lower() == 'ldapgroup' and
             self.get("webserver", "auth_backend") != (
@@ -178,14 +187,20 @@ class AirflowConfigParser(ConfigParser):
             return expand_env_var(os.environ[env_var])
 
     def _get_cmd_option(self, section, key):
-        fallback_key = key + '_cmd'
+        """从配置项中获取指令，并执行指令获取指令执行后的返回值
+
+            - 如果key不存在_cmd结尾，则获取key的值
+            - 如果key没有配置 且 key以_cmd结尾，则获取key的值，并执行值表示的表达式，返回表达式的结果
+        """
         # if this is a valid command key...
         if (section, key) in AirflowConfigParser.as_command_stdout:
             # if the original key is present, return it no matter what
             if self.has_option(section, key):
                 return ConfigParser.get(self, section, key)
+
+            fallback_key = key + '_cmd'
             # otherwise, execute the fallback key
-            elif self.has_option(section, fallback_key):
+            if self.has_option(section, fallback_key):
                 command = self.get(section, fallback_key)
                 return run_command(command)
 
@@ -193,17 +208,20 @@ class AirflowConfigParser(ConfigParser):
         section = str(section).lower()
         key = str(key).lower()
 
+        # 首先从环境变量中获取配置值，如果环境变量中存在，则不再从配置文件中获取
         # first check environment variables
         option = self._get_env_var_option(section, key)
         if option is not None:
             return option
 
+        # 然后从配置文件中获取
         # ...then the config file
         if self.has_option(section, key):
             return expand_env_var(
                 ConfigParser.get(self, section, key, **kwargs))
 
         # ...then commands
+        # 执行表达式，获取结果
         option = self._get_cmd_option(section, key)
         if option:
             return option
@@ -219,6 +237,7 @@ class AirflowConfigParser(ConfigParser):
 
     def getboolean(self, section, key):
         val = str(self.get(section, key)).lower().strip()
+        # 去掉结尾的注释
         if '#' in val:
             val = val.split('#')[0].strip()
         if val.lower() in ('t', 'true', '1'):
@@ -237,6 +256,7 @@ class AirflowConfigParser(ConfigParser):
         return float(self.get(section, key))
 
     def read(self, filenames):
+        """读取多个配置文件，并进行校验 ."""
         ConfigParser.read(self, filenames)
         self._validate()
 
@@ -249,6 +269,7 @@ class AirflowConfigParser(ConfigParser):
         """
         if section in self._sections:
             _section = self._sections[section]
+            # 遍历section下所有的key，对value进行格式化处理
             for key, val in iteritems(self._sections[section]):
                 try:
                     val = int(val)
@@ -342,9 +363,9 @@ def mkdir_p(path):
             raise AirflowConfigException(
                 'Error creating {}: {}'.format(path, exc.strerror))
 
-
 # Setting AIRFLOW_HOME and AIRFLOW_CONFIG from environment variables, using
 # "~/airflow" and "~/airflow/airflow.cfg" respectively as defaults.
+
 
 if 'AIRFLOW_HOME' not in os.environ:
     AIRFLOW_HOME = expand_env_var('~/airflow')
@@ -433,6 +454,7 @@ def load_test_config():
     """
     conf.load_test_config()
 
+
 if conf.getboolean('core', 'unit_test_mode'):
     load_test_config()
 
@@ -468,6 +490,8 @@ def remove_option(section, option):
 def as_dict(display_source=False, display_sensitive=False):
     return conf.as_dict(
         display_source=display_source, display_sensitive=display_sensitive)
+
+
 as_dict.__doc__ = conf.as_dict.__doc__
 
 

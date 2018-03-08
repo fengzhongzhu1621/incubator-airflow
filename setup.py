@@ -6,7 +6,7 @@
 #
 # http://www.apache.org/licenses/LICENSE-2.0
 #
-# Unless required by applicable law or agreed to in writing, software
+# Unless required by applicable law or acryptographygreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
@@ -29,17 +29,21 @@ version = imp.load_source(
 
 PY3 = sys.version_info[0] == 3
 
+
 class Tox(TestCommand):
     user_options = [('tox-args=', None, "Arguments to pass to tox")]
+
     def initialize_options(self):
         TestCommand.initialize_options(self)
         self.tox_args = ''
+
     def finalize_options(self):
         TestCommand.finalize_options(self)
         self.test_args = []
         self.test_suite = True
+
     def run_tests(self):
-        #import here, cause outside the eggs aren't loaded
+        # import here, cause outside the eggs aren't loaded
         import tox
         errno = tox.cmdline(args=self.tox_args.split())
         sys.exit(errno)
@@ -48,10 +52,13 @@ class Tox(TestCommand):
 class CleanCommand(Command):
     """Custom clean command to tidy up the project root."""
     user_options = []
+
     def initialize_options(self):
         pass
+
     def finalize_options(self):
         pass
+
     def run(self):
         os.system('rm -vrf ./build ./dist ./*.pyc ./*.tgz ./*.egg-info')
 
@@ -90,6 +97,7 @@ def write_version(filename=os.path.join(*['airflow',
     text = "{}".format(git_version(version))
     with open(filename, 'w') as a:
         a.write(text)
+
 
 async = [
     'greenlet>=0.4.9',
@@ -161,7 +169,7 @@ password = [
 ]
 github_enterprise = ['Flask-OAuthlib>=0.9.1']
 qds = ['qds-sdk>=1.9.6']
-cloudant = ['cloudant>=0.5.9,<2.0'] # major update coming soon, clamp to 0.x
+cloudant = ['cloudant>=0.5.9,<2.0']  # major update coming soon, clamp to 0.x
 redis = ['redis>=2.10.5']
 kubernetes = ['kubernetes>=3.0.0',
               'cryptography>=2.0.0']
@@ -196,6 +204,7 @@ if PY3:
     devel_ci = list(filter(lambda package: 'snakebite' not in package, devel_all))
 else:
     devel_ci = devel_all
+
 
 def do_setup():
     write_version()
