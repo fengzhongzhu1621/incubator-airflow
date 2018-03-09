@@ -367,6 +367,7 @@ def mkdir_p(path):
 # "~/airflow" and "~/airflow/airflow.cfg" respectively as defaults.
 
 
+# 创建配置文件目录
 if 'AIRFLOW_HOME' not in os.environ:
     AIRFLOW_HOME = expand_env_var('~/airflow')
 else:
@@ -374,6 +375,7 @@ else:
 
 mkdir_p(AIRFLOW_HOME)
 
+# 获得配置文件路径
 if 'AIRFLOW_CONFIG' not in os.environ:
     if os.path.isfile(expand_env_var('~/airflow.cfg')):
         AIRFLOW_CONFIG = expand_env_var('~/airflow.cfg')
