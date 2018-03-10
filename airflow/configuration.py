@@ -424,6 +424,7 @@ if not os.path.isfile(TEST_CONFIG_FILE) or not os.path.isfile(AIRFLOW_CONFIG):
 else:
     FERNET_KEY = ''
 
+# 安装单元测试配置文件
 TEMPLATE_START = (
     '# ----------------------- TEMPLATE BEGINS HERE -----------------------')
 if not os.path.isfile(TEST_CONFIG_FILE):
@@ -433,6 +434,8 @@ if not os.path.isfile(TEST_CONFIG_FILE):
     with open(TEST_CONFIG_FILE, 'w') as f:
         cfg = parameterized_config(TEST_CONFIG)
         f.write(cfg.split(TEMPLATE_START)[-1].strip())
+
+# 安装配置文件
 if not os.path.isfile(AIRFLOW_CONFIG):
     log.info(
         'Creating new Airflow config file in: %s',
@@ -444,6 +447,7 @@ if not os.path.isfile(AIRFLOW_CONFIG):
 
 log.info("Reading the config from %s", AIRFLOW_CONFIG)
 
+# 创建配置对象
 conf = AirflowConfigParser()
 conf.read(AIRFLOW_CONFIG)
 
