@@ -94,6 +94,7 @@ XCOM_RETURN_KEY = 'return_value'
 
 Stats = settings.Stats
 
+
 def get_fernet():
     """
     Deferred load of Fernet key.
@@ -1385,7 +1386,7 @@ class TaskInstance(Base, LoggingMixin):
             session.commit()
             return False
 
-        #TODO: Logging needs cleanup, not clear what is being printed
+        # TODO: Logging needs cleanup, not clear what is being printed
         hr = "\n" + ("-" * 80) + "\n"  # Line break
 
         # For reporting purposes, we report based on 1-indexed,
@@ -1499,6 +1500,7 @@ class TaskInstance(Base, LoggingMixin):
                     self.log.error("Killing subprocess")
                     task_copy.on_kill()
                     raise AirflowException("Task received SIGTERM signal")
+
                 signal.signal(signal.SIGTERM, signal_handler)
 
                 # Don't clear Xcom until the task is certain to execute
@@ -1721,6 +1723,7 @@ class TaskInstance(Base, LoggingMixin):
             Wrapper around Variable. This way you can get variables in templates by using
             {var.value.your_variable_name}.
             """
+
             def __init__(self):
                 self.var = None
 
@@ -1736,6 +1739,7 @@ class TaskInstance(Base, LoggingMixin):
             Wrapper around deserialized Variables. This way you can get variables
             in templates by using {var.json.your_variable_name}.
             """
+
             def __init__(self):
                 self.var = None
 
@@ -1981,6 +1985,7 @@ class Log(Base):
 
 
 class SkipMixin(LoggingMixin):
+
     @provide_session
     def skip(self, dag_run, execution_date, tasks, session=None):
         """
@@ -3448,7 +3453,7 @@ class DAG(BaseDag, LoggingMixin):
         l = []
         for task in self.tasks:
             if (isinstance(task, SubDagOperator) or
-                #TODO remove in Airflow 2.0
+                # TODO remove in Airflow 2.0
                 type(task).__name__ == 'SubDagOperator'):
                 l.append(task.subdag)
                 l += task.subdag.subdags
@@ -3783,6 +3788,7 @@ class DAG(BaseDag, LoggingMixin):
         """
         Shows an ascii tree representation of the DAG
         """
+
         def get_downstream(task, level=0):
             print((" " * level * 4) + str(task))
             level += 1
@@ -3990,7 +3996,7 @@ class DAG(BaseDag, LoggingMixin):
             owner = self.owner
         if sync_time is None:
             sync_time = timezone.utcnow()
-
+        # 如果dag id发生了变化，则创建一条新的dag记录
         orm_dag = session.query(
             DagModel).filter(DagModel.dag_id == self.dag_id).first()
         if not orm_dag:
@@ -4010,7 +4016,7 @@ class DAG(BaseDag, LoggingMixin):
     @staticmethod
     @provide_session
     def deactivate_unknown_dags(active_dag_ids, session=None):
-        """
+        """将dag表中不再active_dag_ids中的记录标记为未执行
         Given a list of known DAGs, deactivate any other DAGs that are
         marked as active in the ORM
 

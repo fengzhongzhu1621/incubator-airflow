@@ -52,6 +52,7 @@ def provide_session(func):
     database transaction, you pass it to the function, if not this wrapper
     will create one and close it for you.
     """
+
     @wraps(func)
     def wrapper(*args, **kwargs):
         arg_session = 'session'
@@ -258,17 +259,22 @@ def initdb():
     merge_conn(
         models.Connection(
             conn_id='qubole_default', conn_type='qubole',
-            host= 'localhost'))
+            host='localhost'))
 
+    # 添加 KnownEventType 记录
     # Known event types
     KET = models.KnownEventType
+    # 假期
     if not session.query(KET).filter(KET.know_event_type == 'Holiday').first():
         session.add(KET(know_event_type='Holiday'))
+    # （尤指电力的）断供期，断供
     if not session.query(KET).filter(KET.know_event_type == 'Outage').first():
         session.add(KET(know_event_type='Outage'))
+    # 自然灾害
     if not session.query(KET).filter(
             KET.know_event_type == 'Natural Disaster').first():
         session.add(KET(know_event_type='Natural Disaster'))
+    # 营销活动
     if not session.query(KET).filter(
             KET.know_event_type == 'Marketing Campaign').first():
         session.add(KET(know_event_type='Marketing Campaign'))
@@ -279,6 +285,7 @@ def initdb():
     for dag in dagbag.dags.values():
         dag.sync_to_db()
     # Deactivate the unknown ones
+    # 将dag表中不再active_dag_ids中的记录标记为禁用
     models.DAG.deactivate_unknown_dags(dagbag.dags.keys())
 
     Chart = models.Chart
