@@ -41,22 +41,28 @@ def apply_defaults(func):
     """
     @wraps(func)
     def wrapper(*args, **kwargs):
+        # 列表参数最多一个
         if len(args) > 1:
             raise AirflowException(
                 "Use keyword arguments when initializing operators")
+        # 获得参数中的dag对象，或从全局变量中获取dag
         dag_args = {}
         dag_params = {}
         import airflow.models
         if kwargs.get('dag', None) or airflow.models._CONTEXT_MANAGER_DAG:
-            dag = kwargs.get('dag', None) or airflow.models._CONTEXT_MANAGER_DAG
+            dag = kwargs.get(
+                'dag', None) or airflow.models._CONTEXT_MANAGER_DAG
             dag_args = copy(dag.default_args) or {}
             dag_params = copy(dag.params) or {}
 
+        # 把函数的params参数，与dag.parms合并
         params = {}
         if 'params' in kwargs:
             params = kwargs['params']
         dag_params.update(params)
 
+        # 把函数参数中的kwargs['default_args']['params'] 与 dag.parms合并
+        # 删除函数参数中的 kwargs['default_args']['params']
         default_args = {}
         if 'default_args' in kwargs:
             default_args = kwargs['default_args']
@@ -64,18 +70,26 @@ def apply_defaults(func):
                 dag_params.update(default_args['params'])
                 del default_args['params']
 
+        # 把函数参数中kwargs['default_args']，与dag.default_args合并
         dag_args.update(default_args)
         default_args = dag_args
 
+        # 获得函数签名
         sig = signature(func)
+
+        # 获得默认值不为空的参数名，且此参数不为self, 且此参数不为可变参数
         non_optional_args = [
             name for (name, param) in sig.parameters.items()
             if param.default == param.empty and
             param.name != 'self' and
             param.kind not in (param.VAR_POSITIONAL, param.VAR_KEYWORD)]
+
+        # 将default_args设置到函数的kwargs中
         for arg in sig.parameters:
             if arg in default_args and arg not in kwargs:
                 kwargs[arg] = default_args[arg]
+
+        # 获得没有设置默认值的参数，抛出异常
         missing_args = list(set(non_optional_args) - set(kwargs))
         if missing_args:
             msg = "Argument {0} is required".format(missing_args)
@@ -85,8 +99,10 @@ def apply_defaults(func):
 
         result = func(*args, **kwargs)
         return result
+
     return wrapper
+
 
 if 'BUILDING_AIRFLOW_DOCS' in os.environ:
     # Monkey patch hook to get good function headers while building docs
-    apply_defaults = lambda x: x
+    def apply_defaults(x): return x

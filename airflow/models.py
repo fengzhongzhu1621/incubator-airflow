@@ -108,7 +108,8 @@ def get_fernet():
     try:
         from cryptography.fernet import Fernet
     except:
-        raise AirflowException('Failed to import Fernet, it may not be installed')
+        raise AirflowException(
+            'Failed to import Fernet, it may not be installed')
     try:
         return Fernet(configuration.get('core', 'FERNET_KEY').encode('utf-8'))
     except (ValueError, TypeError) as ve:
@@ -190,7 +191,8 @@ class DagBag(BaseDagBag, LoggingMixin):
             executor=None,
             include_examples=configuration.getboolean('core', 'LOAD_EXAMPLES')):
 
-        # do not use default arg in signature, to fix import cycle on plugin load
+        # do not use default arg in signature, to fix import cycle on plugin
+        # load
         if executor is None:
             executor = GetDefaultExecutor()
         dag_folder = dag_folder or settings.DAGS_FOLDER
@@ -239,7 +241,8 @@ class DagBag(BaseDagBag, LoggingMixin):
             found_dags = self.process_file(
                 filepath=orm_dag.fileloc, only_if_updated=False)
 
-            # If the source file no longer exports `dag_id`, delete it from self.dags
+            # If the source file no longer exports `dag_id`, delete it from
+            # self.dags
             if found_dags and dag_id in [dag.dag_id for dag in found_dags]:
                 return self.dags[dag_id]
             elif dag_id in self.dags:
@@ -262,7 +265,8 @@ class DagBag(BaseDagBag, LoggingMixin):
         try:
             # This failed before in what may have been a git sync
             # race condition
-            file_last_changed_on_disk = datetime.fromtimestamp(os.path.getmtime(filepath))
+            file_last_changed_on_disk = datetime.fromtimestamp(
+                os.path.getmtime(filepath))
             if only_if_updated \
                     and filepath in self.file_last_changed \
                     and file_last_changed_on_disk == self.file_last_changed[filepath]:
@@ -306,10 +310,12 @@ class DagBag(BaseDagBag, LoggingMixin):
                 mod_name, ext = os.path.splitext(mod.filename)
                 if not head and (ext == '.py' or ext == '.pyc'):
                     if mod_name == '__init__':
-                        self.log.warning("Found __init__.%s at root of %s", ext, filepath)
+                        self.log.warning(
+                            "Found __init__.%s at root of %s", ext, filepath)
                     if safe_mode:
                         with zip_file.open(mod.filename) as zf:
-                            self.log.debug("Reading %s from %s", mod.filename, filepath)
+                            self.log.debug("Reading %s from %s",
+                                           mod.filename, filepath)
                             content = zf.read()
                             if not all([s in content for s in (b'DAG', b'airflow')]):
                                 self.file_last_changed[filepath] = (
@@ -352,7 +358,8 @@ class DagBag(BaseDagBag, LoggingMixin):
         from airflow.jobs import LocalTaskJob as LJ
         self.log.info("Finding 'running' jobs without a recent heartbeat")
         TI = TaskInstance
-        secs = configuration.getint('scheduler', 'scheduler_zombie_task_threshold')
+        secs = configuration.getint(
+            'scheduler', 'scheduler_zombie_task_threshold')
         limit_dttm = timezone.utcnow() - timedelta(seconds=secs)
         self.log.info("Failing jobs without heartbeat after %s", limit_dttm)
 
@@ -622,7 +629,7 @@ class Connection(Base, LoggingMixin):
                 self.is_encrypted = True
             except AirflowException:
                 self.log.exception("Failed to load fernet while encrypting value, "
-                                    "using non-encrypted value.")
+                                   "using non-encrypted value.")
                 self._password = value
                 self.is_encrypted = False
 
@@ -651,7 +658,7 @@ class Connection(Base, LoggingMixin):
                 self.is_extra_encrypted = True
             except AirflowException:
                 self.log.exception("Failed to load fernet while encrypting value, "
-                                    "using non-encrypted value.")
+                                   "using non-encrypted value.")
                 self._extra = value
                 self.is_extra_encrypted = False
 
@@ -725,7 +732,8 @@ class Connection(Base, LoggingMixin):
                 obj = json.loads(self.extra)
             except Exception as e:
                 self.log.exception(e)
-                self.log.error("Failed parsing the json for conn_id %s", self.conn_id)
+                self.log.error(
+                    "Failed parsing the json for conn_id %s", self.conn_id)
 
         return obj
 
@@ -1170,8 +1178,10 @@ class TaskInstance(Base, LoggingMixin):
 
             # LEGACY: most likely running from unit tests
             if not dr:
-                # Means that this TI is NOT being run from a DR, but from a catchup
-                previous_scheduled_date = dag.previous_schedule(self.execution_date)
+                # Means that this TI is NOT being run from a DR, but from a
+                # catchup
+                previous_scheduled_date = dag.previous_schedule(
+                    self.execution_date)
                 if not previous_scheduled_date:
                     return None
 
@@ -1261,11 +1271,13 @@ class TaskInstance(Base, LoggingMixin):
         """
         delay = self.task.retry_delay
         if self.task.retry_exponential_backoff:
-            min_backoff = int(delay.total_seconds() * (2 ** (self.try_number - 2)))
+            min_backoff = int(delay.total_seconds() *
+                              (2 ** (self.try_number - 2)))
             # deterministic per task instance
             hash = int(hashlib.sha1("{}#{}#{}#{}".format(self.dag_id, self.task_id,
-                self.execution_date, self.try_number).encode('utf-8')).hexdigest(), 16)
-            # between 0.5 * delay * (2^retry_number) and 1.0 * delay * (2^retry_number)
+                                                         self.execution_date, self.try_number).encode('utf-8')).hexdigest(), 16)
+            # between 0.5 * delay * (2^retry_number) and 1.0 * delay *
+            # (2^retry_number)
             modded_hash = min_backoff + hash % min_backoff
             # timedelta has a maximum representable value. The exponentiation
             # here means this value can be exceeded after a certain number
@@ -1451,10 +1463,12 @@ class TaskInstance(Base, LoggingMixin):
         settings.engine.dispose()
         if verbose:
             if mark_success:
-                msg = "Marking success for {} on {}".format(self.task, self.execution_date)
+                msg = "Marking success for {} on {}".format(
+                    self.task, self.execution_date)
                 self.log.info(msg)
             else:
-                msg = "Executing {} on {}".format(self.task, self.execution_date)
+                msg = "Executing {} on {}".format(
+                    self.task, self.execution_date)
                 self.log.info(msg)
         return True
 
@@ -1596,23 +1610,23 @@ class TaskInstance(Base, LoggingMixin):
             pool=None,
             session=None):
         res = self._check_and_change_state_before_execution(
-                verbose=verbose,
-                ignore_all_deps=ignore_all_deps,
-                ignore_depends_on_past=ignore_depends_on_past,
-                ignore_task_deps=ignore_task_deps,
-                ignore_ti_state=ignore_ti_state,
+            verbose=verbose,
+            ignore_all_deps=ignore_all_deps,
+            ignore_depends_on_past=ignore_depends_on_past,
+            ignore_task_deps=ignore_task_deps,
+            ignore_ti_state=ignore_ti_state,
+            mark_success=mark_success,
+            test_mode=test_mode,
+            job_id=job_id,
+            pool=pool,
+            session=session)
+        if res:
+            self._run_raw_task(
                 mark_success=mark_success,
                 test_mode=test_mode,
                 job_id=job_id,
                 pool=pool,
                 session=session)
-        if res:
-            self._run_raw_task(
-                    mark_success=mark_success,
-                    test_mode=test_mode,
-                    job_id=job_id,
-                    pool=pool,
-                    session=session)
 
     def dry_run(self):
         task = self.task
@@ -1628,13 +1642,15 @@ class TaskInstance(Base, LoggingMixin):
         task = self.task
         self.end_date = timezone.utcnow()
         self.set_duration()
-        Stats.incr('operator_failures_{}'.format(task.__class__.__name__), 1, 1)
+        Stats.incr('operator_failures_{}'.format(
+            task.__class__.__name__), 1, 1)
         Stats.incr('ti_failures')
         if not test_mode:
             session.add(Log(State.FAILED, self))
 
         # Log failure duration
-        session.add(TaskFail(task, self.execution_date, self.start_date, self.end_date))
+        session.add(TaskFail(task, self.execution_date,
+                             self.start_date, self.end_date))
 
         # Let's go deeper
         try:
@@ -2007,7 +2023,7 @@ class SkipMixin(LoggingMixin):
                 TaskInstance.dag_id == dag_run.dag_id,
                 TaskInstance.execution_date == dag_run.execution_date,
                 TaskInstance.task_id.in_(task_ids)
-            ).update({TaskInstance.state : State.SKIPPED,
+            ).update({TaskInstance.state: State.SKIPPED,
                       TaskInstance.start_date: now,
                       TaskInstance.end_date: now},
                      synchronize_session=False)
@@ -2627,12 +2643,12 @@ class BaseOperator(LoggingMixin):
 
     @provide_session
     def clear(
-              self,
-              start_date=None,
-              end_date=None,
-              upstream=False,
-              downstream=False,
-              session=None):
+            self,
+            start_date=None,
+            end_date=None,
+            upstream=False,
+            downstream=False,
+            session=None):
         """
         Clears the state of task instances associated with the task, following
         the parameters specified.
@@ -2798,7 +2814,8 @@ class BaseOperator(LoggingMixin):
 
         # relationships can only be set if the tasks share a single DAG. Tasks
         # without a DAG are assigned to that DAG.
-        dags = {t._dag.dag_id: t.dag for t in [self] + task_list if t.has_dag()}
+        dags = {t._dag.dag_id: t.dag for t in [
+            self] + task_list if t.has_dag()}
 
         if len(dags) > 1:
             raise AirflowException(
@@ -3012,9 +3029,11 @@ class DAG(BaseDag, LoggingMixin):
                 'core', 'max_active_runs_per_dag'),
             dagrun_timeout=None,
             sla_miss_callback=None,
-            default_view=configuration.get('webserver', 'dag_default_view').lower(),
+            default_view=configuration.get(
+                'webserver', 'dag_default_view').lower(),
             orientation=configuration.get('webserver', 'dag_orientation'),
-            catchup=configuration.getboolean('scheduler', 'catchup_by_default'),
+            catchup=configuration.getboolean(
+                'scheduler', 'catchup_by_default'),
             on_success_callback=None, on_failure_callback=None,
             params=None):
 
@@ -3165,7 +3184,8 @@ class DAG(BaseDag, LoggingMixin):
         if isinstance(self._schedule_interval, six.string_types):
             dttm = timezone.make_naive(dttm, self.timezone)
             cron = croniter(self._schedule_interval, dttm)
-            following = timezone.make_aware(cron.get_next(datetime), self.timezone)
+            following = timezone.make_aware(
+                cron.get_next(datetime), self.timezone)
             return timezone.convert_to_utc(following)
         elif isinstance(self._schedule_interval, timedelta):
             return dttm + self._schedule_interval
@@ -3203,11 +3223,13 @@ class DAG(BaseDag, LoggingMixin):
         using_end_date = end_date
 
         # dates for dag runs
-        using_start_date = using_start_date or min([t.start_date for t in self.tasks])
+        using_start_date = using_start_date or min(
+            [t.start_date for t in self.tasks])
         using_end_date = using_end_date or timezone.utcnow()
 
         # next run date for a subdag isn't relevant (schedule_interval for subdags
-        # is ignored) so we use the dag run's start date in the case of a subdag
+        # is ignored) so we use the dag run's start date in the case of a
+        # subdag
         next_run_date = (self.normalize_schedule(using_start_date)
                          if not self.is_subdag else using_start_date)
 
@@ -3368,7 +3390,8 @@ class DAG(BaseDag, LoggingMixin):
         """
         callback = self.on_success_callback if success else self.on_failure_callback
         if callback:
-            self.log.info('Executing dag callback function: {}'.format(callback))
+            self.log.info(
+                'Executing dag callback function: {}'.format(callback))
             tis = dagrun.get_task_instances(session=session)
             ti = tis[-1]  # get first TaskInstance of DagRun
             ti.task = self.get_task(ti.task_id)
@@ -3454,7 +3477,7 @@ class DAG(BaseDag, LoggingMixin):
         for task in self.tasks:
             if (isinstance(task, SubDagOperator) or
                 # TODO remove in Airflow 2.0
-                type(task).__name__ == 'SubDagOperator'):
+                    type(task).__name__ == 'SubDagOperator'):
                 l.append(task.subdag)
                 l += task.subdag.subdags
         return l
@@ -4011,7 +4034,8 @@ class DAG(BaseDag, LoggingMixin):
         session.commit()
 
         for subdag in self.subdags:
-            subdag.sync_to_db(owner=owner, sync_time=sync_time, session=session)
+            subdag.sync_to_db(
+                owner=owner, sync_time=sync_time, session=session)
 
     @staticmethod
     @provide_session
@@ -4204,7 +4228,8 @@ class Variable(Base, LoggingMixin):
         :return: Mixed
         """
         default_sentinel = object()
-        obj = Variable.get(key, default_var=default_sentinel, deserialize_json=deserialize_json)
+        obj = Variable.get(key, default_var=default_sentinel,
+                           deserialize_json=deserialize_json)
         if obj is default_sentinel:
             if default is not None:
                 Variable.set(key, default, serialize_json=deserialize_json)
@@ -4261,7 +4286,8 @@ class XCom(Base, LoggingMixin):
     dag_id = Column(String(ID_LEN), nullable=False)
 
     __table_args__ = (
-        Index('idx_xcom_dag_task_date', dag_id, task_id, execution_date, unique=False),
+        Index('idx_xcom_dag_task_date', dag_id,
+              task_id, execution_date, unique=False),
     )
 
     def __repr__(self):
@@ -4292,7 +4318,8 @@ class XCom(Base, LoggingMixin):
         session.expunge_all()
 
         if enable_pickling is None:
-            enable_pickling = configuration.getboolean('core', 'enable_xcom_pickling')
+            enable_pickling = configuration.getboolean(
+                'core', 'enable_xcom_pickling')
 
         if enable_pickling:
             value = pickle.dumps(value)
@@ -4329,14 +4356,14 @@ class XCom(Base, LoggingMixin):
     @classmethod
     @provide_session
     def get_one(
-                cls,
-                execution_date,
-                key=None,
-                task_id=None,
-                dag_id=None,
-                include_prior_dates=False,
-                enable_pickling=None,
-                session=None):
+            cls,
+            execution_date,
+            key=None,
+            task_id=None,
+            dag_id=None,
+            include_prior_dates=False,
+            enable_pickling=None,
+            session=None):
         """
         Retrieve an XCom value, optionally meeting certain criteria.
         TODO: "pickling" has been deprecated and JSON is preferred. "pickling" will be removed in Airflow 2.0.
@@ -4358,13 +4385,14 @@ class XCom(Base, LoggingMixin):
 
         query = (
             session.query(cls.value)
-                .filter(and_(*filters))
-                .order_by(cls.execution_date.desc(), cls.timestamp.desc()))
+            .filter(and_(*filters))
+            .order_by(cls.execution_date.desc(), cls.timestamp.desc()))
 
         result = query.first()
         if result:
             if enable_pickling is None:
-                enable_pickling = configuration.getboolean('core', 'enable_xcom_pickling')
+                enable_pickling = configuration.getboolean(
+                    'core', 'enable_xcom_pickling')
 
             if enable_pickling:
                 return pickle.loads(result.value)
@@ -4382,15 +4410,15 @@ class XCom(Base, LoggingMixin):
     @classmethod
     @provide_session
     def get_many(
-                cls,
-                execution_date,
-                key=None,
-                task_ids=None,
-                dag_ids=None,
-                include_prior_dates=False,
-                limit=100,
-                enable_pickling=None,
-                session=None):
+            cls,
+            execution_date,
+            key=None,
+            task_ids=None,
+            dag_ids=None,
+            include_prior_dates=False,
+            limit=100,
+            enable_pickling=None,
+            session=None):
         """
         Retrieve an XCom value, optionally meeting certain criteria
         TODO: "pickling" has been deprecated and JSON is preferred. "pickling" will be removed in Airflow 2.0.
@@ -4409,12 +4437,13 @@ class XCom(Base, LoggingMixin):
 
         query = (
             session.query(cls)
-                .filter(and_(*filters))
-                .order_by(cls.execution_date.desc(), cls.timestamp.desc())
-                .limit(limit))
+            .filter(and_(*filters))
+            .order_by(cls.execution_date.desc(), cls.timestamp.desc())
+            .limit(limit))
         results = query.all()
         if enable_pickling is None:
-            enable_pickling = configuration.getboolean('core', 'enable_xcom_pickling')
+            enable_pickling = configuration.getboolean(
+                'core', 'enable_xcom_pickling')
         for result in results:
             if enable_pickling:
                 result.value = pickle.loads(result.value)
@@ -4438,7 +4467,8 @@ class XCom(Base, LoggingMixin):
         for xcom in xcoms:
             if not isinstance(xcom, XCom):
                 raise TypeError(
-                    'Expected XCom; received {}'.format(xcom.__class__.__name__)
+                    'Expected XCom; received {}'.format(
+                        xcom.__class__.__name__)
                 )
             session.delete(xcom)
         session.commit()
@@ -4525,7 +4555,8 @@ class DagStat(Base):
                     count = counts[(dag_id, state)]
 
                 session.merge(
-                    DagStat(dag_id=dag_id, state=state, count=count, dirty=False)
+                    DagStat(dag_id=dag_id, state=state,
+                            count=count, dirty=False)
                 )
 
             session.commit()
@@ -4777,7 +4808,8 @@ class DagRun(Base, LoggingMixin):
 
         tis = self.get_task_instances(session=session)
 
-        self.log.info("Updating state for %s considering %s task(s)", self, len(tis))
+        self.log.info(
+            "Updating state for %s considering %s task(s)", self, len(tis))
 
         for ti in list(tis):
             # skip in db?
@@ -4793,11 +4825,14 @@ class DagRun(Base, LoggingMixin):
             state=State.unfinished(),
             session=session
         )
-        none_depends_on_past = all(not t.task.depends_on_past for t in unfinished_tasks)
-        none_task_concurrency = all(t.task.task_concurrency is None for t in unfinished_tasks)
+        none_depends_on_past = all(
+            not t.task.depends_on_past for t in unfinished_tasks)
+        none_task_concurrency = all(
+            t.task.task_concurrency is None for t in unfinished_tasks)
         # small speed up
         if unfinished_tasks and none_depends_on_past and none_task_concurrency:
-            # todo: this can actually get pretty slow: one task costs between 0.01-015s
+            # todo: this can actually get pretty slow: one task costs between
+            # 0.01-015s
             no_dependencies_met = True
             for ut in unfinished_tasks:
                 # We need to flag upstream and check for changes because upstream
@@ -4813,7 +4848,8 @@ class DagRun(Base, LoggingMixin):
                     break
 
         duration = (timezone.utcnow() - start_dttm).total_seconds() * 1000
-        Stats.timing("dagrun.dependency-check.{}".format(self.dag_id), duration)
+        Stats.timing(
+            "dagrun.dependency-check.{}".format(self.dag_id), duration)
 
         # future: remove the check on adhoc tasks (=active_tasks)
         if len(tis) == len(dag.active_tasks):
@@ -4833,7 +4869,8 @@ class DagRun(Base, LoggingMixin):
                                               for r in roots):
                 self.log.info('Marking run %s successful', self)
                 self.state = State.SUCCESS
-                dag.handle_callback(self, success=True, reason='success', session=session)
+                dag.handle_callback(self, success=True,
+                                    reason='success', session=session)
 
             # if *all tasks* are deadlocked, the run failed
             elif (unfinished_tasks and none_depends_on_past and
@@ -4847,7 +4884,8 @@ class DagRun(Base, LoggingMixin):
             else:
                 self.state = State.RUNNING
 
-        # todo: determine we want to use with_for_update to make sure to lock the run
+        # todo: determine we want to use with_for_update to make sure to lock
+        # the run
         session.merge(self)
         session.commit()
 
