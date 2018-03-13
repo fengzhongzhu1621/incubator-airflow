@@ -74,13 +74,11 @@ class State(object):
 
     @classmethod
     def color(cls, state):
-        if state in cls.state_color:
-            return cls.state_color[state]
-        else:
-            return 'white'
+        return cls.state_color.get(state, 'white')
 
     @classmethod
     def color_fg(cls, state):
+        """背景色 ."""
         color = cls.color(state)
         if color in ['green', 'red']:
             return 'white'
