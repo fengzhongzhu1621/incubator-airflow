@@ -47,14 +47,16 @@ class SimpleDag(BaseDag):
         self._task_ids = [task.task_id for task in dag.tasks]
         self._full_filepath = dag.full_filepath
         self._is_paused = dag.is_paused
+        # 每个dag能并发执行的最大任务数
         self._concurrency = dag.concurrency
         self._pickle_id = pickle_id
+        # 获得任务ID和任务特殊参数的映射
         self._task_special_args = {}
         for task in dag.tasks:
             special_args = {}
             if task.task_concurrency is not None:
                 special_args['task_concurrency'] = task.task_concurrency
-            if len(special_args) > 0:
+            if special_args:
                 self._task_special_args[task.task_id] = special_args
 
     @property
@@ -107,9 +109,11 @@ class SimpleDag(BaseDag):
 
     @property
     def task_special_args(self):
+        """获得一个dag所有任务的特殊参数 ."""
         return self._task_special_args
 
     def get_task_special_arg(self, task_id, special_arg_name):
+        """根据任务Id获得这个任务的特殊参数 ."""
         if task_id in self._task_special_args and special_arg_name in self._task_special_args[task_id]:
             return self._task_special_args[task_id][special_arg_name]
         else:
@@ -117,7 +121,7 @@ class SimpleDag(BaseDag):
 
 
 class SimpleDagBag(BaseDagBag):
-    """
+    """dag容器
     A collection of SimpleDag objects with some convenience methods.
     """
 
@@ -174,23 +178,28 @@ def list_py_file_paths(directory, safe_mode=True):
     elif os.path.isdir(directory):
         patterns = []
         for root, dirs, files in os.walk(directory, followlinks=True):
+            # 获得需要忽略的文件
             ignore_file = [f for f in files if f == '.airflowignore']
             if ignore_file:
                 f = open(os.path.join(root, ignore_file[0]), 'r')
-                patterns += [p for p in f.read().split('\n') if p]
+                patterns += [p.strip() for p in f.read().split('\n') if p]
                 f.close()
             for f in files:
                 try:
+                    # 获得文件的绝对路径
                     file_path = os.path.join(root, f)
                     if not os.path.isfile(file_path):
                         continue
+                    # 验证文件后缀
                     mod_name, file_ext = os.path.splitext(
                         os.path.split(file_path)[-1])
                     if file_ext != '.py' and not zipfile.is_zipfile(file_path):
                         continue
+                    # 验证忽略规则
                     if any([re.findall(p, file_path) for p in patterns]):
                         continue
 
+                    # 使用启发式方式猜测是否是一个DAG文件，DAG文件需要包含DAG 或 airflow
                     # Heuristic that guesses whether a Python file contains an
                     # Airflow DAG definition.
                     might_contain_dag = True
@@ -328,6 +337,7 @@ class DagFileProcessorManager(LoggingMixin):
         """
         self._file_paths = file_paths
         self._file_path_queue = []
+        # 处理器的最大数量
         self._parallelism = parallelism
         self._dag_directory = dag_directory
         self._max_runs = max_runs
@@ -336,12 +346,16 @@ class DagFileProcessorManager(LoggingMixin):
         # Map from file path to the processor
         self._processors = {}
         # Map from file path to the last runtime
+        # 处理器最后一次执行的时间
         self._last_runtime = {}
         # Map from file path to the last finish time
+        # 处理器最后一次执行完成时间
         self._last_finish_time = {}
         # Map from file path to the number of runs
+        # 处理器运行次数
         self._run_count = defaultdict(int)
         # Scheduler heartbeat key.
+        # 记录心跳的次数
         self._heart_beat_key = 'heart-beat'
 
     @property
@@ -421,14 +435,18 @@ class DagFileProcessorManager(LoggingMixin):
         :return: None
         """
         self._file_paths = new_file_paths
+        # 获得 self._file_path_queue 和  new_file_paths的交集
+        # 即从文件队列中删除不存在的文件
         self._file_path_queue = [x for x in self._file_path_queue
                                  if x in new_file_paths]
         # Stop processors that are working on deleted files
+        # 已删除的文件关联的处理器停止运行
         filtered_processors = {}
         for file_path, processor in self._processors.items():
             if file_path in new_file_paths:
                 filtered_processors[file_path] = processor
             else:
+                # 如果正在执行的处理器文件不存在，则停止处理器
                 self.log.warning("Stopping processor for %s", file_path)
                 processor.terminate()
         self._processors = filtered_processors
@@ -468,12 +486,17 @@ class DagFileProcessorManager(LoggingMixin):
                 self.log.info("Processor for %s finished", file_path)
                 now = timezone.utcnow()
                 finished_processors[file_path] = processor
+                # 处理器运行时间
                 self._last_runtime[file_path] = (now -
                                                  processor.start_time).total_seconds()
+                # 处理器结束时间
                 self._last_finish_time[file_path] = now
+                # 处理器运行次数
                 self._run_count[file_path] += 1
             else:
                 running_processors[file_path] = processor
+
+        # 每一次心跳，剔除已完成的处理器
         self._processors = running_processors
 
         self.log.debug("%s/%s scheduler processes running",
@@ -482,6 +505,7 @@ class DagFileProcessorManager(LoggingMixin):
         self.log.debug("%s file paths queued for processing",
                        len(self._file_path_queue))
 
+        # 返回已完成处理器的执行结果
         # Collect all the DAGs that were found in the processed files
         simple_dags = []
         for file_path, processor in finished_processors.items():
@@ -494,12 +518,15 @@ class DagFileProcessorManager(LoggingMixin):
                 for simple_dag in processor.result:
                     simple_dags.append(simple_dag)
 
+        # 如果队列为空，设置需要入队的文件
         # Generate more file paths to process if we processed all the files
         # already.
-        if len(self._file_path_queue) == 0:
+        if not self._file_path_queue:
             # If the file path is already being processed, or if a file was
             # processed recently, wait until the next batch
             file_paths_in_progress = self._processors.keys()
+
+            # 获得已经运行process的文件，且还未到下一次执行时间
             now = timezone.utcnow()
             file_paths_recently_processed = []
             for file_path in self._file_paths:
@@ -509,10 +536,12 @@ class DagFileProcessorManager(LoggingMixin):
                         self._process_file_interval):
                     file_paths_recently_processed.append(file_path)
 
+            # 获得已经运行的process文件，且已经达到最大运行次数
             files_paths_at_run_limit = [file_path
                                         for file_path, num_runs in self._run_count.items()
                                         if num_runs == self._max_runs]
 
+            # 获得需要入队的文件，新增的文件在此入库
             files_paths_to_queue = list(set(self._file_paths) -
                                         set(file_paths_in_progress) -
                                         set(file_paths_recently_processed) -
@@ -529,14 +558,17 @@ class DagFileProcessorManager(LoggingMixin):
                 "\n\t".join(files_paths_to_queue)
             )
 
-            self._file_path_queue.extend(files_paths_to_queue)
+            self._file_path_queue = files_paths_to_queue
 
+        # 处理器并发性最大值验证
         # Start more processors if we have enough slots and files to process
         while (self._parallelism - len(self._processors) > 0 and
-               len(self._file_path_queue) > 0):
+               self._file_path_queue):
+            # 从队列中出队一个文件
             file_path = self._file_path_queue.pop(0)
+            # 创建处理器
             processor = self._processor_factory(file_path)
-
+            # 启动处理器进程
             processor.start()
             self.log.info(
                 "Started a process (PID: %s) to generate tasks for %s",
@@ -558,6 +590,7 @@ class DagFileProcessorManager(LoggingMixin):
         for file_path in self._file_paths:
             if self._run_count[file_path] != self._max_runs:
                 return False
+        # 心跳总数大于等于最大运行次数时，也会停止调度
         if self._run_count[self._heart_beat_key] < self._max_runs:
             return False
         return True
