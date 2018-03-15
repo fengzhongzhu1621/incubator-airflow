@@ -39,6 +39,19 @@ def apply_defaults(func):
     inheritance and argument defaults, this decorator also alerts with
     specific information about the missing arguments.
     """
+
+    import airflow.models
+    # Cache inspect.signature for the wrapper closure to avoid calling it
+    # at every decorated invocation. This is separate sig_cache created
+    # per decoration, i.e. each function decorated using apply_defaults will
+    # have a different sig_cache.
+    sig_cache = signature(func)
+    non_optional_args = {
+        name for (name, param) in sig_cache.parameters.items()
+        if param.default == param.empty and
+        param.name != 'self' and
+        param.kind not in (param.VAR_POSITIONAL, param.VAR_KEYWORD)}
+
     @wraps(func)
     def wrapper(*args, **kwargs):
         # 列表参数最多一个
@@ -48,10 +61,8 @@ def apply_defaults(func):
         # 获得参数中的dag对象，或从全局变量中获取dag
         dag_args = {}
         dag_params = {}
-        import airflow.models
-        if kwargs.get('dag', None) or airflow.models._CONTEXT_MANAGER_DAG:
-            dag = kwargs.get(
-                'dag', None) or airflow.models._CONTEXT_MANAGER_DAG
+        dag = kwargs.get('dag', None) or airflow.models._CONTEXT_MANAGER_DAG
+        if dag:
             dag_args = copy(dag.default_args) or {}
             dag_params = copy(dag.params) or {}
 
@@ -74,23 +85,10 @@ def apply_defaults(func):
         dag_args.update(default_args)
         default_args = dag_args
 
-        # 获得函数签名
-        sig = signature(func)
-
-        # 获得默认值不为空的参数名，且此参数不为self, 且此参数不为可变参数
-        non_optional_args = [
-            name for (name, param) in sig.parameters.items()
-            if param.default == param.empty and
-            param.name != 'self' and
-            param.kind not in (param.VAR_POSITIONAL, param.VAR_KEYWORD)]
-
-        # 将default_args设置到函数的kwargs中
-        for arg in sig.parameters:
-            if arg in default_args and arg not in kwargs:
+        for arg in sig_cache.parameters:
+            if arg not in kwargs and arg in default_args:
                 kwargs[arg] = default_args[arg]
-
-        # 获得没有设置默认值的参数，抛出异常
-        missing_args = list(set(non_optional_args) - set(kwargs))
+        missing_args = list(non_optional_args - set(kwargs))
         if missing_args:
             msg = "Argument {0} is required".format(missing_args)
             raise AirflowException(msg)
@@ -105,4 +103,4 @@ def apply_defaults(func):
 
 if 'BUILDING_AIRFLOW_DOCS' in os.environ:
     # Monkey patch hook to get good function headers while building docs
-    def apply_defaults(x): return x
+    apply_defaults = lambda x: x

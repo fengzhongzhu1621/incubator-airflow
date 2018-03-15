@@ -11,30 +11,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-# Note: Any AirflowException raised is expected to cause the TaskInstance
-#       to be marked in an ERROR state
+
+import unittest
+from airflow.utils.weight_rule import WeightRule
 
 
-class AirflowException(Exception):
-    pass
+class TestWeightRule(unittest.TestCase):
 
-
-class AirflowConfigException(AirflowException):
-    pass
-
-
-class AirflowSensorTimeout(AirflowException):
-    pass
-
-
-class AirflowTaskTimeout(AirflowException):
-    pass
-
-
-class AirflowSkipException(AirflowException):
-    pass
-
-
-class AirflowDagCycleException(AirflowException):
-    pass
+    def test_valid_weight_rules(self):
+        self.assertTrue(WeightRule.is_valid(WeightRule.DOWNSTREAM))
+        self.assertTrue(WeightRule.is_valid(WeightRule.UPSTREAM))
+        self.assertTrue(WeightRule.is_valid(WeightRule.ABSOLUTE))
+        self.assertEqual(len(WeightRule.all_weight_rules()), 3)
