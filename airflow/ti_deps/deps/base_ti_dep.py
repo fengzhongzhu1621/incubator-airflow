@@ -17,7 +17,7 @@ from airflow.utils.db import provide_session
 
 
 class BaseTIDep(object):
-    """
+    """任务依赖抽象基类
     Abstract base class for dependencies that must be satisfied in order for task
     instances to run. For example, a task that can only run if a certain number of its
     upstream tasks succeed. This is an abstract class and must be subclassed to be used.
@@ -45,14 +45,14 @@ class BaseTIDep(object):
 
     @property
     def name(self):
-        """
+        """可读的依赖名称
         The human-readable name for the dependency. Use the classname as the default name
         if this method is not overridden in the subclass.
         """
         return getattr(self, 'NAME', self.__class__.__name__)
 
     def _get_dep_statuses(self, ti, session, dep_context=None):
-        """
+        """返回一组依赖状态
         Abstract method that returns an iterable of TIDepStatus objects that describe
         whether the given task instance has this dependency met.
 
@@ -87,22 +87,25 @@ class BaseTIDep(object):
         if dep_context is None:
             dep_context = DepContext()
 
+        # 忽略所有依赖的情况
         if self.IGNOREABLE and dep_context.ignore_all_deps:
             yield self._passing_status(
                 reason="Context specified all dependencies should be ignored.")
             return
 
+        # 忽略所有任务依赖的情况
         if self.IS_TASK_DEP and dep_context.ignore_task_deps:
             yield self._passing_status(
                 reason="Context specified all task dependencies should be ignored.")
             return
 
+        # 返回自定义任务依赖
         for dep_status in self._get_dep_statuses(ti, session, dep_context):
             yield dep_status
 
     @provide_session
     def is_met(self, ti, session, dep_context=None):
-        """
+        """任务通过的条件是它的所有的依赖全部满足
         Returns whether or not this dependency is met for a given task instance. A
         dependency is considered met if all of the dependency statuses it reports are
         passing.
@@ -120,7 +123,7 @@ class BaseTIDep(object):
 
     @provide_session
     def get_failure_reasons(self, ti, session, dep_context=None):
-        """
+        """获得任务所有的依赖中，不满足的依赖的原因列表
         Returns an iterable of strings that explain why this dependency wasn't met.
 
         :param ti: the task instance to see if this dependency is met for
@@ -136,9 +139,11 @@ class BaseTIDep(object):
                 yield dep_status.reason
 
     def _failing_status(self, reason=''):
+        """返回依赖不满足状态."""
         return TIDepStatus(self.name, False, reason)
 
     def _passing_status(self, reason=''):
+        """返回依赖满足状态."""
         return TIDepStatus(self.name, True, reason)
 
 

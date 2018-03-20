@@ -24,7 +24,7 @@ from airflow.utils.file import mkdirs
 
 
 class FileTaskHandler(logging.Handler):
-    """
+    """任务执行日志处理器
     FileTaskHandler is a python log handler that handles and reads
     task instance logs. It creates and delegates log handling
     to `logging.FileHandler` after receiving task instance context.
@@ -35,6 +35,10 @@ class FileTaskHandler(logging.Handler):
         """
         :param base_log_folder: Base log folder to place logs.
         :param filename_template: template filename string
+
+        e.g.
+            FILENAME_TEMPLATE = '{{ ti.dag_id }}/{{ ti.task_id }}/{{ ts }}/{{ try_number }}.log'
+
         """
         super(FileTaskHandler, self).__init__()
         self.handler = None
@@ -42,7 +46,7 @@ class FileTaskHandler(logging.Handler):
         self.filename_template = filename_template
         self.filename_jinja_template = None
 
-        if "{{" in self.filename_template: #jinja mode
+        if "{{" in self.filename_template:  # jinja mode
             self.filename_jinja_template = Template(self.filename_template)
 
     def set_context(self, ti):
@@ -50,6 +54,7 @@ class FileTaskHandler(logging.Handler):
         Provide task_instance context to airflow task handler.
         :param ti: task instance object
         """
+        # 创建日志文件
         local_loc = self._init_file(ti)
         self.handler = logging.FileHandler(local_loc)
         self.handler.setFormatter(self.formatter)
@@ -94,20 +99,24 @@ class FileTaskHandler(logging.Handler):
 
         log = ""
 
+        # 默认从本机服务器获取日志
         if os.path.exists(location):
             try:
                 with open(location) as f:
                     log += "*** Reading local file: {}\n".format(location)
                     log += "".join(f.readlines())
             except Exception as e:
-                log = "*** Failed to load local log file: {}\n".format(location)
+                log = "*** Failed to load local log file: {}\n".format(
+                    location)
                 log += "*** {}\n".format(str(e))
         else:
+            # 如果本地日志不存在，则从日志服务器获取
             url = os.path.join(
                 "http://{ti.hostname}:{worker_log_server_port}/log", log_relative_path
             ).format(
                 ti=ti,
-                worker_log_server_port=conf.get('celery', 'WORKER_LOG_SERVER_PORT')
+                worker_log_server_port=conf.get(
+                    'celery', 'WORKER_LOG_SERVER_PORT')
             )
             log += "*** Log file does not exist: {}\n".format(location)
             log += "*** Fetching from: {}\n".format(url)
@@ -125,7 +134,8 @@ class FileTaskHandler(logging.Handler):
 
                 log += '\n' + response.text
             except Exception as e:
-                log += "*** Failed to fetch log file from worker. {}\n".format(str(e))
+                log += "*** Failed to fetch log file from worker. {}\n".format(
+                    str(e))
 
         return log
 
@@ -147,7 +157,8 @@ class FileTaskHandler(logging.Handler):
             try_numbers = list(range(1, next_try))
         elif try_number < 1:
             logs = [
-                'Error fetching the logs. Try number {} is invalid.'.format(try_number),
+                'Error fetching the logs. Try number {} is invalid.'.format(
+                    try_number),
             ]
             return logs
         else:
