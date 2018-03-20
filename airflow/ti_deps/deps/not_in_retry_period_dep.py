@@ -25,17 +25,20 @@ class NotInRetryPeriodDep(BaseTIDep):
 
     @provide_session
     def _get_dep_statuses(self, ti, session, dep_context):
+        # 验证是否忽略重试时间
         if dep_context.ignore_in_retry_period:
             yield self._passing_status(
                 reason="The context specified that being in a retry period was "
                        "permitted.")
             return
 
+        # 验证任务实例是否标记为重试
         if ti.state != State.UP_FOR_RETRY:
             yield self._passing_status(
                 reason="The task instance was not marked for retrying.")
             return
 
+        # 任务实例已经标记为重试，但是还没有到下一次重试时间，如果运行就会失败
         # Calculate the date first so that it is always smaller than the timestamp used by
         # ready_for_retry
         cur_date = timezone.utcnow()

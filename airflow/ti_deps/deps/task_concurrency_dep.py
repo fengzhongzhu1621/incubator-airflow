@@ -16,7 +16,7 @@ from airflow.utils.db import provide_session
 
 
 class TaskConcurrencyDep(BaseTIDep):
-    """
+    """每个任务的任务实例有最大限制
     This restricts the number of running task instances for a particular task.
     """
     NAME = "Task Concurrency"

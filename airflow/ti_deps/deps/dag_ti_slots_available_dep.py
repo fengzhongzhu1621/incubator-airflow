@@ -16,6 +16,7 @@ from airflow.utils.db import provide_session
 
 
 class DagTISlotsAvailableDep(BaseTIDep):
+    """每个dag能并发执行的最大任务数依赖 ."""
     NAME = "Task Instance Slots Available"
     IGNOREABLE = True
 

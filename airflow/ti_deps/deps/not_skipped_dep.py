@@ -17,6 +17,7 @@ from airflow.utils.state import State
 
 
 class NotSkippedDep(BaseTIDep):
+    """验证任务实例的状态是否被标记为跳过 ."""
     NAME = "Task Instance Not Skipped"
     IGNOREABLE = True
 

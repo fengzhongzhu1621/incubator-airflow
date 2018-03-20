@@ -17,7 +17,7 @@ from airflow.utils.db import provide_session
 
 
 class BaseTIDep(object):
-    """任务依赖抽象基类
+    """任务实例依赖抽象基类
     Abstract base class for dependencies that must be satisfied in order for task
     instances to run. For example, a task that can only run if a certain number of its
     upstream tasks succeed. This is an abstract class and must be subclassed to be used.

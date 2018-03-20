@@ -17,7 +17,7 @@ from airflow.utils.state import State
 
 
 class PrevDagrunDep(BaseTIDep):
-    """
+    """验证任务实例是否依赖上一个周期的任务实例
     Is the past dagrun in a state that allows this task instance to run, e.g. did this
     task instance's task in the previous dagrun complete if we are depending on past.
     """
@@ -38,14 +38,17 @@ class PrevDagrunDep(BaseTIDep):
                 reason="The task did not have depends_on_past set.")
             return
 
+        # 如果任务实例需要依赖上一个周期的任务实例
         # Don't depend on the previous task instance if we are the first task
         dag = ti.task.dag
         if dag.catchup:
+            # 验证是否是单次调度
             if dag.previous_schedule(ti.execution_date) is None:
                 yield self._passing_status(
                     reason="This task does not have a schedule or is @once"
                 )
                 return
+            # 验证是否是第一次调度
             if dag.previous_schedule(ti.execution_date) < ti.task.start_date:
                 yield self._passing_status(
                     reason="This task instance was the first task instance for its task.")
@@ -53,7 +56,7 @@ class PrevDagrunDep(BaseTIDep):
         else:
             dr = ti.get_dagrun()
             last_dagrun = dr.get_previous_dagrun() if dr else None
-
+            # 上一个周期已经完成
             if not last_dagrun:
                 yield self._passing_status(
                     reason="This task instance was the first task instance for its task.")
@@ -66,12 +69,15 @@ class PrevDagrunDep(BaseTIDep):
                        "task instance has not run yet.")
             return
 
+        # 上一次调度的任务实例的状态必须被标记为跳过或成功
         if previous_ti.state not in {State.SKIPPED, State.SUCCESS}:
             yield self._failing_status(
                 reason="depends_on_past is true for this task, but the previous task "
                        "instance {0} is in the state '{1}' which is not a successful "
                        "state.".format(previous_ti, previous_ti.state))
 
+        # 如果任务被标记为wait_for_downstream，
+        # 则需要判断上一次任务实例的下游节点是否已经完成
         previous_ti.task = ti.task
         if (ti.task.wait_for_downstream and
                 not previous_ti.are_dependents_done(session=session)):

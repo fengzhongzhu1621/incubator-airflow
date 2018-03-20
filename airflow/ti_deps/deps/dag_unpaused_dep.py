@@ -16,11 +16,13 @@ from airflow.utils.db import provide_session
 
 
 class DagUnpausedDep(BaseTIDep):
+    """DAG是否被暂停的依赖 ."""
     NAME = "Dag Not Paused"
     IGNOREABLE = True
 
     @provide_session
     def _get_dep_statuses(self, ti, session, dep_context):
+        # 如果任务实例所在的DAG被暂停，则返回一个失败状态
         if ti.task.dag.is_paused:
             yield self._failing_status(
                 reason="Task's DAG '{0}' is paused.".format(ti.dag_id))

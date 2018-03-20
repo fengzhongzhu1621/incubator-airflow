@@ -16,6 +16,7 @@ from airflow.utils.db import provide_session
 
 
 class ExecDateAfterStartDateDep(BaseTIDep):
+    """任务的执行时间不能小于任务的开始时间 ，也不能小于dag的开始时间."""
     NAME = "Execution Date"
     IGNOREABLE = True
 
