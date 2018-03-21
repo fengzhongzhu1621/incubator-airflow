@@ -31,6 +31,7 @@ class BaseExecutor(LoggingMixin):
             ``0`` for infinity
         :type parallelism: int
         """
+        # 同一时间运行多少个job，0表示无限多
         self.parallelism = parallelism
         self.queued_tasks = {}
         self.running = {}
@@ -44,7 +45,10 @@ class BaseExecutor(LoggingMixin):
         pass
 
     def queue_command(self, task_instance, command, priority=1, queue=None):
+        """将任务实例放到队列中 ."""
+        # 每个任务实例都有一个唯一key
         key = task_instance.key
+        # 将没有运行，且没有在队列中的任务实例加入队列
         if key not in self.queued_tasks and key not in self.running:
             self.log.info("Adding to queue: %s", command)
             self.queued_tasks[key] = (command, priority, queue, task_instance)
@@ -83,7 +87,7 @@ class BaseExecutor(LoggingMixin):
             queue=task_instance.task.queue)
 
     def has_task(self, task_instance):
-        """
+        """判断任务实例是否已经在队列中或正在运行
         Checks if a task is either queued or running in this executor
 
         :param task_instance: TaskInstance
@@ -102,6 +106,7 @@ class BaseExecutor(LoggingMixin):
     def heartbeat(self):
 
         # Triggering new jobs
+        # 获得可运行job的数量
         if not self.parallelism:
             open_slots = len(self.queued_tasks)
         else:
@@ -111,11 +116,14 @@ class BaseExecutor(LoggingMixin):
         self.log.debug("%s in queue", len(self.queued_tasks))
         self.log.debug("%s open slots", open_slots)
 
+        # 按优先级逆序，优先级大的放在前面
         sorted_queue = sorted(
             [(k, v) for k, v in self.queued_tasks.items()],
             key=lambda x: x[1][1],
             reverse=True)
+
         for i in range(min((open_slots, len(self.queued_tasks)))):
+            # 遍历队列
             key, (command, _, queue, ti) = sorted_queue.pop(0)
             # TODO(jlowin) without a way to know what Job ran which tasks,
             # there is a danger that another Job started running a task
@@ -125,7 +133,9 @@ class BaseExecutor(LoggingMixin):
             # Backfill. This fix reduces the probability of a collision but
             # does NOT eliminate it.
             self.queued_tasks.pop(key)
+            # 从DB中获取最新的任务实例参数
             ti.refresh_from_db()
+            # 将未运行的任务实例发给执行器处理
             if ti.state != State.RUNNING:
                 self.running[key] = command
                 self.execute_async(key, command=command, queue=queue)
@@ -164,6 +174,7 @@ class BaseExecutor(LoggingMixin):
             self.event_buffer = dict()
         else:
             for key in list(self.event_buffer.keys()):
+                # 任务实例的唯一key是由3部分组成的
                 dag_id, _, _ = key
                 if dag_id in dag_ids:
                     cleared_events[key] = self.event_buffer.pop(key)
