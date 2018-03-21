@@ -70,6 +70,7 @@ class BaseExecutor(LoggingMixin):
         # cfg_path is needed to propagate the config values if using impersonation
         # (run_as_user), given that there are different code paths running tasks.
         # For a long term solution we need to address AIRFLOW-1986
+        # 构造任务实例命令
         command = task_instance.command(
             local=True,
             mark_success=mark_success,
@@ -80,6 +81,7 @@ class BaseExecutor(LoggingMixin):
             pool=pool,
             pickle_id=pickle_id,
             cfg_path=cfg_path)
+        # 将任务放入队列
         self.queue_command(
             task_instance,
             command,
@@ -97,7 +99,7 @@ class BaseExecutor(LoggingMixin):
             return True
 
     def sync(self):
-        """
+        """每次心跳都会调用
         Sync will get called periodically by the heartbeat method.
         Executors should override this to perform gather statuses.
         """

@@ -20,7 +20,7 @@ from airflow.utils.state import State
 
 
 class SequentialExecutor(BaseExecutor):
-    """
+    """顺序调度器是单进程的，一次只能运行一个任务实例
     This executor will only run one task instance at a time, can be used
     for debugging. It is also the only executor that can be used with sqlite
     since sqlite doesn't support multiple connections.
@@ -28,6 +28,7 @@ class SequentialExecutor(BaseExecutor):
     Since we want airflow to work out of the box, it defaults to this
     SequentialExecutor alongside sqlite as you first install it.
     """
+
     def __init__(self):
         super(SequentialExecutor, self).__init__()
         self.commands_to_run = []
@@ -40,6 +41,7 @@ class SequentialExecutor(BaseExecutor):
             self.log.info("Executing command: %s", command)
 
             try:
+                # 执行命令，等待子进程结束
                 subprocess.check_call(command, shell=True, close_fds=True)
                 self.change_state(key, State.SUCCESS)
             except subprocess.CalledProcessError as e:
