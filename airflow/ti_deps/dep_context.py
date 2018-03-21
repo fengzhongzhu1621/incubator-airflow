@@ -58,6 +58,7 @@ class DepContext(object):
     :param ignore_ti_state: Ignore the task instance's previous failure/success
     :type ignore_ti_state: boolean
     """
+
     def __init__(
             self,
             deps=None,
@@ -75,6 +76,7 @@ class DepContext(object):
         self.ignore_task_deps = ignore_task_deps
         self.ignore_ti_state = ignore_ti_state
 
+
 # In order to be able to get queued a task must have one of these states
 QUEUEABLE_STATES = {
     State.FAILED,
@@ -89,17 +91,18 @@ QUEUEABLE_STATES = {
 # Context to get the dependencies that need to be met in order for a task instance to
 # be backfilled.
 QUEUE_DEPS = {
-    NotRunningDep(),
-    NotSkippedDep(),
-    RunnableExecDateDep(),
-    ValidStateDep(QUEUEABLE_STATES),
+    NotRunningDep(),    # 任务实例没有运行
+    NotSkippedDep(),    # 任务实例没有被标记为跳过
+    RunnableExecDateDep(),  # 判断任务执行时间 必须小于等于当前时间  且 小于等于结束时间
+    ValidStateDep(QUEUEABLE_STATES),    # 验证任务的状态必须在队列状态中
 }
 
 # Dependencies that need to be met for a given task instance to be able to get run by an
-# executor. This class just extends QueueContext by adding dependencies for resources.
+# executor. This class just extends QueueContext by adding dependencies
+# for resources.
 RUN_DEPS = QUEUE_DEPS | {
-    DagTISlotsAvailableDep(),
-    TaskConcurrencyDep(),
+    DagTISlotsAvailableDep(),   # 每个dag能并发执行的最大任务数依赖
+    TaskConcurrencyDep(),       # 每个任务的任务实例有最大限制
 }
 
 # TODO(aoen): SCHEDULER_DEPS is not coupled to actual execution in any way and
@@ -111,7 +114,7 @@ RUN_DEPS = QUEUE_DEPS | {
 # Dependencies that need to be met for a given task instance to get scheduled by the
 # scheduler, then queued by the scheduler, then run by an executor.
 SCHEDULER_DEPS = RUN_DEPS | {
-    DagrunRunningDep(),
-    DagUnpausedDep(),
-    ExecDateAfterStartDateDep(),
+    DagrunRunningDep(),     # 验证Dagrun必须是RUNNING的状态
+    DagUnpausedDep(),       # DAG不能是暂停状态
+    ExecDateAfterStartDateDep(),    # 任务的执行时间必须大于等于任务的开始时间 ，大于等于dag的开始时间
 }

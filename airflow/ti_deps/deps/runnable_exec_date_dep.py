@@ -18,6 +18,7 @@ from airflow.utils.db import provide_session
 
 
 class RunnableExecDateDep(BaseTIDep):
+    """判断任务执行时间 必须小于等于当前时间  且 小于等于结束时间 ."""
     NAME = "Execution Date"
     IGNOREABLE = True
 

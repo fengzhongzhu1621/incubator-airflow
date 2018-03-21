@@ -17,7 +17,7 @@ from airflow.utils.state import State
 
 
 class DagrunRunningDep(BaseTIDep):
-    """验证Dagrun的状态 ."""
+    """验证Dagrun必须是RUNNING的状态 ."""
     NAME = "Dagrun Running"
     IGNOREABLE = True
 
