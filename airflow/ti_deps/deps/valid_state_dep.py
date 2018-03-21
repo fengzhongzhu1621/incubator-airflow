@@ -28,6 +28,7 @@ class ValidStateDep(BaseTIDep):
     :type valid_states: set(str)
     :return: whether or not the task instance's state is valid
     """
+
     def __init__(self, valid_states):
         super(ValidStateDep, self).__init__()
 
@@ -49,6 +50,7 @@ class ValidStateDep(BaseTIDep):
                 reason="Context specified that state should be ignored.")
             return
 
+        # 验证任务实例的状态必须符合有效状态
         if ti.state in self._valid_states:
             yield self._passing_status(reason="Task state {} was valid.".format(ti.state))
             return

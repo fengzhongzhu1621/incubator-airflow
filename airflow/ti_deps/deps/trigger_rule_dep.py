@@ -43,6 +43,7 @@ class TriggerRuleDep(BaseTIDep):
             yield self._passing_status(reason="The task had a dummy trigger rule set.")
             return
 
+        # 获得上游任务的实例中SUCCESS, SKIPPED, FAILRED, UPSTREAM_FAILED的数量及执行完成的总数
         # TODO(unknown): this query becomes quite expensive with dags that have many
         # tasks. It should be refactored to let the task report to the dag run and get the
         # aggregates from there.
@@ -72,11 +73,11 @@ class TriggerRuleDep(BaseTIDep):
         successes, skipped, failed, upstream_failed, done = qry.first()
         for dep_status in self._evaluate_trigger_rule(
                 ti=ti,
-                successes=successes,
-                skipped=skipped,
-                failed=failed,
+                successes=successes,    # 成功数量
+                skipped=skipped,        # 跳过数量
+                failed=failed,          # 失败数量
                 upstream_failed=upstream_failed,
-                done=done,
+                done=done,              # 完成总数
                 flag_upstream_failed=dep_context.flag_upstream_failed,
                 session=session):
             yield dep_status
@@ -122,11 +123,15 @@ class TriggerRuleDep(BaseTIDep):
         task = ti.task
         upstream = len(task.upstream_task_ids)
         tr = task.trigger_rule
+        # 判断上游任务是否全部完成
         upstream_done = done >= upstream
         upstream_tasks_state = {
             "total": upstream, "successes": successes, "skipped": skipped,
             "failed": failed, "upstream_failed": upstream_failed, "done": done
         }
+
+        # 验证任务触发规则
+
         # TODO(aoen): Ideally each individual trigger rules would be its own class, but
         # this isn't very feasible at the moment since the database queries need to be
         # bundled together for efficiency.
@@ -148,6 +153,7 @@ class TriggerRuleDep(BaseTIDep):
                     ti.set_state(State.SKIPPED, session)
 
         if tr == TR.ONE_SUCCESS:
+            # 如果上游任务实例只要有一个成功，就会执行下一个任务
             if successes <= 0:
                 yield self._failing_status(
                     reason="Task's trigger rule '{0}' requires one upstream "
@@ -155,6 +161,7 @@ class TriggerRuleDep(BaseTIDep):
                     "upstream_tasks_state={1}, upstream_task_ids={2}"
                     .format(tr, upstream_tasks_state, task.upstream_task_ids))
         elif tr == TR.ONE_FAILED:
+            # 如果上游任务只要有一个失败，就会执行下一个任务
             if not failed and not upstream_failed:
                 yield self._failing_status(
                     reason="Task's trigger rule '{0}' requires one upstream "
@@ -162,6 +169,7 @@ class TriggerRuleDep(BaseTIDep):
                     "upstream_tasks_state={1}, upstream_task_ids={2}"
                     .format(tr, upstream_tasks_state, task.upstream_task_ids))
         elif tr == TR.ALL_SUCCESS:
+            # 如果上游任务全部成功，才会执行下一个任务
             num_failures = upstream - successes
             if num_failures > 0:
                 yield self._failing_status(
@@ -171,6 +179,7 @@ class TriggerRuleDep(BaseTIDep):
                     .format(tr, num_failures, upstream_tasks_state,
                             task.upstream_task_ids))
         elif tr == TR.ALL_FAILED:
+            # 如果上游任务全部是失败，才会执行下一个任务
             num_successes = upstream - failed - upstream_failed
             if num_successes > 0:
                 yield self._failing_status(
@@ -180,13 +189,14 @@ class TriggerRuleDep(BaseTIDep):
                     .format(tr, num_successes, upstream_tasks_state,
                             task.upstream_task_ids))
         elif tr == TR.ALL_DONE:
+            # 如果上游任务全部完成才会执行下一个任务
             if not upstream_done:
                 yield self._failing_status(
                     reason="Task's trigger rule '{0}' requires all upstream "
                     "tasks to have completed, but found {1} task(s) that "
                     "weren't done. upstream_tasks_state={2}, "
                     "upstream_task_ids={3}"
-                    .format(tr, upstream-done, upstream_tasks_state,
+                    .format(tr, upstream - done, upstream_tasks_state,
                             task.upstream_task_ids))
         else:
             yield self._failing_status(
