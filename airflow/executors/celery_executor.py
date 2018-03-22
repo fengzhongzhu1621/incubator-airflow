@@ -48,6 +48,7 @@ app = Celery(
 
 @app.task
 def execute_command(command):
+    """执行shell命令 ."""
     log = LoggingMixin().log
     log.info("Executing command in Celery: %s", command)
     env = os.environ.copy()
@@ -79,14 +80,17 @@ class CeleryExecutor(BaseExecutor):
                       queue=DEFAULT_CELERY_CONFIG['task_default_queue']):
         self.log.info("[celery] queuing {key} through celery, "
                       "queue={queue}".format(**locals()))
+        # 向celery发送任务
         self.tasks[key] = execute_command.apply_async(
             args=[command], queue=queue)
+        # 记录当前任务的状态
         self.last_state[key] = celery_states.PENDING
 
     def sync(self):
         self.log.debug("Inquiring about %s celery task(s)", len(self.tasks))
         for key, async in list(self.tasks.items()):
             try:
+                # 获得异步任务的执行状态
                 state = async.state
                 if self.last_state[key] != state:
                     if state == celery_states.SUCCESS:
@@ -111,6 +115,7 @@ class CeleryExecutor(BaseExecutor):
 
     def end(self, synchronous=False):
         if synchronous:
+            # 等待所有的任务完成
             while any([
                     async.state not in celery_states.READY_STATES
                     for async in self.tasks.values()]):
