@@ -33,6 +33,7 @@ To start the celery worker, run the command:
 airflow worker
 '''
 
+# 导入celery默认配置
 if configuration.has_option('celery', 'celery_config_options'):
     celery_configuration = import_string(
         configuration.get('celery', 'celery_config_options')
@@ -69,14 +70,15 @@ class CeleryExecutor(BaseExecutor):
     vast amounts of messages, while providing operations with the tools
     required to maintain such a system.
     """
+
     def start(self):
         self.tasks = {}
         self.last_state = {}
 
     def execute_async(self, key, command,
                       queue=DEFAULT_CELERY_CONFIG['task_default_queue']):
-        self.log.info( "[celery] queuing {key} through celery, "
-                       "queue={queue}".format(**locals()))
+        self.log.info("[celery] queuing {key} through celery, "
+                      "queue={queue}".format(**locals()))
         self.tasks[key] = execute_command.apply_async(
             args=[command], queue=queue)
         self.last_state[key] = celery_states.PENDING
@@ -103,7 +105,8 @@ class CeleryExecutor(BaseExecutor):
                         self.log.info("Unexpected state: %s", async.state)
                     self.last_state[key] = async.state
             except Exception as e:
-                self.log.error("Error syncing the celery executor, ignoring it:")
+                self.log.error(
+                    "Error syncing the celery executor, ignoring it:")
                 self.log.exception(e)
 
     def end(self, synchronous=False):

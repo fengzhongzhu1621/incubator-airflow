@@ -20,20 +20,24 @@ from airflow.utils.log.logging_mixin import LoggingMixin
 
 log = LoggingMixin().log
 
-broker_transport_options = configuration.getsection('celery_broker_transport_options')
+# 任务发出后，经过一段时间还未收到acknowledge , 就将任务重新交给其他worker执行
+broker_transport_options = configuration.getsection(
+    'celery_broker_transport_options')
 if broker_transport_options is None:
     broker_transport_options = {'visibility_timeout': 21600}
 
 DEFAULT_CELERY_CONFIG = {
-    'accept_content': ['json', 'pickle'],
-    'event_serializer': 'json',
-    'worker_prefetch_multiplier': 1,
-    'task_acks_late': True,
+    'accept_content': ['json', 'pickle'],   # 指定接受的内容类型
+    'event_serializer': 'json',         # 发送event message的格式
+    'worker_prefetch_multiplier': 1,    # 每个worker每次只取一个消息
+    'task_acks_late': True,             # 只有当worker执行完任务后,才会告诉MQ,消息被消费。
     'task_default_queue': configuration.get('celery', 'DEFAULT_QUEUE'),
     'task_default_exchange': configuration.get('celery', 'DEFAULT_QUEUE'),
     'broker_url': configuration.get('celery', 'BROKER_URL'),
     'broker_transport_options': broker_transport_options,
+    # worker执行结果输出的存储介质
     'result_backend': configuration.get('celery', 'RESULT_BACKEND'),
+    # worker并发执行的数量
     'worker_concurrency': configuration.getint('celery', 'WORKER_CONCURRENCY'),
 }
 
