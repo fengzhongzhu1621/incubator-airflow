@@ -24,6 +24,7 @@ class DaskExecutor(BaseExecutor):
     """
     DaskExecutor submits tasks to a Dask Distributed cluster.
     """
+
     def __init__(self, cluster_address=None):
         if cluster_address is None:
             cluster_address = configuration.get('dask', 'cluster_address')
@@ -34,6 +35,7 @@ class DaskExecutor(BaseExecutor):
         super(DaskExecutor, self).__init__(parallelism=0)
 
     def start(self):
+        # 连接远程dask集群
         self.client = distributed.Client(self.cluster_address)
         self.futures = {}
 
@@ -46,6 +48,7 @@ class DaskExecutor(BaseExecutor):
         def airflow_run():
             return subprocess.check_call(command, shell=True, close_fds=True)
 
+        # 将命令发送到dask集群中执行
         future = self.client.submit(airflow_run, pure=False)
         self.futures[future] = key
 
@@ -53,7 +56,8 @@ class DaskExecutor(BaseExecutor):
         if future.done():
             key = self.futures[future]
             if future.exception():
-                self.log.error("Failed to execute task: %s", repr(future.exception()))
+                self.log.error("Failed to execute task: %s",
+                               repr(future.exception()))
                 self.fail(key)
             elif future.cancelled():
                 self.log.error("Failed to execute task")
@@ -68,6 +72,7 @@ class DaskExecutor(BaseExecutor):
             self._process_future(future)
 
     def end(self):
+        # 按执行完成的顺序返回futures
         for future in distributed.as_completed(self.futures.copy()):
             self._process_future(future)
 
