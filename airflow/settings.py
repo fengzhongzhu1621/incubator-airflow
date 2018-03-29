@@ -34,6 +34,7 @@ log = logging.getLogger(__name__)
 
 RBAC = conf.getboolean('webserver', 'rbac')
 
+# 设置默认时区
 TIMEZONE = pendulum.timezone('UTC')
 try:
     tz = conf.get("core", "default_timezone")
@@ -66,6 +67,7 @@ class DummyStatsLogger(object):
 
 Stats = DummyStatsLogger
 
+# 采集到的数据会走 UDP 协议发给 StatsD，由 StatsD 解析、提取、计算处理后，周期性地发送给 Graphite。
 if conf.getboolean('scheduler', 'statsd_on'):
     from statsd import StatsClient
 
@@ -152,7 +154,9 @@ def configure_orm(disable_connection_pool=False):
         engine_args['pool_recycle'] = conf.getint('core',
                                                   'SQL_ALCHEMY_POOL_RECYCLE')
 
+    # 连接数据库
     engine = create_engine(SQL_ALCHEMY_CONN, **engine_args)
+    # 设置数据库事件处理函数
     reconnect_timeout = conf.getint('core', 'SQL_ALCHEMY_RECONNECT_TIMEOUT')
     setup_event_handlers(engine, reconnect_timeout)
 

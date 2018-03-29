@@ -23,12 +23,14 @@ from airflow.utils.log.logging_mixin import LoggingMixin
 
 DEFAULT_EXECUTOR = None
 
+
 def _integrate_plugins():
     """Integrate plugins to the context."""
     from airflow.plugins_manager import executors_modules
     for executors_module in executors_modules:
         sys.modules[executors_module.__name__] = executors_module
         globals()[executors_module._name] = executors_module
+
 
 def GetDefaultExecutor():
     """Creates a new instance of the configured executor if none exists and returns it"""
@@ -68,14 +70,17 @@ def _get_executor(executor_name):
     else:
         # Loading plugins
         _integrate_plugins()
+
         executor_path = executor_name.split('.')
         if len(executor_path) != 2:
             raise AirflowException(
                 "Executor {0} not supported: please specify in format plugin_module.executor".format(executor_name))
 
+        # executor_path[0]：表示插件名
+        # executor_path[1]：表示插件中的类名
         if executor_path[0] in globals():
+            # 根据插件中的类名创建对象
             return globals()[executor_path[0]].__dict__[executor_path[1]]()
         else:
-            raise AirflowException("Executor {0} not supported.".format(executor_name))
-
-
+            raise AirflowException(
+                "Executor {0} not supported.".format(executor_name))
