@@ -38,6 +38,8 @@ class timeout(LoggingMixin):
 
     def __enter__(self):
         try:
+            # 注册SIGLARM信号，延迟几秒后向自身进程发送信号
+            # 进程收到信号后，抛出 AirflowTaskTimeout 异常
             signal.signal(signal.SIGALRM, self.handle_timeout)
             signal.alarm(self.seconds)
         except ValueError as e:
@@ -46,6 +48,7 @@ class timeout(LoggingMixin):
 
     def __exit__(self, type, value, traceback):
         try:
+            # 关闭信号
             signal.alarm(0)
         except ValueError as e:
             self.log.warning("timeout can't be used in the current context")

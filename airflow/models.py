@@ -125,13 +125,17 @@ _CONTEXT_MANAGER_DAG = None
 
 
 def clear_task_instances(tis, session, activate_dag_runs=True, dag=None):
-    """
+    """重置任务实例
+    - 正在运行的任务改为关闭状态
+    - 非正在运行的任务改为 None 状态，并设置任务实例的最大重试次数 max_tries
+
     Clears a set of task instances, but makes sure the running ones
     get killed.
     """
     job_ids = []
     for ti in tis:
         if ti.state == State.RUNNING:
+            # 正在运行的任务实例设置为关闭状态
             if ti.job_id:
                 ti.state = State.SHUTDOWN
                 job_ids.append(ti.job_id)
@@ -150,11 +154,13 @@ def clear_task_instances(tis, session, activate_dag_runs=True, dag=None):
             ti.state = State.NONE
             session.merge(ti)
 
+    # 将正在运行的任务实例，关联的job设置为关闭状态
     if job_ids:
         from airflow.jobs import BaseJob as BJ
         for job in session.query(BJ).filter(BJ.id.in_(job_ids)).all():
             job.state = State.SHUTDOWN
 
+    # 将dagrun重置为运行状态
     if activate_dag_runs and tis:
         drs = session.query(DagRun).filter(
             DagRun.dag_id.in_({ti.dag_id for ti in tis}),
@@ -166,7 +172,7 @@ def clear_task_instances(tis, session, activate_dag_runs=True, dag=None):
 
 
 class DagBag(BaseDagBag, LoggingMixin):
-    """
+    """ dag容器
     A dagbag is a collection of dags, parsed out of a folder tree and has high
     level configuration settings, like what database to use as a backend and
     what executor to use to fire off tasks. This makes it easier to run
@@ -208,6 +214,7 @@ class DagBag(BaseDagBag, LoggingMixin):
         self.executor = executor
         self.import_errors = {}
 
+        # 从目录中加载dag
         if include_examples:
             example_dag_folder = os.path.join(
                 os.path.dirname(__file__),
@@ -269,19 +276,22 @@ class DagBag(BaseDagBag, LoggingMixin):
         try:
             # This failed before in what may have been a git sync
             # race condition
+            # 获得文件的修改时间
             file_last_changed_on_disk = datetime.fromtimestamp(
                 os.path.getmtime(filepath))
+
+            # 判断文件最近是否被修改
             if only_if_updated \
                     and filepath in self.file_last_changed \
                     and file_last_changed_on_disk == self.file_last_changed[filepath]:
                 return found_dags
-
         except Exception as e:
             self.log.exception(e)
             return found_dags
 
         mods = []
         if not zipfile.is_zipfile(filepath):
+            # 判断文件是否是可解析的DAG文件
             if safe_mode and os.path.isfile(filepath):
                 with open(filepath, 'rb') as f:
                     content = f.read()
@@ -290,6 +300,7 @@ class DagBag(BaseDagBag, LoggingMixin):
                         return found_dags
 
             self.log.debug("Importing %s", filepath)
+            # 获得文件名和后缀名
             org_mod_name, _ = os.path.splitext(os.path.split(filepath)[-1])
             mod_name = ('unusual_prefix_' +
                         hashlib.sha1(filepath.encode('utf-8')).hexdigest() +
@@ -339,6 +350,7 @@ class DagBag(BaseDagBag, LoggingMixin):
                         self.import_errors[filepath] = str(e)
                         self.file_last_changed[filepath] = file_last_changed_on_disk
 
+        # 遍历加载的模块
         for m in mods:
             for dag in list(m.__dict__.values()):
                 if isinstance(dag, DAG):
@@ -347,6 +359,7 @@ class DagBag(BaseDagBag, LoggingMixin):
                         if dag.fileloc != filepath:
                             dag.fileloc = filepath
                     try:
+                        # 将dag重新加入到self.dags中
                         dag.is_subdag = False
                         self.bag_dag(dag, parent_dag=dag, root_dag=dag)
                         found_dags.append(dag)
@@ -359,6 +372,7 @@ class DagBag(BaseDagBag, LoggingMixin):
                         self.file_last_changed[dag.full_filepath] = \
                             file_last_changed_on_disk
 
+        # 记录所 加载文件的最近修改时间
         self.file_last_changed[filepath] = file_last_changed_on_disk
         return found_dags
 
