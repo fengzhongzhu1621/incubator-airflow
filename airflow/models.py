@@ -261,7 +261,7 @@ class DagBag(BaseDagBag, LoggingMixin):
         return self.dags.get(dag_id)
 
     def process_file(self, filepath, only_if_updated=True, safe_mode=True):
-        """
+        """根据文件的修改时间重新加载文件，
         Given a path to a python module or zip file, this method imports
         the module and look for dag objects within it.
         """
@@ -389,6 +389,7 @@ class DagBag(BaseDagBag, LoggingMixin):
         limit_dttm = timezone.utcnow() - timedelta(seconds=secs)
         self.log.info("Failing jobs without heartbeat after %s", limit_dttm)
 
+        # 获得正在运行的job，或心跳僵死的job
         tis = (
             session.query(TI)
             .join(LJ, TI.job_id == LJ.id)
@@ -4675,6 +4676,7 @@ class DagRun(Base, LoggingMixin):
     """
     __tablename__ = "dag_run"
 
+    # DAG实例的唯一标识前缀
     ID_PREFIX = 'scheduled__'
     ID_FORMAT_PREFIX = ID_PREFIX + '{0}'
 
@@ -4685,11 +4687,13 @@ class DagRun(Base, LoggingMixin):
     end_date = Column(UtcDateTime)
     _state = Column('state', String(50), default=State.RUNNING)
     run_id = Column(String(ID_LEN))
+    # 是否是由外部接口触发，而不是调度器触发
     external_trigger = Column(Boolean, default=True)
     conf = Column(PickleType)
 
     dag = None
 
+    # 唯一索引
     __table_args__ = (
         Index('dr_run_id', dag_id, run_id, unique=True),
     )
@@ -4724,11 +4728,12 @@ class DagRun(Base, LoggingMixin):
 
     @classmethod
     def id_for_date(cls, date, prefix=ID_FORMAT_PREFIX):
+        """用时间格式化前缀 ."""
         return prefix.format(date.isoformat()[:19])
 
     @provide_session
     def refresh_from_db(self, session=None):
-        """
+        """刷新状态
         Reloads the current dagrun from the database
         :param session: database session
         """
@@ -4785,11 +4790,16 @@ class DagRun(Base, LoggingMixin):
             qry = qry.filter(DR.state == state)
         if external_trigger is not None:
             qry = qry.filter(DR.external_trigger == external_trigger)
+
+        # 是否去掉backfill dag实例
         if no_backfills:
             # in order to prevent a circular dependency
             from airflow.jobs import BackfillJob
+            # 过滤到run_id包含 （ID_PREFIX = 'backfill_'）的记录
+            # 这些记录为 backfill dag实例
             qry = qry.filter(DR.run_id.notlike(BackfillJob.ID_PREFIX + '%'))
 
+        # 按数据时间排序
         dr = qry.order_by(DR.execution_date).all()
 
         return dr
@@ -4799,11 +4809,13 @@ class DagRun(Base, LoggingMixin):
         """
         Returns the task instances for this dag run
         """
+        # 获得任务实例
         TI = TaskInstance
         tis = session.query(TI).filter(
             TI.dag_id == self.dag_id,
             TI.execution_date == self.execution_date,
         )
+        # 设置状态过滤条件，支持状态为None
         if state:
             if isinstance(state, six.string_types):
                 tis = tis.filter(TI.state == state)
@@ -4817,6 +4829,7 @@ class DagRun(Base, LoggingMixin):
                 else:
                     tis = tis.filter(TI.state.in_(state))
 
+        # 是否获得部分任务，由dag设置
         if self.dag and self.dag.partial:
             tis = tis.filter(TI.task_id.in_(self.dag.task_ids))
 
@@ -4853,7 +4866,8 @@ class DagRun(Base, LoggingMixin):
 
     @provide_session
     def get_previous_dagrun(self, session=None):
-        """The previous DagRun, if there is one"""
+        """获得上一个dag实例
+        The previous DagRun, if there is one"""
 
         return session.query(DagRun).filter(
             DagRun.dag_id == self.dag_id,
@@ -4864,7 +4878,8 @@ class DagRun(Base, LoggingMixin):
 
     @provide_session
     def get_previous_scheduled_dagrun(self, session=None):
-        """The previous, SCHEDULED DagRun, if there is one"""
+        """获得上一个已经调度的dag实例
+        The previous, SCHEDULED DagRun, if there is one"""
         dag = self.get_dag()
 
         return session.query(DagRun).filter(
@@ -4874,7 +4889,7 @@ class DagRun(Base, LoggingMixin):
 
     @provide_session
     def update_state(self, session=None):
-        """
+        """更新dagrun的状态，由所有的任务实例的状态决定
         Determines the overall state of the DagRun based on the state
         of its TaskInstances.
 
@@ -4883,11 +4898,13 @@ class DagRun(Base, LoggingMixin):
 
         dag = self.get_dag()
 
+        # 获得所有任务实例
         tis = self.get_task_instances(session=session)
 
         self.log.info(
             "Updating state for %s considering %s task(s)", self, len(tis))
 
+        # 根据任务实例获得任务，去掉已删除的任务实例
         for ti in list(tis):
             # skip in db?
             if ti.state == State.REMOVED:
@@ -4895,6 +4912,7 @@ class DagRun(Base, LoggingMixin):
             else:
                 ti.task = dag.get_task(ti.task_id)
 
+        # 获得未完成的任务实例
         # pre-calculate
         # db is faster
         start_dttm = timezone.utcnow()
@@ -4902,10 +4920,15 @@ class DagRun(Base, LoggingMixin):
             state=State.unfinished(),
             session=session
         )
+
+        # 确认所有的任务实例都不依赖于上一个调度的任务实例
         none_depends_on_past = all(
             not t.task.depends_on_past for t in unfinished_tasks)
+
+        # 确认所有的任务实例都没有并发限制
         none_task_concurrency = all(
             t.task.task_concurrency is None for t in unfinished_tasks)
+
         # small speed up
         if unfinished_tasks and none_depends_on_past and none_task_concurrency:
             # todo: this can actually get pretty slow: one task costs between
@@ -4970,11 +4993,13 @@ class DagRun(Base, LoggingMixin):
 
     @provide_session
     def verify_integrity(self, session=None):
-        """
+        """验证任务实例，因为任务可能被删除或者新的任务没有被添加到DB中
         Verifies the DagRun by checking for removed tasks or tasks that are not in the
         database yet. It will set state to removed or add the task if required.
         """
         dag = self.get_dag()
+
+        # 获得关联的所有任务实例
         tis = self.get_task_instances(session=session)
 
         # check for removed or restored tasks
@@ -4985,6 +5010,7 @@ class DagRun(Base, LoggingMixin):
             try:
                 task = dag.get_task(ti.task_id)
             except AirflowException:
+                # 任务不存在且实例已经被标记为删除
                 if ti.state == State.REMOVED:
                     pass  # ti has already been removed, just ignore it
                 elif self.state is not State.RUNNING and not dag.partial:
@@ -4992,8 +5018,13 @@ class DagRun(Base, LoggingMixin):
                                      "Marking it as removed.".format(ti, dag))
                     Stats.incr(
                         "task_removed_from_dag.{}".format(dag.dag_id), 1, 1)
+                    # 标记任务实例为删除状态
                     ti.state = State.REMOVED
 
+            # 如果任务存在，但是被标记为删除状态，需要变更任务状态为None
+            # 区别如下：
+            # 1. None状态任务实例： 表明任务在dag中，但是被标记为了REMOVED
+            # 2. REMOVE状态任务实例： 表明任务不再dag中，且没有运行，且dag不是部分任务
             is_task_in_dag = task is not None
             should_restore_task = is_task_in_dag and ti.state == State.REMOVED
             if should_restore_task:
@@ -5002,6 +5033,7 @@ class DagRun(Base, LoggingMixin):
                 Stats.incr("task_restored_to_dag.{}".format(dag.dag_id), 1, 1)
                 ti.state = State.NONE
 
+        # 添加缺失的任务实例： 例如dag变更后新增了任务
         # check for missing tasks
         for task in six.itervalues(dag.task_dict):
             if task.adhoc:
@@ -5039,7 +5071,10 @@ class DagRun(Base, LoggingMixin):
     @classmethod
     @provide_session
     def get_latest_runs(cls, session):
-        """Returns the latest DagRun for each DAG. """
+        """采用内联方式，每一行dagrun都对应一个最新的dagrun
+
+        Returns the latest DagRun for each DAG.
+        """
         subquery = (
             session
             .query(
@@ -5060,11 +5095,12 @@ class DagRun(Base, LoggingMixin):
 
 
 class Pool(Base):
+    """任务实例的插槽池管理 ."""
     __tablename__ = "slot_pool"
 
     id = Column(Integer, primary_key=True)
-    pool = Column(String(50), unique=True)
-    slots = Column(Integer, default=0)
+    pool = Column(String(50), unique=True)  # 插槽的名称
+    slots = Column(Integer, default=0)      # 插槽的数量
     description = Column(Text)
 
     def __repr__(self):
@@ -5095,7 +5131,7 @@ class Pool(Base):
     @provide_session
     def queued_slots(self, session):
         """
-        Returns the number of slots used at the moment
+        Returns the number of slots queued at the moment
         """
         return (
             session
