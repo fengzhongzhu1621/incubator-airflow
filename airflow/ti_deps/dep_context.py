@@ -69,9 +69,11 @@ class DepContext(object):
             ignore_task_deps=False,
             ignore_ti_state=False):
         self.deps = deps or set()
+        # 是否根据上游任务失败的情况设置当前任务实例的状态
         self.flag_upstream_failed = flag_upstream_failed
         self.ignore_all_deps = ignore_all_deps
         self.ignore_depends_on_past = ignore_depends_on_past
+        # 是否忽略重试时间
         self.ignore_in_retry_period = ignore_in_retry_period
         self.ignore_task_deps = ignore_task_deps
         self.ignore_ti_state = ignore_ti_state

@@ -20,7 +20,8 @@ from airflow.utils.state import State
 
 
 class TriggerRuleDep(BaseTIDep):
-    """
+    """验证上游依赖任务.
+
     Determines if a task's upstream tasks are in a state that allows a given task instance
     to run.
     """
@@ -136,6 +137,7 @@ class TriggerRuleDep(BaseTIDep):
         # this isn't very feasible at the moment since the database queries need to be
         # bundled together for efficiency.
         # handling instant state assignment based on trigger rules
+        # 根据上游任务失败的情况设置当前任务实例的状态
         if flag_upstream_failed:
             if tr == TR.ALL_SUCCESS:
                 if upstream_failed or failed:

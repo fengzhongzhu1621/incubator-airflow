@@ -1111,7 +1111,7 @@ class TaskInstance(Base, LoggingMixin):
 
     @provide_session
     def current_state(self, session=None):
-        """
+        """从DB中获取任务实例的当前状态
         Get the very latest state from the database, if a session is passed,
         we use and looking up the state becomes part of the session, otherwise
         a new session is used.
@@ -1282,8 +1282,10 @@ class TaskInstance(Base, LoggingMixin):
         :param verbose: whether or not to print details on failed dependencies
         :type verbose: boolean
         """
+        # 获得DAG上下文
         dep_context = dep_context or DepContext()
         failed = False
+        # 根据DAG/TASK上下文中的依赖，返回失败的依赖
         for dep_status in self.get_failed_dep_statuses(
                 dep_context=dep_context,
                 session=session):
@@ -1307,6 +1309,8 @@ class TaskInstance(Base, LoggingMixin):
             self,
             dep_context=None,
             session=None):
+        """获取失败的依赖  ."""
+        # 获得DAG上下文
         dep_context = dep_context or DepContext()
         for dep in dep_context.deps | self.task.deps:
             for dep_status in dep.get_dep_statuses(
@@ -1320,6 +1324,7 @@ class TaskInstance(Base, LoggingMixin):
                 )
 
                 if not dep_status.passed:
+                    # 返回失败的依赖
                     yield dep_status
 
     def __repr__(self):
@@ -3436,9 +3441,13 @@ class DAG(BaseDag, LoggingMixin):
         if callback:
             self.log.info(
                 'Executing dag callback function: {}'.format(callback))
+            # 获得dagrun的所有任务实例
             tis = dagrun.get_task_instances(session=session)
+            # 取最近的一条任务实例
             ti = tis[-1]  # get first TaskInstance of DagRun
+            # 获得任务
             ti.task = self.get_task(ti.task_id)
+            # 获得任务实例上下文，并添加原因描述
             context = ti.get_template_context(session=session)
             context.update({'reason': reason})
             callback(context)
@@ -4734,7 +4743,7 @@ class DagRun(Base, LoggingMixin):
 
     @provide_session
     def refresh_from_db(self, session=None):
-        """刷新状态
+        """从DB中获取状态更新到ORM模型中
         Reloads the current dagrun from the database
         :param session: database session
         """
@@ -4891,6 +4900,7 @@ class DagRun(Base, LoggingMixin):
     @provide_session
     def update_state(self, session=None):
         """更新dagrun的状态，由所有的任务实例的状态决定
+        修改dagrun的状态，并调用dag的成功或失败回调函数
         Determines the overall state of the DagRun based on the state
         of its TaskInstances.
 
@@ -4939,12 +4949,17 @@ class DagRun(Base, LoggingMixin):
                 # We need to flag upstream and check for changes because upstream
                 # failures can result in deadlock false positives
                 old_state = ut.state
+                # 判断任务实例的依赖规则是否满足
+                # ignore_in_retry_period 忽略重试时间
+                # flag_upstream_failed 根据上游任务失败的情况设置当前任务实例的状态
                 deps_met = ut.are_dependencies_met(
                     dep_context=DepContext(
                         flag_upstream_failed=True,
                         ignore_in_retry_period=True),
                     session=session)
+                # 如果依赖规则满足
                 if deps_met or old_state != ut.current_state(session=session):
+                    # 依赖满足
                     no_dependencies_met = False
                     break
 
@@ -4957,6 +4972,7 @@ class DagRun(Base, LoggingMixin):
             root_ids = [t.task_id for t in dag.roots]
             roots = [t for t in tis if t.task_id in root_ids]
 
+            # 任务实例完成且根节点任何一个失败，则dagrun也标记为失败
             # if all roots finished and at least one failed, the run failed
             if (not unfinished_tasks and
                     any(r.state in (State.FAILED, State.UPSTREAM_FAILED) for r in roots)):
@@ -4965,6 +4981,7 @@ class DagRun(Base, LoggingMixin):
                 dag.handle_callback(self, success=False, reason='task_failure',
                                     session=session)
 
+            # 任务实例完成且根节点全部成功，则dagrun也标记为成功
             # if all roots succeeded and no unfinished tasks, the run succeeded
             elif not unfinished_tasks and all(r.state in (State.SUCCESS, State.SKIPPED)
                                               for r in roots):
@@ -4973,6 +4990,7 @@ class DagRun(Base, LoggingMixin):
                 dag.handle_callback(self, success=True,
                                     reason='success', session=session)
 
+            # 如果任务实例没有完成，且任务实例依赖不满足，则dagrun标记为失败，是一种死锁的情况
             # if *all tasks* are deadlocked, the run failed
             elif (unfinished_tasks and none_depends_on_past and
                   none_task_concurrency and no_dependencies_met):
