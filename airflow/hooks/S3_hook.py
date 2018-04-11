@@ -32,7 +32,7 @@ class S3Hook(AwsHook):
     def parse_s3_url(s3url):
         parsed_url = urlparse(s3url)
         if not parsed_url.netloc:
-            raise AirflowException('Please provide a bucket_name')
+            raise AirflowException('Please provide a bucket_name instead of "%s"' % s3url)
         else:
             bucket_name = parsed_url.netloc
             key = parsed_url.path.strip('/')
@@ -183,10 +183,10 @@ class S3Hook(AwsHook):
 
     def get_wildcard_key(self, wildcard_key, bucket_name=None, delimiter=''):
         """
-        Returns a boto3.s3.Object object matching the regular expression
+        Returns a boto3.s3.Object object matching the wildcard expression
 
-        :param regex_key: the path to the key
-        :type regex_key: str
+        :param wildcard_key: the path to the key
+        :type wildcard_key: str
         :param bucket_name: the name of the bucket
         :type bucket_name: str
         """

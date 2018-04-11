@@ -188,6 +188,46 @@ def pprinttable(rows):
     return s
 
 
+def reap_process_group(pid, log, sig=signal.SIGTERM,
+                       timeout=DEFAULT_TIME_TO_WAIT_AFTER_SIGTERM):
+    """
+    Tries really hard to terminate all children (including grandchildren). Will send
+    sig (SIGTERM) to the process group of pid. If any process is alive after timeout
+    a SIGKILL will be send.
+
+    :param log: log handler
+    :param pid: pid to kill
+    :param sig: signal type
+    :param timeout: how much time a process has to terminate
+    """
+    def on_terminate(p):
+        log.info("Process %s (%s) terminated with exit code %s", p, p.pid, p.returncode)
+
+    if pid == os.getpid():
+        raise RuntimeError("I refuse to kill myself")
+
+    parent = psutil.Process(pid)
+
+    children = parent.children(recursive=True)
+    children.append(parent)
+
+    log.info("Sending %s to GPID %s", sig, os.getpgid(pid))
+    os.killpg(os.getpgid(pid), sig)
+
+    gone, alive = psutil.wait_procs(children, timeout=timeout, callback=on_terminate)
+
+    if alive:
+        for p in alive:
+            log.warn("process %s (%s) did not respond to SIGTERM. Trying SIGKILL", p, pid)
+
+        os.killpg(os.getpgid(pid), signal.SIGKILL)
+
+        gone, alive = psutil.wait_procs(alive, timeout=timeout, callback=on_terminate)
+        if alive:
+            for p in alive:
+                log.error("Process %s (%s) could not be killed. Giving up.", p, p.pid)
+
+
 def kill_using_shell(logger, pid, signal=signal.SIGTERM):
     """根据进程ID删除进程 ."""
     try:
