@@ -85,7 +85,7 @@ def convert_to_utc(value):
 
 
 def make_aware(value, timezone=None):
-    """ 将无时区的datetime对象从UTC转为指定时区
+    """将无时区的datetime对象，添加时区信息 
 
     Make a naive datetime.datetime in a given time zone aware.
 
@@ -115,7 +115,7 @@ def make_aware(value, timezone=None):
 
 
 def make_naive(value, timezone=None):
-    """将有时区的datetime对象从UTC转为指定时区，并去掉时区信息
+    """将有时区的datetime对象转为指定时区timezone，并去掉时区信息
     Make an aware datetime.datetime naive in a given time zone.
 
     :param value: datetime
@@ -129,8 +129,10 @@ def make_naive(value, timezone=None):
     if is_naive(value):
         raise ValueError("make_naive() cannot be applied to a naive datetime")
 
+    # 转换为指定时区
     o = value.astimezone(timezone)
 
+    # 去掉时区信息
     # cross library compatibility
     naive = dt.datetime(o.year,
                         o.month,

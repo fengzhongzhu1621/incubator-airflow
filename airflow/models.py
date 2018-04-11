@@ -1579,7 +1579,8 @@ class TaskInstance(Base, LoggingMixin):
                 self.task = task_copy
 
                 def signal_handler(signum, frame):
-                    self.log.error("Received SIGTERM. Terminating subprocesses.")
+                    self.log.error(
+                        "Received SIGTERM. Terminating subprocesses.")
                     task_copy.on_kill()
                     raise AirflowException("Task received SIGTERM signal")
                 signal.signal(signal.SIGTERM, signal_handler)
@@ -3116,10 +3117,12 @@ class DAG(BaseDag, LoggingMixin):
         # 获得代码所在的文件名
         self.fileloc = sys._getframe().f_back.f_code.co_filename
 
-        #
+        # dag包含的所有任务
         self.task_dict = dict()
 
         # 获得指定时区
+        # 将开始时间、结束时间转换为UTC时间
+        # 如果开始时间为空，则开始时间取所有任务的最小开始时间
         # set timezone
         if start_date and start_date.tzinfo:
             self.timezone = start_date.tzinfo
@@ -3155,6 +3158,8 @@ class DAG(BaseDag, LoggingMixin):
         elif schedule_interval == '@once':
             self._schedule_interval = None
         else:
+            # 可以是标准的crontab格式
+            # 也可以是一个 timedelta 对象，延迟多长时间后执行
             self._schedule_interval = schedule_interval
 
         # 模板搜索路径
@@ -3190,6 +3195,7 @@ class DAG(BaseDag, LoggingMixin):
         self.on_success_callback = on_success_callback
         self.on_failure_callback = on_failure_callback
 
+        # dag相等的判断依据
         self._comps = {
             'dag_id',
             'task_ids',
@@ -3248,6 +3254,7 @@ class DAG(BaseDag, LoggingMixin):
     # /Context Manager ----------------------------------------------
 
     def date_range(self, start_date, num=None, end_date=timezone.utcnow()):
+        """根据调度配置获取dag实例运行的时间 范围."""
         if num:
             end_date = None
         return utils_date_range(
@@ -3255,32 +3262,40 @@ class DAG(BaseDag, LoggingMixin):
             num=num, delta=self._schedule_interval)
 
     def following_schedule(self, dttm):
-        """
+        """获得下一次调度时间，如果是单次调度，则返回None
         Calculates the following schedule for this dag in local time
 
         :param dttm: utc datetime
         :return: utc datetime
         """
         if isinstance(self._schedule_interval, six.string_types):
+            # 将dttm转换为指定的时区self.timezone，并去掉时区信息
             dttm = timezone.make_naive(dttm, self.timezone)
+            # 创建cron
             cron = croniter(self._schedule_interval, dttm)
+            # 获得下一次调度时间，添加时区信息
             following = timezone.make_aware(
                 cron.get_next(datetime), self.timezone)
+            # 将下一次调度的本地时间转换为UTC时间
             return timezone.convert_to_utc(following)
         elif isinstance(self._schedule_interval, timedelta):
             return dttm + self._schedule_interval
 
     def previous_schedule(self, dttm):
-        """
+        """获得上一次调度时间，如果是单次调度，则返回None
         Calculates the previous schedule for this dag in local time
 
         :param dttm: utc datetime
         :return: utc datetime
         """
         if isinstance(self._schedule_interval, six.string_types):
+            # 将dttm转换为指定的时区self.timezone，并去掉时区信息
             dttm = timezone.make_naive(dttm, self.timezone)
+            # 创建cron
             cron = croniter(self._schedule_interval, dttm)
+            # 获得下一次调度时间，添加时区信息
             prev = timezone.make_aware(cron.get_prev(datetime), self.timezone)
+            # 将下一次调度的本地时间转换为UTC时间
             return timezone.convert_to_utc(prev)
         elif isinstance(self._schedule_interval, timedelta):
             return dttm - self._schedule_interval
@@ -3303,34 +3318,50 @@ class DAG(BaseDag, LoggingMixin):
         using_end_date = end_date
 
         # dates for dag runs
+        # 如果开始时间为空，则去所有任务的最小开始时间
         using_start_date = using_start_date or min(
             [t.start_date for t in self.tasks])
+        # 结束时间为空，则去当前时间
         using_end_date = using_end_date or timezone.utcnow()
 
         # next run date for a subdag isn't relevant (schedule_interval for subdags
         # is ignored) so we use the dag run's start date in the case of a
         # subdag
+        # 获得下一次调度时间
+        # 1. 如果是子dag，下一次调度时间为开始时间
+        # 2. 如果不是子dag，需要根据调度配置计算下一次调度时间
         next_run_date = (self.normalize_schedule(using_start_date)
                          if not self.is_subdag else using_start_date)
 
         while next_run_date and next_run_date <= using_end_date:
             run_dates.append(next_run_date)
+            # 如果是单次任务，则返回None
+            # 如果不是单次任务，则返回下一个调度时间，知道到达结束时间
             next_run_date = self.following_schedule(next_run_date)
 
         return run_dates
 
     def normalize_schedule(self, dttm):
-        """
+        """获得下一次运行时间
         Returns dttm + interval unless dttm is first interval then it returns dttm
         """
         following = self.following_schedule(dttm)
 
         # in case of @once
+        # 如果是单次任务，返回开始时间
         if not following:
             return dttm
+        # dttm不在调度时间点，即在两次调度的中间
+        #    dttm      is          2018-04-12 00:04:33.836000，
+        #    following is          2018-04-12 01:00:00
+        #    previous following is 2018-04-12 00:00:00
         if self.previous_schedule(following) != dttm:
             return following
 
+        # dttm在调度时间点
+        #    dttm      is          2018-04-12 00:00:00
+        #    following is          2018-04-12 01:00:00
+        #    previous following is 2018-04-12 00:00:00
         return dttm
 
     @provide_session
