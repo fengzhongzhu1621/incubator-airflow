@@ -3086,9 +3086,13 @@ class DAG(BaseDag, LoggingMixin):
             on_success_callback=None, on_failure_callback=None,
             params=None):
 
+        # 宏
         self.user_defined_macros = user_defined_macros
+        # 过滤器
         self.user_defined_filters = user_defined_filters
+        # 默认参数
         self.default_args = default_args or {}
+        # 可在模板中访问的参数，可以在任务级别修改
         self.params = params or {}
 
         # merging potentially conflicting default_args['params'] into params
@@ -3096,31 +3100,41 @@ class DAG(BaseDag, LoggingMixin):
             self.params.update(self.default_args['params'])
             del self.default_args['params']
 
+        # 验证dagid字符串规则，如果是不支持的特殊字符，抛出 AirflowException
         validate_key(dag_id)
 
         # Properties from BaseDag
         self._dag_id = dag_id
+        # dag文件的绝对路径
         self._full_filepath = full_filepath if full_filepath else ''
+        # 调度器每次处理的任务实例的数量
         self._concurrency = concurrency
         self._pickle_id = None
 
+        # dag的详细描述信息
         self._description = description
         # set file location to caller source path
+        # 获得代码所在的文件名
         self.fileloc = sys._getframe().f_back.f_code.co_filename
+
+        #
         self.task_dict = dict()
 
+        # 获得指定时区
         # set timezone
         if start_date and start_date.tzinfo:
             self.timezone = start_date.tzinfo
         elif 'start_date' in self.default_args:
             if isinstance(self.default_args['start_date'], six.string_types):
                 self.default_args['start_date'] = (
+                    # 将字符串日期转换为默认时区的时间对象
                     timezone.parse(self.default_args['start_date'])
                 )
             self.timezone = self.default_args['start_date'].tzinfo
         else:
             self.timezone = settings.TIMEZONE
 
+        # 将开始时间和结束时间转换为UTC时间
         self.start_date = timezone.convert_to_utc(start_date)
         self.end_date = timezone.convert_to_utc(end_date)
 
@@ -3134,28 +3148,46 @@ class DAG(BaseDag, LoggingMixin):
                 timezone.convert_to_utc(self.default_args['end_date'])
             )
 
+        # crontab标准格式
         self.schedule_interval = schedule_interval
+        # 将调度缩写转换为crontab标准格式
         if schedule_interval in cron_presets:
             self._schedule_interval = cron_presets.get(schedule_interval)
         elif schedule_interval == '@once':
             self._schedule_interval = None
         else:
             self._schedule_interval = schedule_interval
+
+        # 模板搜索路径
         if isinstance(template_searchpath, six.string_types):
             template_searchpath = [template_searchpath]
         self.template_searchpath = template_searchpath
+
+        # 是否存在父dag
         self.parent_dag = None  # Gets set when DAGs are loaded
+        # 最新加载时间
         self.last_loaded = timezone.utcnow()
+        # dag id格式化
         self.safe_dag_id = dag_id.replace('.', '__dot__')
+        # 每个dag最多运行的dag_run数量
         self.max_active_runs = max_active_runs
+        # dag实例的超时时间，如果超时则创建一个新的dagrun
         self.dagrun_timeout = dagrun_timeout
+        # 服务失效回调函数
         self.sla_miss_callback = sla_miss_callback
+        # dag在视图中默认显示树状图
         self.default_view = default_view
+        # dag中的任务默认从左到右展示
         self.orientation = orientation
+        # 设置调度器的默认行为
         self.catchup = catchup
+        # dag默认不是子dag
         self.is_subdag = False  # DagBag.bag_dag() will set this to True if appropriate
 
+        # 默认包含所有任务
         self.partial = False
+
+        # 成功和失败回调函数
         self.on_success_callback = on_success_callback
         self.on_failure_callback = on_failure_callback
 
@@ -4222,6 +4254,7 @@ class Chart(Base):
 
 
 class KnownEventType(Base):
+    """公告类型 ."""
     __tablename__ = "known_event_type"
 
     id = Column(Integer, primary_key=True)
@@ -4232,13 +4265,19 @@ class KnownEventType(Base):
 
 
 class KnownEvent(Base):
+    """公告信息 ."""
     __tablename__ = "known_event"
 
     id = Column(Integer, primary_key=True)
+    # 公告标题
     label = Column(String(200))
+    # 公告开始时间
     start_date = Column(UtcDateTime)
+    # 公告结束时间
     end_date = Column(UtcDateTime)
+    # 公告的用户
     user_id = Column(Integer(), ForeignKey('users.id'),)
+    # 公告事件类型
     known_event_type_id = Column(Integer(), ForeignKey('known_event_type.id'),)
     reported_by = relationship(
         "User", cascade=False, cascade_backrefs=False, backref='known_events')
@@ -4357,7 +4396,7 @@ class Variable(Base, LoggingMixin):
 
 
 class XCom(Base, LoggingMixin):
-    """
+    """记录任务中间结果
     Base class for XCom objects.
     """
     __tablename__ = "xcom"
@@ -4395,7 +4434,7 @@ class XCom(Base, LoggingMixin):
             dag_id,
             enable_pickling=None,
             session=None):
-        """
+        """保存中间结果
         Store an XCom value.
         TODO: "pickling" has been deprecated and JSON is preferred. "pickling" will be
         removed in Airflow 2.0. :param enable_pickling: If pickling is not enabled, the
@@ -4409,6 +4448,7 @@ class XCom(Base, LoggingMixin):
             enable_pickling = configuration.getboolean(
                 'core', 'enable_xcom_pickling')
 
+        # 序列化中间结果
         if enable_pickling:
             value = pickle.dumps(value)
         else:
@@ -4423,6 +4463,7 @@ class XCom(Base, LoggingMixin):
                 raise
 
         # remove any duplicate XComs
+        # 删除相同key的中间结果
         session.query(cls).filter(
             cls.key == key,
             cls.execution_date == execution_date,
@@ -4452,7 +4493,7 @@ class XCom(Base, LoggingMixin):
             include_prior_dates=False,
             enable_pickling=None,
             session=None):
-        """
+        """获得一条中间结果
         Retrieve an XCom value, optionally meeting certain criteria.
         TODO: "pickling" has been deprecated and JSON is preferred. "pickling" will be removed in Airflow 2.0.
 
@@ -4476,6 +4517,7 @@ class XCom(Base, LoggingMixin):
             .filter(and_(*filters))
             .order_by(cls.execution_date.desc(), cls.timestamp.desc()))
 
+        # 获得最近的一条记录
         result = query.first()
         if result:
             if enable_pickling is None:
@@ -4528,6 +4570,8 @@ class XCom(Base, LoggingMixin):
             .filter(and_(*filters))
             .order_by(cls.execution_date.desc(), cls.timestamp.desc())
             .limit(limit))
+
+        # 获得多条中间结果
         results = query.all()
         if enable_pickling is None:
             enable_pickling = configuration.getboolean(
@@ -4545,11 +4589,13 @@ class XCom(Base, LoggingMixin):
                               "for XCOM, then you need to enable pickle "
                               "support for XCOM in your airflow config.")
                     raise
+        # 注意和get()方法的返回格式不一样
         return results
 
     @classmethod
     @provide_session
     def delete(cls, xcoms, session=None):
+        """删除指定的中间记录 ."""
         if isinstance(xcoms, XCom):
             xcoms = [xcoms]
         for xcom in xcoms:
@@ -4584,13 +4630,16 @@ class DagStat(Base):
         :param session: database session
         :return:
         """
+        # 给dag的每一种状态都创建一条记录
         DagStat.create(dag_id=dag_id, session=session)
 
         try:
+            # 给指定的dag记录加行锁
             stats = session.query(DagStat).filter(
                 DagStat.dag_id == dag_id
             ).with_for_update().all()
 
+            # 设置dirty标记
             for stat in stats:
                 stat.dirty = True
             session.commit()
@@ -4603,7 +4652,7 @@ class DagStat(Base):
     @staticmethod
     @provide_session
     def update(dag_ids=None, dirty_only=True, session=None):
-        """
+        """更新每条记录的数量，并设置dirty为False
         Updates the stats for dirty/out-of-sync dags
 
         :param dag_ids: dag_ids to be updated
@@ -4620,8 +4669,10 @@ class DagStat(Base):
             if dirty_only:
                 qry = qry.filter(DagStat.dirty == True)
 
+            # 添加行级锁
             qry = qry.with_for_update().all()
 
+            # 获得所有的dagId列表
             ids = set([dag_stat.dag_id for dag_stat in qry])
 
             # avoid querying with an empty IN clause
@@ -4629,19 +4680,18 @@ class DagStat(Base):
                 session.commit()
                 return
 
-            dagstat_states = set(itertools.product(ids, State.dag_states))
+            # 获得dag每个状态的记录数量
             qry = (
                 session.query(DagRun.dag_id, DagRun.state, func.count('*'))
                 .filter(DagRun.dag_id.in_(ids))
                 .group_by(DagRun.dag_id, DagRun.state)
             )
-
             counts = {(dag_id, state): count for dag_id, state, count in qry}
-            for dag_id, state in dagstat_states:
-                count = 0
-                if (dag_id, state) in counts:
-                    count = counts[(dag_id, state)]
 
+            # 计算笛卡尔积
+            dagstat_states = set(itertools.product(ids, State.dag_states))
+            for dag_id, state in dagstat_states:
+                count = counts.get((dag_id, state), 0)
                 session.merge(
                     DagStat(dag_id=dag_id, state=state,
                             count=count, dirty=False)
@@ -4657,7 +4707,8 @@ class DagStat(Base):
     @staticmethod
     @provide_session
     def create(dag_id, session=None):
-        """
+        """将统计表中不存在的状态插入到db中
+
         Creates the missing states the stats table for the dag specified
 
         :param dag_id: dag id of the dag to create stats for

@@ -12,6 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+"""
+提供DB相关的工具类
+"""
+
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -36,6 +41,7 @@ def create_session():
     session = settings.Session()
     try:
         yield session
+        # 清除session实例
         session.expunge_all()
         session.commit()
     except:
@@ -53,7 +59,6 @@ def provide_session(func):
     database transaction, you pass it to the function, if not this wrapper
     will create one and close it for you.
     """
-
     @wraps(func)
     def wrapper(*args, **kwargs):
         arg_session = 'session'
@@ -79,8 +84,10 @@ def provide_session(func):
 
 @provide_session
 def merge_conn(conn, session=None):
-    from airflow import models
+    """添加连接记录 ."""
+    from xTool import models
     C = models.Connection
+    # 如果连接记录conn不存在连接表中，则将此连接记录新增到表中
     if not session.query(C).filter(C.conn_id == conn.conn_id).first():
         session.add(conn)
         session.commit()
@@ -328,12 +335,17 @@ def upgradedb():
 
     log.info("Creating tables")
 
+    # 获得migrations目录路径
     current_dir = os.path.dirname(os.path.abspath(__file__))
     package_dir = os.path.normpath(os.path.join(current_dir, '..'))
     directory = os.path.join(package_dir, 'migrations')
+
+    # 读取配置并设置
     config = Config(os.path.join(package_dir, 'alembic.ini'))
     config.set_main_option('script_location', directory)
     config.set_main_option('sqlalchemy.url', settings.SQL_ALCHEMY_CONN)
+
+    # 更新DB
     command.upgrade(config, 'heads')
 
 

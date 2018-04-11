@@ -23,7 +23,7 @@ from datetime import datetime
 
 
 class FileProcessorHandler(logging.Handler):
-    """
+    """根据日期分日期文件夹写入日志文件，并增加lastest链接
     FileProcessorHandler is a python log handler that handles
     dag processor logs. It creates and delegates log handling
     to `logging.FileHandler` after receiving dag processor context.
@@ -36,8 +36,10 @@ class FileProcessorHandler(logging.Handler):
         """
         super(FileProcessorHandler, self).__init__()
         self.handler = None
+        # 日志目录
         self.base_log_folder = base_log_folder
         self.dag_dir = os.path.expanduser(conf.get('core', 'DAGS_FOLDER'))
+        # 日志文件名的格式
         self.filename_template = filename_template
         self.filename_jinja_template = None
 
@@ -45,6 +47,8 @@ class FileProcessorHandler(logging.Handler):
             self.filename_jinja_template = Template(self.filename_template)
 
         self._cur_date = datetime.today()
+
+        # 创建日志日期目录
         if not os.path.exists(self._get_log_directory()):
             try:
                 os.makedirs(self._get_log_directory())
@@ -54,7 +58,8 @@ class FileProcessorHandler(logging.Handler):
                     raise
 
                 logging.warning("%s already exists", self._get_log_directory())
-
+        
+        # 在日志目录中创建 latest 链接
         self._symlink_latest_log_directory()
 
     def set_context(self, filename):
@@ -62,6 +67,7 @@ class FileProcessorHandler(logging.Handler):
         Provide filename context to airflow task handler.
         :param filename: filename in which the dag is located
         """
+        # 创建日志文件
         local_loc = self._init_file(filename)
         self.handler = logging.FileHandler(local_loc)
         self.handler.setFormatter(self.formatter)
@@ -84,6 +90,7 @@ class FileProcessorHandler(logging.Handler):
             self.handler.close()
 
     def _render_filename(self, filename):
+        """使用文件名渲染文件名模板 ."""
         filename = os.path.relpath(filename, self.dag_dir)
         ctx = dict()
         ctx['filename'] = filename
@@ -94,8 +101,8 @@ class FileProcessorHandler(logging.Handler):
         return self.filename_template.format(filename=ctx['filename'])
 
     def _get_log_directory(self):
+        """获得带有日期的日志目录 ."""
         now = datetime.utcnow()
-
         return os.path.join(self.base_log_folder, now.strftime("%Y-%m-%d"))
 
     def _symlink_latest_log_directory(self):
@@ -132,13 +139,14 @@ class FileProcessorHandler(logging.Handler):
         :param filename: task instance object
         :return relative log path of the given task instance
         """
+        # 渲染文件名模板
         relative_path = self._render_filename(filename)
         full_path = os.path.join(self._get_log_directory(), relative_path)
         directory = os.path.dirname(full_path)
-
+        # 创建日志目录
         if not os.path.exists(directory):
             os.makedirs(directory)
-
+        # 创建日志文件
         if not os.path.exists(full_path):
             open(full_path, "a").close()
 

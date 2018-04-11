@@ -24,8 +24,17 @@ from airflow.utils.log.logging_mixin import LoggingMixin
 
 
 class timeout(LoggingMixin):
-    """
+    """超时上下文管理器: 给耗时操作增加统一的TimeOut超时处理机制（仅用于单进程）
     To be used in a ``with`` block and timeout its content.
+
+    e.g. 
+        try:
+            with timeout(int(
+                    task_copy.execution_timeout.total_seconds())):
+                result = task_copy.execute(context=context)
+        except AirflowTaskTimeout:
+            task_copy.on_kill()
+            raise
     """
 
     def __init__(self, seconds=1, error_message='Timeout'):

@@ -15,6 +15,7 @@
 import datetime as dt
 import pendulum
 
+# 从配置文件中获取时区设置
 from airflow.settings import TIMEZONE
 
 
@@ -23,7 +24,8 @@ utc = pendulum.timezone('UTC')
 
 
 def is_localized(value):
-    """
+    """存在时区信息
+
     Determine if a given datetime.datetime is aware.
     The concept is defined in Python's docs:
     http://docs.python.org/library/datetime.html#datetime.tzinfo
@@ -34,7 +36,8 @@ def is_localized(value):
 
 
 def is_naive(value):
-    """
+    """不存在时区信息
+
     Determine if a given datetime.datetime is naive.
     The concept is defined in Python's docs:
     http://docs.python.org/library/datetime.html#datetime.tzinfo
@@ -45,7 +48,8 @@ def is_naive(value):
 
 
 def utcnow():
-    """
+    """获得当前的utc时间
+
     Get the current date and time in UTC
     :return:
     """
@@ -61,6 +65,9 @@ def utcnow():
 
 def convert_to_utc(value):
     """
+    1. 给无时区的datetime对象添加默认时区信息，并转化为UTC时区
+    2. 将有时区的datetime对象转化为UTC时区
+
     Returns the datetime with the default timezone added if timezone
     information was not associated
     :param value: datetime
@@ -69,14 +76,17 @@ def convert_to_utc(value):
     if not value:
         return value
 
+    # 添加默认时区
     if not is_localized(value):
         value = pendulum.instance(value, TIMEZONE)
 
+    # 将当前时区转化为UTC
     return value.astimezone(utc)
 
 
 def make_aware(value, timezone=None):
-    """
+    """ 将无时区的datetime对象从UTC转为指定时区
+
     Make a naive datetime.datetime in a given time zone aware.
 
     :param value: datetime
@@ -88,6 +98,7 @@ def make_aware(value, timezone=None):
         timezone = TIMEZONE
 
     # Check that we won't overwrite the timezone of an aware datetime.
+    # 如果value已经存在时区信息，则不需要添加了，抛出一个异常
     if is_localized(value):
         raise ValueError(
             "make_aware expects a naive datetime, got %s" % value)
@@ -104,7 +115,7 @@ def make_aware(value, timezone=None):
 
 
 def make_naive(value, timezone=None):
-    """
+    """将有时区的datetime对象从UTC转为指定时区，并去掉时区信息
     Make an aware datetime.datetime naive in a given time zone.
 
     :param value: datetime
@@ -133,7 +144,7 @@ def make_naive(value, timezone=None):
 
 
 def datetime(*args, **kwargs):
-    """
+    """在使用datetime创建日期时，自动加上配置文件中的时区
     Wrapper around datetime.datetime that adds settings.TIMEZONE if tzinfo not specified
 
     :return: datetime.datetime
@@ -145,7 +156,7 @@ def datetime(*args, **kwargs):
 
 
 def parse(string):
-    """
+    """将日期字符串转化为datetime对象
     Parse a time string and return an aware datetime
     :param string: time string
     """

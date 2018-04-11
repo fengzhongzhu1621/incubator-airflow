@@ -39,7 +39,12 @@ def send_email(to, subject, html_content, files=None,
                mime_subtype='mixed', **kwargs):
     """
     Send email using backend specified in EMAIL_BACKEND.
+
+    :param dryrun: true表示测试邮件配置，不会发送邮件
     """
+    # 动态加载模块发送函数
+    # 可以通过插件的方式自定义邮件发送函数
+    # e.g. email_backend = airflow.utils.email.send_email_smtp
     path, attr = configuration.get('email', 'EMAIL_BACKEND').rsplit('.', 1)
     module = importlib.import_module(path)
     backend = getattr(module, attr)
@@ -56,10 +61,13 @@ def send_email_smtp(to, subject, html_content, files=None,
 
     >>> send_email('test@example.com', 'foo', '<b>Foo</b> bar', ['/dev/null'], dryrun=True)
     """
+    # 发件人
     SMTP_MAIL_FROM = configuration.get('smtp', 'SMTP_MAIL_FROM')
-
+    
+    # 收件人格式化
     to = get_email_address_list(to)
 
+    # 构建混合邮件体
     msg = MIMEMultipart(mime_subtype)
     msg['Subject'] = subject
     msg['From'] = SMTP_MAIL_FROM
@@ -74,12 +82,15 @@ def send_email_smtp(to, subject, html_content, files=None,
         # don't add bcc in header
         bcc = get_email_address_list(bcc)
         recipients = recipients + bcc
-
+    
+    # 添加邮件内容
     msg['Date'] = formatdate(localtime=True)
     mime_text = MIMEText(html_content, 'html')
     msg.attach(mime_text)
 
+    # 添加附件
     for fname in files or []:
+        # 注意：获得文件名，文件路径在调用的当前路径下
         basename = os.path.basename(fname)
         with open(fname, "rb") as f:
             part = MIMEApplication(
@@ -90,10 +101,12 @@ def send_email_smtp(to, subject, html_content, files=None,
             part['Content-ID'] = '<%s>' % basename
             msg.attach(part)
 
+    # 发送邮件
     send_MIME_email(SMTP_MAIL_FROM, recipients, msg, dryrun)
 
 
 def send_MIME_email(e_from, e_to, mime_msg, dryrun=False):
+    """发送邮件 ."""
     log = LoggingMixin().log
 
     SMTP_HOST = configuration.get('smtp', 'SMTP_HOST')
@@ -107,10 +120,12 @@ def send_MIME_email(e_from, e_to, mime_msg, dryrun=False):
         SMTP_USER = configuration.get('smtp', 'SMTP_USER')
         SMTP_PASSWORD = configuration.get('smtp', 'SMTP_PASSWORD')
     except AirflowConfigException:
-        log.debug("No user/password found for SMTP, so logging in with no authentication.")
+        log.debug(
+            "No user/password found for SMTP, so logging in with no authentication.")
 
     if not dryrun:
-        s = smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT) if SMTP_SSL else smtplib.SMTP(SMTP_HOST, SMTP_PORT)
+        s = smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT) if SMTP_SSL else smtplib.SMTP(
+            SMTP_HOST, SMTP_PORT)
         if SMTP_STARTTLS:
             s.starttls()
         if SMTP_USER and SMTP_PASSWORD:
@@ -121,6 +136,7 @@ def send_MIME_email(e_from, e_to, mime_msg, dryrun=False):
 
 
 def get_email_address_list(address_string):
+    """多个收件人用逗号或分号分隔，并转化为数组 ."""
     if isinstance(address_string, basestring):
         if ',' in address_string:
             address_string = address_string.split(',')

@@ -33,6 +33,7 @@ def setup_event_handlers(
         reconnect_timeout_seconds,
         initial_backoff_seconds=0.2,
         max_backoff_seconds=120):
+    """设置事件处理函数 ."""
 
     @event.listens_for(engine, "engine_connect")
     def ping_connection(connection, branch):
@@ -41,6 +42,15 @@ def setup_event_handlers(
         connection returned from the pool is properly connected to the database.
 
         http://docs.sqlalchemy.org/en/rel_1_1/core/pooling.html#disconnect-handling-pessimistic
+
+        使用SQLAlchemy时遇到"#2006: MySQL server has gone away"
+        原因：
+            客户端使用了一个已经在 mysql 中关闭的 session
+            mysql 中默认是 8 小时关闭
+        解决方案：
+            设置SQLAlchemy的连接有效期，在MySQL关闭它之前，我先关闭它。
+            在Web框架的层面，每次请求处理完毕时，显式地关闭session。
+            在使用session之前，先检查其有效性，无效则创建新的session以供使用。
         """
         if branch:
             # "branch" refers to a sub-connection of a connection,
@@ -94,6 +104,7 @@ def setup_event_handlers(
 
     @event.listens_for(engine, "connect")
     def connect(dbapi_connection, connection_record):
+        """DB连接时获得进程ID ."""
         connection_record.info['pid'] = os.getpid()
 
 

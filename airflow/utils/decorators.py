@@ -30,7 +30,7 @@ from airflow.exceptions import AirflowException
 
 
 def apply_defaults(func):
-    """
+    """增加对参数的验证逻辑，如果在对象初始化时，参数不全会抛出异常
     Function decorator that Looks for an argument named "default_args", and
     fills the unspecified arguments from it.
 
@@ -39,13 +39,16 @@ def apply_defaults(func):
     inheritance and argument defaults, this decorator also alerts with
     specific information about the missing arguments.
     """
-
+    # 获得函数签名
     import airflow.models
     # Cache inspect.signature for the wrapper closure to avoid calling it
     # at every decorated invocation. This is separate sig_cache created
     # per decoration, i.e. each function decorated using apply_defaults will
     # have a different sig_cache.
     sig_cache = signature(func)
+
+
+    # 获得默认值为空的参数名，且此参数不为self, 且此参数不为可变参数
     non_optional_args = {
         name for (name, param) in sig_cache.parameters.items()
         if param.default == param.empty and
@@ -85,9 +88,13 @@ def apply_defaults(func):
         dag_args.update(default_args)
         default_args = dag_args
 
+
+        # 将kwargs['default_args']中的参数合并到函数的kwargs中
         for arg in sig_cache.parameters:
             if arg not in kwargs and arg in default_args:
                 kwargs[arg] = default_args[arg]
+
+        # 获得没有设置默认值的参数，抛出异常
         missing_args = list(non_optional_args - set(kwargs))
         if missing_args:
             msg = "Argument {0} is required".format(missing_args)

@@ -30,6 +30,8 @@ def json_ser(obj):
     usage: json.dumps(object, default=utils.json.json_ser)
     """
     if isinstance(obj, (datetime, date)):
+        # Return a string representing the date and time in ISO 8601 format,
+        # YYYY-MM-DDTHH:MM:SS.mmmmmm or, if microsecond is 0, YYYY-MM-DDTHH:MM:SS
         return obj.isoformat()
 
 

@@ -40,6 +40,7 @@ DEFAULT_TIME_TO_WAIT_AFTER_SIGTERM = configuration.getint('core', 'KILLED_TASK_C
 
 
 def validate_key(k, max_length=250):
+    """验证key的格式 ."""
     if not isinstance(k, basestring):
         raise TypeError("The key has to be a string")
     elif len(k) > max_length:
@@ -54,7 +55,7 @@ def validate_key(k, max_length=250):
 
 
 def alchemy_to_dict(obj):
-    """
+    """ 将SQLAlchemy model instance转化为字典
     Transforms a SQLAlchemy model instance into a dictionary
     """
     if not obj:
@@ -62,6 +63,7 @@ def alchemy_to_dict(obj):
     d = {}
     for c in obj.__table__.columns:
         value = getattr(obj, c.name)
+        # 格式化时间
         if type(value) == datetime:
             value = value.isoformat()
         d[c.name] = value
@@ -104,7 +106,7 @@ def is_container(obj):
 
 
 def as_tuple(obj):
-    """
+    """ 将对象转化为元组
     If obj is a container, returns obj as a tuple.
     Otherwise, returns a tuple containing obj.
     """
@@ -115,7 +117,7 @@ def as_tuple(obj):
 
 
 def as_flattened_list(iterable):
-    """
+    """ 将二维数组展开为一维数组
     Return an iterable with one level flattened
 
     >>> as_flattened_list((('blue', 'red'), ('green', 'yellow', 'pink')))
@@ -147,10 +149,13 @@ def pprinttable(rows):
     """
     if not rows:
         return
+
+    # 获得表格的头部
     if hasattr(rows[0], '_fields'):  # if namedtuple
         headers = rows[0]._fields
     else:
         headers = ["col{}".format(i) for i in range(len(rows[0]))]
+
     lens = [len(s) for s in headers]
 
     for row in rows:
@@ -184,28 +189,33 @@ def pprinttable(rows):
 
 
 def kill_using_shell(logger, pid, signal=signal.SIGTERM):
+    """根据进程ID删除进程 ."""
     try:
         process = psutil.Process(pid)
         # Use sudo only when necessary - consider SubDagOperator and SequentialExecutor case.
+        # 创建kill命令
         if process.username() != getpass.getuser():
             args = ["sudo", "kill", "-{}".format(int(signal)), str(pid)]
         else:
             args = ["kill", "-{}".format(int(signal)), str(pid)]
         # PID may not exist and return a non-zero error code
+        # 执行kill命令
         logger.error(subprocess.check_output(args, close_fds=True))
         logger.info("Killed process {} with signal {}".format(pid, signal))
         return True
     except psutil.NoSuchProcess as e:
+        # 进程不存在
         logger.warning("Process {} no longer exists".format(pid))
         return False
     except subprocess.CalledProcessError as e:
+        # kill命令执行失败
         logger.warning("Failed to kill process {} with signal {}. Output: {}"
                        .format(pid, signal, e.output))
         return False
 
 
 def kill_process_tree(logger, pid, timeout=DEFAULT_TIME_TO_WAIT_AFTER_SIGTERM):
-    """
+    """根据PID删除进程的所有后代子进程
     TODO(saguziel): also kill the root process after killing descendants
   
     Kills the process's descendants. Kills using the `kill`
@@ -222,6 +232,7 @@ def kill_process_tree(logger, pid, timeout=DEFAULT_TIME_TO_WAIT_AFTER_SIGTERM):
         logger.warning("PID: {} does not exist".format(pid))
         return
 
+    # 获得所有正在运行的子进程
     # Check child processes to reduce cases where a child process died but
     # the PID got reused.
     descendant_processes = [x for x in root_process.children(recursive=True)
@@ -232,6 +243,7 @@ def kill_process_tree(logger, pid, timeout=DEFAULT_TIME_TO_WAIT_AFTER_SIGTERM):
                     .format(root_process.cmdline(),
                             root_process.pid))
         temp_processes = descendant_processes[:]
+        # 删除子进程
         for descendant in temp_processes:
             logger.info("Terminating descendant process {} PID: {}"
                         .format(descendant.cmdline(), descendant.pid))
@@ -240,12 +252,15 @@ def kill_process_tree(logger, pid, timeout=DEFAULT_TIME_TO_WAIT_AFTER_SIGTERM):
 
         logger.info("Waiting up to {}s for processes to exit..."
                     .format(timeout))
+        # 等待子进程结束
         try:
             psutil.wait_procs(descendant_processes, timeout)
             logger.info("Done waiting")
         except psutil.TimeoutExpired:
             logger.warning("Ran out of time while waiting for "
                            "processes to exit")
+
+        # 如果无法通过 SIGTERM 信号删除，则尝试使用SIGKILL信号重新删除
         # Then SIGKILL
         descendant_processes = [x for x in root_process.children(recursive=True)
                                 if x.is_running()]
@@ -337,6 +352,7 @@ class AirflowImporter(object):
             # longer the same type as Foo after it's reloaded.
             path = os.path.realpath(self._parent_module.__file__)
             folder = os.path.dirname(path)
+            # 从模块下的所有文件中查找指定的module
             f, filename, description = imp.find_module(module, [folder])
             self._loaded_modules[module] = imp.load_module(module, f, filename, description)
 
@@ -351,7 +367,8 @@ class AirflowImporter(object):
                 DeprecationWarning)
 
         loaded_module = self._loaded_modules[module]
-
+        
+        # 从动态加载后的模块中获取属性
         return getattr(loaded_module, attribute)
 
     def __getattr__(self, attribute):
@@ -373,6 +390,7 @@ class AirflowImporter(object):
             # Always default to the parent module if the attribute exists.
             return getattr(self._parent_module, attribute)
         elif attribute in self._attribute_modules:
+            # 动态加载模块，并获取属性
             # Try and import the attribute if it's got a module defined.
             loaded_attribute = self._load_attribute(attribute)
             setattr(self, attribute, loaded_attribute)

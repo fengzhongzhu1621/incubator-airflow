@@ -15,6 +15,10 @@
 import unittest
 
 def skipUnlessImported(module, obj):
+    """如果对象不在导入的模块中，跳过被装饰的测试 .
+    
+    @skipUnlessImported('airflow.operators.mysql_operator', 'MySqlOperator')
+    """
     import importlib
     try:
         m = importlib.import_module(module)
