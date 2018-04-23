@@ -3107,7 +3107,7 @@ class DAG(BaseDag, LoggingMixin):
         self._dag_id = dag_id
         # dag文件的绝对路径
         self._full_filepath = full_filepath if full_filepath else ''
-        # 调度器每次处理的任务实例的数量
+        # 每个dag同时执行的任务实例的数量
         self._concurrency = concurrency
         self._pickle_id = None
 
@@ -3162,7 +3162,7 @@ class DAG(BaseDag, LoggingMixin):
             # 也可以是一个 timedelta 对象，延迟多长时间后执行
             self._schedule_interval = schedule_interval
 
-        # 模板搜索路径
+        # 模板搜索路径，可以设置多个
         if isinstance(template_searchpath, six.string_types):
             template_searchpath = [template_searchpath]
         self.template_searchpath = template_searchpath
@@ -3301,7 +3301,7 @@ class DAG(BaseDag, LoggingMixin):
             return dttm - self._schedule_interval
 
     def get_run_dates(self, start_date, end_date=None):
-        """
+        """获得指定范围内的运行时间
         Returns a list of dates between the interval received as parameter using this
         dag's schedule interval. Returned dates can be used for execution dates.
 
@@ -3342,7 +3342,7 @@ class DAG(BaseDag, LoggingMixin):
         return run_dates
 
     def normalize_schedule(self, dttm):
-        """获得下一次运行时间
+        """获得下一次调度时间
         Returns dttm + interval unless dttm is first interval then it returns dttm
         """
         following = self.following_schedule(dttm)
@@ -3366,7 +3366,7 @@ class DAG(BaseDag, LoggingMixin):
 
     @provide_session
     def get_last_dagrun(self, session=None, include_externally_triggered=False):
-        """
+        """获得最近的dagrun
         Returns the last dag run for this dag, None if there was none.
         Last dag run can be any type of run eg. scheduled or backfilled.
         Overridden DagRuns are ignored
@@ -3375,6 +3375,7 @@ class DAG(BaseDag, LoggingMixin):
         qry = session.query(DR).filter(
             DR.dag_id == self.dag_id,
         )
+        # 是否获取外部触发的dagrun
         if not include_externally_triggered:
             qry = qry.filter(DR.external_trigger.__eq__(False))
 
@@ -3402,6 +3403,7 @@ class DAG(BaseDag, LoggingMixin):
 
     @property
     def concurrency(self):
+        """每个dag同时执行的任务实例的数量 ."""
         return self._concurrency
 
     @concurrency.setter
@@ -3422,6 +3424,7 @@ class DAG(BaseDag, LoggingMixin):
 
     @property
     def tasks(self):
+        """获得dag包含的所有任务 ."""
         return list(self.task_dict.values())
 
     @tasks.setter
@@ -3431,54 +3434,61 @@ class DAG(BaseDag, LoggingMixin):
 
     @property
     def task_ids(self):
+        """获得dag包含的所有任务的IDs ."""
         return list(self.task_dict.keys())
 
     @property
     def active_task_ids(self):
+        """获得dag包含的所有的有效任务Ids ."""
         return list(k for k, v in self.task_dict.items() if not v.adhoc)
 
     @property
     def active_tasks(self):
+        """获得dag包含的所有的有效任务 ."""
         return [t for t in self.tasks if not t.adhoc]
 
     @property
     def filepath(self):
-        """
+        """获得dag文件的相对路径
         File location of where the dag object is instantiated
         """
+        # 获得相对路径
         fn = self.full_filepath.replace(settings.DAGS_FOLDER + '/', '')
         fn = fn.replace(os.path.dirname(__file__) + '/', '')
         return fn
 
     @property
     def folder(self):
-        """
+        """获得dag文件所在的目录
         Folder location of where the dag object is instantiated
         """
         return os.path.dirname(self.full_filepath)
 
     @property
     def owner(self):
+        """获得所有任务的拥有者，用逗号加空格分割 ."""
         return ", ".join(list(set([t.owner for t in self.tasks])))
 
     @property
     @provide_session
     def concurrency_reached(self, session=None):
-        """
+        """根据dagid，判断正在运行的任务实例是否超出了阈值
         Returns a boolean indicating whether the concurrency limit for this DAG
         has been reached
         """
+        # 获得正在运行的任务任务实例的数量
         TI = TaskInstance
         qry = session.query(func.count(TI.task_id)).filter(
             TI.dag_id == self.dag_id,
             TI.state == State.RUNNING,
         )
+        # 判断是否到达阈值
         return qry.scalar() >= self.concurrency
 
     @property
     @provide_session
     def is_paused(self, session=None):
-        """
+        """判断dag是否是暂停状态
         Returns a boolean indicating whether this DAG is paused
         """
         qry = session.query(DagModel).filter(
@@ -3487,7 +3497,7 @@ class DAG(BaseDag, LoggingMixin):
 
     @provide_session
     def handle_callback(self, dagrun, success=True, reason=None, session=None):
-        """
+        """执行dag成功或失败回调函数
         Triggers the appropriate callback depending on the value of success, namely the
         on_failure_callback or on_success_callback. This method gets the context of a
         single TaskInstance part of this DagRun and passes that to the callable along
@@ -3499,6 +3509,7 @@ class DAG(BaseDag, LoggingMixin):
         :param reason: Completion reason
         :param session: Database session
         """
+        # 获得回调函数
         callback = self.on_success_callback if success else self.on_failure_callback
         if callback:
             self.log.info(
@@ -3512,16 +3523,18 @@ class DAG(BaseDag, LoggingMixin):
             # 获得任务实例上下文，并添加原因描述
             context = ti.get_template_context(session=session)
             context.update({'reason': reason})
+            # 执行回调函数
             callback(context)
 
     @provide_session
     def get_active_runs(self, session=None):
-        """
+        """获得正在运行的dagrun的调度时间
         Returns a list of dag run execution dates currently running
 
         :param session:
         :return: List of execution dates
         """
+        # 根据dagId， 获得dagrun的数量
         runs = DagRun.find(dag_id=self.dag_id, state=State.RUNNING)
 
         active_dates = []
@@ -3532,7 +3545,7 @@ class DAG(BaseDag, LoggingMixin):
 
     @provide_session
     def get_num_active_runs(self, external_trigger=None, session=None):
-        """
+        """根据dagid，获得正在运行的dagrun的数量
         Returns the number of active "running" dag runs
 
         :param external_trigger: True for externally triggered active dag runs
@@ -3552,7 +3565,7 @@ class DAG(BaseDag, LoggingMixin):
 
     @provide_session
     def get_dagrun(self, execution_date, session=None):
-        """
+        """根据dagid和调度时间，获得dagrun
         Returns the dag run for a given execution date if it exists, otherwise
         none.
 
@@ -3572,7 +3585,7 @@ class DAG(BaseDag, LoggingMixin):
     @property
     @provide_session
     def latest_execution_date(self, session=None):
-        """
+        """获得最近的一个dagrun的调度时间
         Returns the latest date for which at least one dag run exists
         """
         execution_date = session.query(func.max(DagRun.execution_date)).filter(
@@ -3598,6 +3611,7 @@ class DAG(BaseDag, LoggingMixin):
         return l
 
     def resolve_template_files(self):
+        """删除所有任务的临时文件 ."""
         for t in self.tasks:
             t.resolve_template_files()
 
@@ -3606,6 +3620,7 @@ class DAG(BaseDag, LoggingMixin):
         Returns a jinja2 Environment while taking into account the DAGs
         template_searchpath, user_defined_macros and user_defined_filters
         """
+        # 获得dag所在的目录，并设置jinja2模板的搜索路径
         searchpath = [self.folder]
         if self.template_searchpath:
             searchpath += self.template_searchpath
@@ -3614,15 +3629,17 @@ class DAG(BaseDag, LoggingMixin):
             loader=jinja2.FileSystemLoader(searchpath),
             extensions=["jinja2.ext.do"],
             cache_size=0)
+        # 将用户自定义宏加入到jinj2的环境变量中
         if self.user_defined_macros:
             env.globals.update(self.user_defined_macros)
+        # 将用户自定义过滤器加入到jinja2的环境变量中
         if self.user_defined_filters:
             env.filters.update(self.user_defined_filters)
 
         return env
 
     def set_dependency(self, upstream_task_id, downstream_task_id):
-        """
+        """设置任务依赖
         Simple utility method to set dependency between two tasks that
         already have been added to the DAG using add_task()
         """
@@ -3631,11 +3648,14 @@ class DAG(BaseDag, LoggingMixin):
 
     def get_task_instances(
             self, session, start_date=None, end_date=None, state=None):
+        """根据查询条件获得任务实例 ."""
         TI = TaskInstance
+        # 获得默认开始时间和结束时间
         if not start_date:
             start_date = (timezone.utcnow() - timedelta(30)).date()
             start_date = datetime.combine(start_date, datetime.min.time())
         end_date = end_date or timezone.utcnow()
+        # 获得指定时间范围内的所有任务实例
         tis = session.query(TI).filter(
             TI.dag_id == self.dag_id,
             TI.execution_date >= start_date,
@@ -3649,10 +3669,11 @@ class DAG(BaseDag, LoggingMixin):
 
     @property
     def roots(self):
+        """获得所有的根节点 / 尾节点，即没有下游节点 ."""
         return [t for t in self.tasks if not t.downstream_list]
 
     def topological_sort(self):
-        """
+        """拓扑排序
         Sorts tasks in topographical order, such that a task comes after any of its
         upstream dependencies.
 
@@ -3692,6 +3713,7 @@ class DAG(BaseDag, LoggingMixin):
                         break
                 # no edges in upstream tasks
                 else:
+                    # 无环
                     acyclic = True
                     graph_unsorted.remove(node)
                     graph_sorted.append(node)
@@ -3946,14 +3968,17 @@ class DAG(BaseDag, LoggingMixin):
             raise AirflowException("Task is missing the start_date parameter")
         # if the task has no start date, assign it the same as the DAG
         elif not task.start_date:
+            # 如果任务没有设置开始时间，则使用dag的开始时间
             task.start_date = self.start_date
         # otherwise, the task will start on the later of its own start date and
         # the DAG's start date
         elif self.start_date:
+            # 如果任务设置了开始时间，则取任务和dag的最大时间
             task.start_date = max(task.start_date, self.start_date)
 
         # if the task has no end date, assign it the same as the dag
         if not task.end_date:
+            # 如果任务结束时间没有设置，则取dag的结束时间
             task.end_date = self.end_date
         # otherwise, the task will end on the earlier of its own end date and
         # the DAG's end date
@@ -3969,9 +3994,11 @@ class DAG(BaseDag, LoggingMixin):
                 'exception.'.format(task.task_id),
                 category=PendingDeprecationWarning)
         else:
+            # 将任务添加到dag的任务列表中
             self.task_dict[task.task_id] = task
             task.dag = self
 
+        # 重置任务数量
         self.task_count = len(self.task_dict)
 
     def add_tasks(self, tasks):
@@ -4040,6 +4067,7 @@ class DAG(BaseDag, LoggingMixin):
             executor = LocalExecutor()
         elif not executor:
             executor = GetDefaultExecutor()
+        # 创建job
         job = BackfillJob(
             self,
             start_date=start_date,
@@ -4153,7 +4181,7 @@ class DAG(BaseDag, LoggingMixin):
     @staticmethod
     @provide_session
     def deactivate_unknown_dags(active_dag_ids, session=None):
-        """��dag���в���active_dag_ids�еļ�¼���Ϊδִ��
+        """删除指定的dagid
         Given a list of known DAGs, deactivate any other DAGs that are
         marked as active in the ORM
 
