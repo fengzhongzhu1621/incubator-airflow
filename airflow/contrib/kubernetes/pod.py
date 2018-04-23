@@ -1,3 +1,4 @@
+
 # Licensed to the Apache Software Foundation (ASF) under one
 # or more contributor license agreements.  See the NOTICE file
 # distributed with this work for additional information
@@ -71,7 +72,8 @@ class Pod:
             image_pull_secrets=None,
             init_containers=None,
             service_account_name=None,
-            resources=None
+            resources=None,
+            annotations=None
     ):
         self.image = image
         self.envs = envs or {}
@@ -90,3 +92,4 @@ class Pod:
         self.init_containers = init_containers
         self.service_account_name = service_account_name
         self.resources = resources or Resources()
+        self.annotations = annotations or {}

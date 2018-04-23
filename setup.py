@@ -1,16 +1,21 @@
 # -*- coding: utf-8 -*-
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or acryptographygreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+# 
+#   http://www.apache.org/licenses/LICENSE-2.0
+# 
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
 
 from setuptools import setup, find_packages, Command
 from setuptools.command.test import test as TestCommand
@@ -18,7 +23,6 @@ from setuptools.command.test import test as TestCommand
 import imp
 import logging
 import os
-import pip
 import sys
 
 logger = logging.getLogger(__name__)
@@ -29,21 +33,17 @@ version = imp.load_source(
 
 PY3 = sys.version_info[0] == 3
 
-
 class Tox(TestCommand):
     user_options = [('tox-args=', None, "Arguments to pass to tox")]
-
     def initialize_options(self):
         TestCommand.initialize_options(self)
         self.tox_args = ''
-
     def finalize_options(self):
         TestCommand.finalize_options(self)
         self.test_args = []
         self.test_suite = True
-
     def run_tests(self):
-        # import here, cause outside the eggs aren't loaded
+        #import here, cause outside the eggs aren't loaded
         import tox
         errno = tox.cmdline(args=self.tox_args.split())
         sys.exit(errno)
@@ -52,13 +52,10 @@ class Tox(TestCommand):
 class CleanCommand(Command):
     """Custom clean command to tidy up the project root."""
     user_options = []
-
     def initialize_options(self):
         pass
-
     def finalize_options(self):
         pass
-
     def run(self):
         os.system('rm -vrf ./build ./dist ./*.pyc ./*.tgz ./*.egg-info')
 
@@ -98,7 +95,6 @@ def write_version(filename=os.path.join(*['airflow',
     with open(filename, 'w') as a:
         a.write(text)
 
-
 async = [
     'greenlet>=0.4.9',
     'eventlet>= 0.9.7',
@@ -115,7 +111,7 @@ cgroups = [
 ]
 crypto = ['cryptography>=0.9.3']
 dask = [
-    'distributed>=1.15.2, <2'
+    'distributed>=1.17.1, <2'
     ]
 databricks = ['requests>=2.5.1, <3']
 datadog = ['datadog>=0.14.0']
@@ -127,6 +123,10 @@ doc = [
 ]
 docker = ['docker-py>=1.6.0']
 druid = ['pydruid>=0.4.1']
+elasticsearch = [
+    'elasticsearch>=5.0.0,<6.0.0',
+    'elasticsearch-dsl>=5.0.0,<6.0.0'
+]
 emr = ['boto3>=1.0.0']
 gcp_api = [
     'httplib2',
@@ -154,7 +154,7 @@ oracle = ['cx_Oracle>=5.1.2']
 postgres = ['psycopg2-binary>=2.7.4']
 ssh = ['paramiko>=2.1.1', 'pysftp>=0.2.9']
 salesforce = ['simple-salesforce>=0.72']
-s3 = ['boto3>=1.0.0']
+s3 = ['boto3>=1.7.0']
 samba = ['pysmbclient>=0.1.3']
 slack = ['slackclient>=1.0.0']
 statsd = ['statsd>=3.0.1, <4.0']
@@ -170,7 +170,7 @@ password = [
 ]
 github_enterprise = ['Flask-OAuthlib>=0.9.1']
 qds = ['qds-sdk>=1.9.6']
-cloudant = ['cloudant>=0.5.9,<2.0']  # major update coming soon, clamp to 0.x
+cloudant = ['cloudant>=0.5.9,<2.0'] # major update coming soon, clamp to 0.x
 redis = ['redis>=2.10.5']
 kubernetes = ['kubernetes>=3.0.0',
               'cryptography>=2.0.0']
@@ -201,7 +201,7 @@ devel_hadoop = devel_minreq + hive + hdfs + webhdfs + kerberos
 devel_all = (sendgrid + devel + all_dbs + doc + samba + s3 + slack + crypto + oracle +
              docker + ssh + kubernetes + celery + azure + redis + gcp_api + datadog +
              zendesk + jdbc + ldap + kerberos + password + webhdfs + jenkins +
-             druid + snowflake)
+             druid + snowflake + elasticsearch)
 
 # Snakebite & Google Cloud Dataflow are not Python 3 compatible :'(
 if PY3:
@@ -210,7 +210,6 @@ if PY3:
                  'google-cloud-dataflow>=2.2.0']]
 else:
     devel_ci = devel_all
-
 
 def do_setup():
     write_version()
@@ -283,6 +282,7 @@ def do_setup():
             'doc': doc,
             'docker': docker,
             'druid': druid,
+            'elasticsearch': elasticsearch,
             'emr': emr,
             'gcp_api': gcp_api,
             'github_enterprise': github_enterprise,

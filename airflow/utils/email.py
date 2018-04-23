@@ -1,16 +1,21 @@
 # -*- coding: utf-8 -*-
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+# 
+#   http://www.apache.org/licenses/LICENSE-2.0
+# 
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
 
 from __future__ import absolute_import
 from __future__ import division
@@ -45,7 +50,7 @@ def send_email(to, subject, html_content, files=None,
     # 动态加载模块发送函数
     # 可以通过插件的方式自定义邮件发送函数
     # e.g. email_backend = airflow.utils.email.send_email_smtp
-    path, attr = configuration.get('email', 'EMAIL_BACKEND').rsplit('.', 1)
+    path, attr = configuration.conf.get('email', 'EMAIL_BACKEND').rsplit('.', 1)
     module = importlib.import_module(path)
     backend = getattr(module, attr)
     return backend(to, subject, html_content, files=files,
@@ -62,7 +67,7 @@ def send_email_smtp(to, subject, html_content, files=None,
     >>> send_email('test@example.com', 'foo', '<b>Foo</b> bar', ['/dev/null'], dryrun=True)
     """
     # 发件人
-    SMTP_MAIL_FROM = configuration.get('smtp', 'SMTP_MAIL_FROM')
+    SMTP_MAIL_FROM = configuration.conf.get('smtp', 'SMTP_MAIL_FROM')
     
     # 收件人格式化
     to = get_email_address_list(to)
@@ -109,23 +114,21 @@ def send_MIME_email(e_from, e_to, mime_msg, dryrun=False):
     """发送邮件 ."""
     log = LoggingMixin().log
 
-    SMTP_HOST = configuration.get('smtp', 'SMTP_HOST')
-    SMTP_PORT = configuration.getint('smtp', 'SMTP_PORT')
-    SMTP_STARTTLS = configuration.getboolean('smtp', 'SMTP_STARTTLS')
-    SMTP_SSL = configuration.getboolean('smtp', 'SMTP_SSL')
+    SMTP_HOST = configuration.conf.get('smtp', 'SMTP_HOST')
+    SMTP_PORT = configuration.conf.getint('smtp', 'SMTP_PORT')
+    SMTP_STARTTLS = configuration.conf.getboolean('smtp', 'SMTP_STARTTLS')
+    SMTP_SSL = configuration.conf.getboolean('smtp', 'SMTP_SSL')
     SMTP_USER = None
     SMTP_PASSWORD = None
 
     try:
-        SMTP_USER = configuration.get('smtp', 'SMTP_USER')
-        SMTP_PASSWORD = configuration.get('smtp', 'SMTP_PASSWORD')
+        SMTP_USER = configuration.conf.get('smtp', 'SMTP_USER')
+        SMTP_PASSWORD = configuration.conf.get('smtp', 'SMTP_PASSWORD')
     except AirflowConfigException:
-        log.debug(
-            "No user/password found for SMTP, so logging in with no authentication.")
+        log.debug("No user/password found for SMTP, so logging in with no authentication.")
 
     if not dryrun:
-        s = smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT) if SMTP_SSL else smtplib.SMTP(
-            SMTP_HOST, SMTP_PORT)
+        s = smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT) if SMTP_SSL else smtplib.SMTP(SMTP_HOST, SMTP_PORT)
         if SMTP_STARTTLS:
             s.starttls()
         if SMTP_USER and SMTP_PASSWORD:

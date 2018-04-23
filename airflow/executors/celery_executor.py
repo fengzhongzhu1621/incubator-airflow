@@ -1,16 +1,21 @@
 # -*- coding: utf-8 -*-
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+# 
+#   http://www.apache.org/licenses/LICENSE-2.0
+# 
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
 
 import subprocess
 import time
@@ -26,7 +31,7 @@ from airflow import configuration
 from airflow.utils.log.logging_mixin import LoggingMixin
 from airflow.utils.module_loading import import_string
 
-PARALLELISM = configuration.get('core', 'PARALLELISM')
+PARALLELISM = configuration.conf.get('core', 'PARALLELISM')
 
 '''
 To start the celery worker, run the command:
@@ -34,15 +39,15 @@ airflow worker
 '''
 
 # 导入celery默认配置
-if configuration.has_option('celery', 'celery_config_options'):
+if configuration.conf.has_option('celery', 'celery_config_options'):
     celery_configuration = import_string(
-        configuration.get('celery', 'celery_config_options')
+        configuration.conf.get('celery', 'celery_config_options')
     )
 else:
     celery_configuration = DEFAULT_CELERY_CONFIG
 
 app = Celery(
-    configuration.get('celery', 'CELERY_APP_NAME'),
+    configuration.conf.get('celery', 'CELERY_APP_NAME'),
     config_source=celery_configuration)
 
 
@@ -77,9 +82,10 @@ class CeleryExecutor(BaseExecutor):
         self.last_state = {}
 
     def execute_async(self, key, command,
-                      queue=DEFAULT_CELERY_CONFIG['task_default_queue']):
-        self.log.info("[celery] queuing {key} through celery, "
-                      "queue={queue}".format(**locals()))
+                      queue=DEFAULT_CELERY_CONFIG['task_default_queue'],
+                      executor_config=None):
+        self.log.info( "[celery] queuing {key} through celery, "
+                       "queue={queue}".format(**locals()))
         # 向celery发送任务
         self.tasks[key] = execute_command.apply_async(
             args=[command], queue=queue)
@@ -109,8 +115,7 @@ class CeleryExecutor(BaseExecutor):
                         self.log.info("Unexpected state: %s", async.state)
                     self.last_state[key] = async.state
             except Exception as e:
-                self.log.error(
-                    "Error syncing the celery executor, ignoring it:")
+                self.log.error("Error syncing the celery executor, ignoring it:")
                 self.log.exception(e)
 
     def end(self, synchronous=False):

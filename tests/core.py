@@ -1,16 +1,21 @@
 # -*- coding: utf-8 -*-
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+# 
+#   http://www.apache.org/licenses/LICENSE-2.0
+# 
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
 
 from __future__ import print_function
 
@@ -25,6 +30,7 @@ import os
 import re
 import signal
 import sqlalchemy
+import subprocess
 import tempfile
 import warnings
 from datetime import timedelta
@@ -40,7 +46,7 @@ from airflow import configuration
 from airflow.executors import SequentialExecutor
 from airflow.models import Variable
 
-configuration.load_test_config()
+configuration.conf.load_test_config()
 from airflow import jobs, models, DAG, utils, macros, settings, exceptions
 from airflow.models import BaseOperator
 from airflow.operators.bash_operator import BashOperator
@@ -66,7 +72,7 @@ from jinja2 import UndefinedError
 
 import six
 
-NUM_EXAMPLE_DAGS = 19
+NUM_EXAMPLE_DAGS = 20
 DEV_NULL = '/dev/null'
 TEST_DAG_FOLDER = os.path.join(
     os.path.dirname(os.path.realpath(__file__)), 'dags')
@@ -111,7 +117,7 @@ class CoreTest(unittest.TestCase):
     default_scheduler_args = {"num_runs": 1}
 
     def setUp(self):
-        configuration.load_test_config()
+        configuration.conf.load_test_config()
         self.dagbag = models.DagBag(
             dag_folder=DEV_NULL, include_examples=True)
         self.args = {'owner': 'airflow', 'start_date': DEFAULT_DATE}
@@ -294,7 +300,7 @@ class CoreTest(unittest.TestCase):
         self.assertIsNone(additional_dag_run)
 
     def test_confirm_unittest_mod(self):
-        self.assertTrue(configuration.get('core', 'unit_test_mode'))
+        self.assertTrue(configuration.conf.get('core', 'unit_test_mode'))
 
     def test_pickling(self):
         dp = self.dag.pickle()
@@ -657,14 +663,14 @@ class CoreTest(unittest.TestCase):
         self.assertNotIn("{FERNET_KEY}", cfg)
 
     def test_config_use_original_when_original_and_fallback_are_present(self):
-        self.assertTrue(configuration.has_option("core", "FERNET_KEY"))
-        self.assertFalse(configuration.has_option("core", "FERNET_KEY_CMD"))
+        self.assertTrue(configuration.conf.has_option("core", "FERNET_KEY"))
+        self.assertFalse(configuration.conf.has_option("core", "FERNET_KEY_CMD"))
 
-        FERNET_KEY = configuration.get('core', 'FERNET_KEY')
+        FERNET_KEY = configuration.conf.get('core', 'FERNET_KEY')
 
-        configuration.set("core", "FERNET_KEY_CMD", "printf HELLO")
+        configuration.conf.set("core", "FERNET_KEY_CMD", "printf HELLO")
 
-        FALLBACK_FERNET_KEY = configuration.get(
+        FALLBACK_FERNET_KEY = configuration.conf.get(
             "core",
             "FERNET_KEY"
         )
@@ -672,25 +678,25 @@ class CoreTest(unittest.TestCase):
         self.assertEqual(FERNET_KEY, FALLBACK_FERNET_KEY)
 
         # restore the conf back to the original state
-        configuration.remove_option("core", "FERNET_KEY_CMD")
+        configuration.conf.remove_option("core", "FERNET_KEY_CMD")
 
     def test_config_throw_error_when_original_and_fallback_is_absent(self):
-        self.assertTrue(configuration.has_option("core", "FERNET_KEY"))
-        self.assertFalse(configuration.has_option("core", "FERNET_KEY_CMD"))
+        self.assertTrue(configuration.conf.has_option("core", "FERNET_KEY"))
+        self.assertFalse(configuration.conf.has_option("core", "FERNET_KEY_CMD"))
 
-        FERNET_KEY = configuration.get("core", "FERNET_KEY")
-        configuration.remove_option("core", "FERNET_KEY")
+        FERNET_KEY = configuration.conf.get("core", "FERNET_KEY")
+        configuration.conf.remove_option("core", "FERNET_KEY")
 
         with self.assertRaises(AirflowConfigException) as cm:
-            configuration.get("core", "FERNET_KEY")
+            configuration.conf.get("core", "FERNET_KEY")
 
         exception = str(cm.exception)
         message = "section/key [core/fernet_key] not found in config"
         self.assertEqual(message, exception)
 
         # restore the conf back to the original state
-        configuration.set("core", "FERNET_KEY", FERNET_KEY)
-        self.assertTrue(configuration.has_option("core", "FERNET_KEY"))
+        configuration.conf.set("core", "FERNET_KEY", FERNET_KEY)
+        self.assertTrue(configuration.conf.has_option("core", "FERNET_KEY"))
 
     def test_config_override_original_when_non_empty_envvar_is_provided(self):
         key = "AIRFLOW__CORE__FERNET_KEY"
@@ -698,7 +704,7 @@ class CoreTest(unittest.TestCase):
         self.assertNotIn(key, os.environ)
 
         os.environ[key] = value
-        FERNET_KEY = configuration.get('core', 'FERNET_KEY')
+        FERNET_KEY = configuration.conf.get('core', 'FERNET_KEY')
         self.assertEqual(value, FERNET_KEY)
 
         # restore the envvar back to the original state
@@ -710,7 +716,7 @@ class CoreTest(unittest.TestCase):
         self.assertNotIn(key, os.environ)
 
         os.environ[key] = value
-        FERNET_KEY = configuration.get('core', 'FERNET_KEY')
+        FERNET_KEY = configuration.conf.get('core', 'FERNET_KEY')
         self.assertEqual(value, FERNET_KEY)
 
         # restore the envvar back to the original state
@@ -1032,8 +1038,17 @@ class CliTests(unittest.TestCase):
         lines = [l for l in stdout.split('\n') if len(l) > 0]
         self.assertListEqual(lines, [
             ("\tThe following args are not compatible with the " +
-             "--list flag: ['conn_id', 'conn_uri', 'conn_extra', 'conn_type', 'conn_host', 'conn_login', 'conn_password', 'conn_schema', 'conn_port']"),
+             "--list flag: ['conn_id', 'conn_uri', 'conn_extra', " +
+             "'conn_type', 'conn_host', 'conn_login', " +
+             "'conn_password', 'conn_schema', 'conn_port']"),
         ])
+
+    def test_cli_connections_list_redirect(self):
+        cmd = ['airflow', 'connections', '--list']
+        with tempfile.TemporaryFile() as fp:
+            p = subprocess.Popen(cmd, stdout=fp)
+            p.wait()
+            self.assertEqual(0, p.returncode)
 
     def test_cli_connections_add_delete(self):
         # Add connections:
@@ -1410,8 +1425,6 @@ class CliTests(unittest.TestCase):
                 sleep(1)
 
     def test_cli_webserver_foreground(self):
-        import subprocess
-
         # Confirm that webserver hasn't been launched.
         # pgrep returns exit status 1 if no process matched.
         self.assertEqual(1, subprocess.Popen(["pgrep", "-c", "airflow"]).wait())
@@ -1429,8 +1442,6 @@ class CliTests(unittest.TestCase):
     @unittest.skipIf("TRAVIS" in os.environ and bool(os.environ["TRAVIS"]),
                      "Skipping test due to lack of required file permission")
     def test_cli_webserver_foreground_with_pid(self):
-        import subprocess
-
         # Run webserver in foreground with --pid option
         pidfile = tempfile.mkstemp()[1]
         p = subprocess.Popen(["airflow", "webserver", "--pid", pidfile])
@@ -1445,7 +1456,6 @@ class CliTests(unittest.TestCase):
     @unittest.skipIf("TRAVIS" in os.environ and bool(os.environ["TRAVIS"]),
                      "Skipping test due to lack of required file permission")
     def test_cli_webserver_background(self):
-        import subprocess
         import psutil
 
         # Confirm that webserver hasn't been launched.
@@ -1810,7 +1820,7 @@ class SecureModeWebUiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 404)
 
     def tearDown(self):
-        configuration.remove_option("core", "SECURE_MODE")
+        configuration.conf.remove_option("core", "SECURE_MODE")
 
 
 class WebPasswordAuthTest(unittest.TestCase):
@@ -1853,7 +1863,7 @@ class WebPasswordAuthTest(unittest.TestCase):
         return self.app.get('/admin/airflow/logout', follow_redirects=True)
 
     def test_login_logout_password_auth(self):
-        self.assertTrue(configuration.getboolean('webserver', 'authenticate'))
+        self.assertTrue(configuration.conf.getboolean('webserver', 'authenticate'))
 
         response = self.login('user1', 'whatever')
         self.assertIn('Incorrect login details', response.data.decode('utf-8'))
@@ -1920,7 +1930,7 @@ class WebLdapAuthTest(unittest.TestCase):
         return self.app.get('/admin/airflow/logout', follow_redirects=True)
 
     def test_login_logout_ldap(self):
-        self.assertTrue(configuration.getboolean('webserver', 'authenticate'))
+        self.assertTrue(configuration.conf.getboolean('webserver', 'authenticate'))
 
         response = self.login('user1', 'userx')
         self.assertIn('Incorrect login details', response.data.decode('utf-8'))
@@ -2365,7 +2375,7 @@ send_email_test = mock.Mock()
 
 class EmailTest(unittest.TestCase):
     def setUp(self):
-        configuration.remove_option('email', 'EMAIL_BACKEND')
+        configuration.conf.remove_option('email', 'EMAIL_BACKEND')
 
     @mock.patch('airflow.utils.email.send_email')
     def test_default_backend(self, mock_send_email):
@@ -2375,7 +2385,7 @@ class EmailTest(unittest.TestCase):
 
     @mock.patch('airflow.utils.email.send_email_smtp')
     def test_custom_backend(self, mock_send_email):
-        configuration.set('email', 'EMAIL_BACKEND', 'tests.core.send_email_test')
+        configuration.conf.set('email', 'EMAIL_BACKEND', 'tests.core.send_email_test')
         utils.email.send_email('to', 'subject', 'content')
         send_email_test.assert_called_with(
             'to', 'subject', 'content', files=None, dryrun=False,
@@ -2386,7 +2396,7 @@ class EmailTest(unittest.TestCase):
 
 class EmailSmtpTest(unittest.TestCase):
     def setUp(self):
-        configuration.set('smtp', 'SMTP_SSL', 'False')
+        configuration.conf.set('smtp', 'SMTP_SSL', 'False')
 
     @mock.patch('airflow.utils.email.send_MIME_email')
     def test_send_smtp(self, mock_send_mime):
@@ -2396,11 +2406,11 @@ class EmailSmtpTest(unittest.TestCase):
         utils.email.send_email_smtp('to', 'subject', 'content', files=[attachment.name])
         self.assertTrue(mock_send_mime.called)
         call_args = mock_send_mime.call_args[0]
-        self.assertEqual(configuration.get('smtp', 'SMTP_MAIL_FROM'), call_args[0])
+        self.assertEqual(configuration.conf.get('smtp', 'SMTP_MAIL_FROM'), call_args[0])
         self.assertEqual(['to'], call_args[1])
         msg = call_args[2]
         self.assertEqual('subject', msg['Subject'])
-        self.assertEqual(configuration.get('smtp', 'SMTP_MAIL_FROM'), msg['From'])
+        self.assertEqual(configuration.conf.get('smtp', 'SMTP_MAIL_FROM'), msg['From'])
         self.assertEqual(2, len(msg.get_payload()))
         self.assertEqual(u'attachment; filename="' + os.path.basename(attachment.name) + '"',
                          msg.get_payload()[-1].get(u'Content-Disposition'))
@@ -2415,11 +2425,11 @@ class EmailSmtpTest(unittest.TestCase):
         utils.email.send_email_smtp('to', 'subject', 'content', files=[attachment.name], cc='cc', bcc='bcc')
         self.assertTrue(mock_send_mime.called)
         call_args = mock_send_mime.call_args[0]
-        self.assertEqual(configuration.get('smtp', 'SMTP_MAIL_FROM'), call_args[0])
+        self.assertEqual(configuration.conf.get('smtp', 'SMTP_MAIL_FROM'), call_args[0])
         self.assertEqual(['to', 'cc', 'bcc'], call_args[1])
         msg = call_args[2]
         self.assertEqual('subject', msg['Subject'])
-        self.assertEqual(configuration.get('smtp', 'SMTP_MAIL_FROM'), msg['From'])
+        self.assertEqual(configuration.conf.get('smtp', 'SMTP_MAIL_FROM'), msg['From'])
         self.assertEqual(2, len(msg.get_payload()))
         self.assertEqual(u'attachment; filename="' + os.path.basename(attachment.name) + '"',
                          msg.get_payload()[-1].get(u'Content-Disposition'))
@@ -2434,13 +2444,13 @@ class EmailSmtpTest(unittest.TestCase):
         msg = MIMEMultipart()
         utils.email.send_MIME_email('from', 'to', msg, dryrun=False)
         mock_smtp.assert_called_with(
-            configuration.get('smtp', 'SMTP_HOST'),
-            configuration.getint('smtp', 'SMTP_PORT'),
+            configuration.conf.get('smtp', 'SMTP_HOST'),
+            configuration.conf.getint('smtp', 'SMTP_PORT'),
         )
         self.assertTrue(mock_smtp.return_value.starttls.called)
         mock_smtp.return_value.login.assert_called_with(
-            configuration.get('smtp', 'SMTP_USER'),
-            configuration.get('smtp', 'SMTP_PASSWORD'),
+            configuration.conf.get('smtp', 'SMTP_USER'),
+            configuration.conf.get('smtp', 'SMTP_PASSWORD'),
         )
         mock_smtp.return_value.sendmail.assert_called_with('from', 'to', msg.as_string())
         self.assertTrue(mock_smtp.return_value.quit.called)
@@ -2448,14 +2458,14 @@ class EmailSmtpTest(unittest.TestCase):
     @mock.patch('smtplib.SMTP_SSL')
     @mock.patch('smtplib.SMTP')
     def test_send_mime_ssl(self, mock_smtp, mock_smtp_ssl):
-        configuration.set('smtp', 'SMTP_SSL', 'True')
+        configuration.conf.set('smtp', 'SMTP_SSL', 'True')
         mock_smtp.return_value = mock.Mock()
         mock_smtp_ssl.return_value = mock.Mock()
         utils.email.send_MIME_email('from', 'to', MIMEMultipart(), dryrun=False)
         self.assertFalse(mock_smtp.called)
         mock_smtp_ssl.assert_called_with(
-            configuration.get('smtp', 'SMTP_HOST'),
-            configuration.getint('smtp', 'SMTP_PORT'),
+            configuration.conf.get('smtp', 'SMTP_HOST'),
+            configuration.conf.getint('smtp', 'SMTP_PORT'),
         )
 
     @mock.patch('smtplib.SMTP_SSL')
@@ -2468,8 +2478,8 @@ class EmailSmtpTest(unittest.TestCase):
         utils.email.send_MIME_email('from', 'to', MIMEMultipart(), dryrun=False)
         self.assertFalse(mock_smtp_ssl.called)
         mock_smtp.assert_called_with(
-            configuration.get('smtp', 'SMTP_HOST'),
-            configuration.getint('smtp', 'SMTP_PORT'),
+            configuration.conf.get('smtp', 'SMTP_HOST'),
+            configuration.conf.getint('smtp', 'SMTP_PORT'),
         )
         self.assertFalse(mock_smtp.login.called)
 

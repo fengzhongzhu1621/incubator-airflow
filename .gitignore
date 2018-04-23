@@ -131,6 +131,13 @@ ENV/
 # Spark
 rat-results.txt
 
+# Git stuff
+.gitattributes
+# Kubernetes generated templated files
+*.generated
+*.tar.gz
+scripts/ci/kubernetes/kube/.generated/airflow.yaml
+
 # eclipse pydev
 .project
 .pydevproject

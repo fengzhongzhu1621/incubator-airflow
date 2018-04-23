@@ -1,16 +1,21 @@
 # -*- coding: utf-8 -*-
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+# 
+#   http://www.apache.org/licenses/LICENSE-2.0
+# 
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
 
 from __future__ import absolute_import
 from __future__ import division
@@ -85,7 +90,7 @@ class BackfillJobTest(unittest.TestCase):
         self.parser = cli.CLIFactory.get_parser()
         self.dagbag = DagBag(include_examples=True)
 
-    @unittest.skipIf('sqlite' in configuration.get('core', 'sql_alchemy_conn'),
+    @unittest.skipIf('sqlite' in configuration.conf.get('core', 'sql_alchemy_conn'),
                      "concurrent access not supported in sqlite")
     def test_trigger_controller_dag(self):
         dag = self.dagbag.get_dag('example_trigger_controller_dag')
@@ -114,7 +119,7 @@ class BackfillJobTest(unittest.TestCase):
         target_dag.clear()
         dag.clear()
 
-    @unittest.skipIf('sqlite' in configuration.get('core', 'sql_alchemy_conn'),
+    @unittest.skipIf('sqlite' in configuration.conf.get('core', 'sql_alchemy_conn'),
                      "concurrent access not supported in sqlite")
     def test_backfill_multi_dates(self):
         dag = self.dagbag.get_dag('example_bash_operator')
@@ -142,7 +147,7 @@ class BackfillJobTest(unittest.TestCase):
         dag.clear()
         session.close()
 
-    @unittest.skipIf('sqlite' in configuration.get('core', 'sql_alchemy_conn'),
+    @unittest.skipIf('sqlite' in configuration.conf.get('core', 'sql_alchemy_conn'),
                      "concurrent access not supported in sqlite")
     def test_backfill_examples(self):
         """
@@ -156,7 +161,8 @@ class BackfillJobTest(unittest.TestCase):
             'example_trigger_target_dag',
             'example_trigger_controller_dag',  # tested above
             'test_utils',  # sleeps forever
-            'example_kubernetes_operator',  # only works with k8s cluster
+            'example_kubernetes_executor',  # requires kubernetes cluster
+            'example_kubernetes_operator'  # requires kubernetes cluster
         ]
 
         logger = logging.getLogger('BackfillJobTest.test_backfill_examples')
@@ -704,6 +710,50 @@ class BackfillJobTest(unittest.TestCase):
         for sdh in subdag_history:
             ti = sdh[3]
             self.assertIn('section-1-task-', ti.task_id)
+
+        subdag.clear()
+        dag.clear()
+
+
+    def test_backfill_execute_subdag_with_removed_task(self):
+        """
+        Ensure that subdag operators execute properly in the case where
+        an associated task of the subdag has been removed from the dag
+        definition, but has instances in the database from previous runs.
+        """
+        dag = self.dagbag.get_dag('example_subdag_operator')
+        subdag = dag.get_task('section-1').subdag
+
+        executor = TestExecutor(do_update=True)
+        job = BackfillJob(dag=subdag,
+                          start_date=DEFAULT_DATE,
+                          end_date=DEFAULT_DATE,
+                          executor=executor,
+                          donot_pickle=True)
+
+        removed_task_ti = TI(
+            task=DummyOperator(task_id='removed_task'),
+            execution_date=DEFAULT_DATE,
+            state=State.REMOVED)
+        removed_task_ti.dag_id = subdag.dag_id
+
+        session = settings.Session()
+        session.merge(removed_task_ti)
+
+        with timeout(seconds=30):
+            job.run()
+
+        for task in subdag.tasks:
+            instance = session.query(TI).filter(
+                TI.dag_id == subdag.dag_id,
+                TI.task_id == task.task_id,
+                TI.execution_date == DEFAULT_DATE).first()
+
+            self.assertIsNotNone(instance)
+            self.assertEqual(instance.state, State.SUCCESS)
+
+        removed_task_ti.refresh_from_db()
+        self.assertEqual(removed_task_ti.state, State.REMOVED)
 
         subdag.clear()
         dag.clear()
@@ -2723,7 +2773,7 @@ class SchedulerJobTest(unittest.TestCase):
                   default_args=default_args
                   )
 
-        default_catchup = configuration.getboolean('scheduler', 'catchup_by_default')
+        default_catchup = configuration.conf.getboolean('scheduler', 'catchup_by_default')
         # Test configs have catchup by default ON
 
         self.assertEqual(default_catchup, True)

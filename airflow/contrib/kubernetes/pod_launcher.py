@@ -37,9 +37,9 @@ class PodStatus(object):
 
 
 class PodLauncher(LoggingMixin):
-    def __init__(self, kube_client=None):
+    def __init__(self, kube_client=None, in_cluster=True):
         super(PodLauncher, self).__init__()
-        self._client = kube_client or get_kube_client()
+        self._client = kube_client or get_kube_client(in_cluster=in_cluster)
         self._watch = watch.Watch()
         self.kube_req_factory = pod_fac.SimplePodRequestFactory()
 
@@ -58,7 +58,6 @@ class PodLauncher(LoggingMixin):
         # type: (Pod) -> State
         """
         Launches the pod synchronously and waits for completion.
-
         Args:
             pod (Pod):
             startup_timeout (int): Timeout for startup of the pod (if pod is pending for
