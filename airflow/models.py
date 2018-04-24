@@ -871,6 +871,7 @@ class TaskInstance(Base, LoggingMixin):
         self._log = logging.getLogger("airflow.task")
 
         # make sure we have a localized execution_date stored in UTC
+        # 将无时区的datetime对象，添加时区信息
         if execution_date and not timezone.is_localized(execution_date):
             self.log.warning("execution date %s has no timezone information. Using "
                              "default from dag or system", execution_date)
@@ -887,9 +888,13 @@ class TaskInstance(Base, LoggingMixin):
         self.queue = task.queue
         self.pool = task.pool
         self.priority_weight = task.priority_weight_total
+        # 记录了第几次重试
         self.try_number = 0
+        # 最大重试次数
         self.max_tries = self.task.retries
+        # 获得linux当前用户
         self.unixname = getpass.getuser()
+        # 任务设置的执行用户
         self.run_as_user = task.run_as_user
         if state:
             self.state = state
@@ -978,6 +983,8 @@ class TaskInstance(Base, LoggingMixin):
         """
         dag = self.task.dag
 
+        # 如果没有设置pickle_id，则获取dag文件的绝对地址
+        # 如果设置了pickle_id，则从其他存储介质中获取
         should_pass_filepath = not pickle_id and dag
         if should_pass_filepath and dag.full_filepath != dag.filepath:
             path = "DAGS_FOLDER/{}".format(dag.filepath)
@@ -1074,6 +1081,7 @@ class TaskInstance(Base, LoggingMixin):
 
     @property
     def log_filepath(self):
+        """获得任务实例日志文件路径 ."""
         iso = self.execution_date.isoformat()
         log = os.path.expanduser(
             configuration.conf.get('core', 'BASE_LOG_FOLDER'))
@@ -1082,6 +1090,7 @@ class TaskInstance(Base, LoggingMixin):
 
     @property
     def log_url(self):
+        """获得任务实例日志的url ."""
         iso = quote(self.execution_date.isoformat())
         BASE_URL = configuration.conf.get('webserver', 'BASE_URL')
         if settings.RBAC:
@@ -1143,7 +1152,7 @@ class TaskInstance(Base, LoggingMixin):
 
     @provide_session
     def error(self, session=None):
-        """
+        """将任务实例设置为失败状态
         Forces the task instance's state to FAILED in the database.
         """
         self.log.error("Recording the task instance as FAILED")
@@ -1153,7 +1162,7 @@ class TaskInstance(Base, LoggingMixin):
 
     @provide_session
     def refresh_from_db(self, session=None, lock_for_update=False):
-        """
+        """将db记录更新到orm模型
         Refreshes the task instance from the database based on the primary key
 
         :param lock_for_update: if True, indicates that the database should
@@ -1167,6 +1176,7 @@ class TaskInstance(Base, LoggingMixin):
             TI.task_id == self.task_id,
             TI.execution_date == self.execution_date)
 
+        # 添加行锁
         if lock_for_update:
             ti = qry.with_for_update().first()
         else:
@@ -1199,13 +1209,14 @@ class TaskInstance(Base, LoggingMixin):
 
     @property
     def key(self):
-        """
+        """返回唯一键
         Returns a tuple that identifies the task instance uniquely
         """
         return self.dag_id, self.task_id, self.execution_date
 
     @provide_session
     def set_state(self, state, session=None):
+        """变更任务实例的状态 ."""
         self.state = state
         self.start_date = timezone.utcnow()
         self.end_date = timezone.utcnow()
@@ -1348,12 +1359,13 @@ class TaskInstance(Base, LoggingMixin):
         ).format(ti=self)
 
     def next_retry_datetime(self):
-        """
+        """获得下一次重试时间
         Get datetime of the next retry if the task instance fails. For exponential
         backoff, retry_delay is used as base and will be converted to seconds.
         """
         delay = self.task.retry_delay
         if self.task.retry_exponential_backoff:
+            # 每次间隔的时间递增
             min_backoff = int(delay.total_seconds() *
                               (2 ** (self.try_number - 2)))
             # deterministic per task instance
@@ -1377,7 +1389,7 @@ class TaskInstance(Base, LoggingMixin):
         return self.end_date + delay
 
     def ready_for_retry(self):
-        """
+        """判断是否可以进行重试操作
         Checks on whether the task instance is in the right state and timeframe
         to be retried.
         """
@@ -2038,6 +2050,7 @@ class TaskFail(Base):
         self.task_id = task.task_id
         self.execution_date = execution_date
         self.start_date = start_date
+        # 任务的执行耗时（秒）
         self.end_date = end_date
         if self.end_date and self.start_date:
             self.duration = (self.end_date - self.start_date).total_seconds()
