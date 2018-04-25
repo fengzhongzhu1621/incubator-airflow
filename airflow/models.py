@@ -198,6 +198,7 @@ class DagBag(BaseDagBag, LoggingMixin):
     """
 
     # static class variables to detetct dag cycle
+    # 用于检测DAG是否有环
     CYCLE_NEW = 0
     CYCLE_IN_PROGRESS = 1
     CYCLE_DONE = 2
@@ -217,6 +218,7 @@ class DagBag(BaseDagBag, LoggingMixin):
         self.dag_folder = dag_folder
         self.dags = {}
         # the file's last modified timestamp when we last read it
+        # 记录文件的最后修改时间
         self.file_last_changed = {}
         self.executor = executor
         self.import_errors = {}
@@ -400,21 +402,25 @@ class DagBag(BaseDagBag, LoggingMixin):
         tis = (
             session.query(TI)
             .join(LJ, TI.job_id == LJ.id)
-            .filter(TI.state == State.RUNNING)
+            .filter(TI.state == State.RUNNING)  # 任务实例正在运行
             .filter(
                 or_(
-                    LJ.state != State.RUNNING,
-                    LJ.latest_heartbeat < limit_dttm,
+                    LJ.state != State.RUNNING,  # 但是job不是运行态
+                    LJ.latest_heartbeat < limit_dttm,   # 没有上报心跳
                 ))
             .all()
         )
 
         for ti in tis:
             if ti and ti.dag_id in self.dags:
+                # 根据任务实例获取dag
                 dag = self.dags[ti.dag_id]
+                # 获得dag中所有的任务
                 if ti.task_id in dag.task_ids:
+                    # 获得任务模型
                     task = dag.get_task(ti.task_id)
                     ti.task = task
+                    # 任务执行失败，发送通知，并执行失败回调函数
                     ti.handle_failure("{} killed as zombie".format(str(ti)))
                     self.log.info('Marked zombie job %s as failed', ti)
                     Stats.incr('zombies_killed')
@@ -425,12 +431,13 @@ class DagBag(BaseDagBag, LoggingMixin):
         Adds the DAG into the bag, recurses into sub dags.
         Throws AirflowDagCycleException if a cycle is detected in this dag or its subdags
         """
-
+        # 测试是否有环
         dag.test_cycle()  # throws if a task cycle is found
-
+        # 从指定的属性中获取设置的模板文件名，渲染模板并将此属性的值设置为渲染后的模板的内容
         dag.resolve_template_files()
         dag.last_loaded = timezone.utcnow()
 
+        # 通用预处理
         for task in dag.tasks:
             settings.policy(task)
 
@@ -443,6 +450,7 @@ class DagBag(BaseDagBag, LoggingMixin):
                 subdag.is_subdag = True
                 self.bag_dag(subdag, parent_dag=dag, root_dag=root_dag)
 
+            # 将新的dag加入到self.dags中
             self.dags[dag.dag_id] = dag
             self.log.debug('Loaded DAG {dag}'.format(**locals()))
         except AirflowDagCycleException as cycle_exception:
@@ -494,6 +502,7 @@ class DagBag(BaseDagBag, LoggingMixin):
                             continue
                         mod_name, file_ext = os.path.splitext(
                             os.path.split(filepath)[-1])
+                        # 验证文件后缀
                         if file_ext != '.py' and not zipfile.is_zipfile(filepath):
                             continue
                         if not any(
@@ -545,6 +554,7 @@ class DagBag(BaseDagBag, LoggingMixin):
 
     @provide_session
     def deactivate_inactive_dags(self, session=None):
+        """删除非活动的dag ."""
         active_dag_ids = [dag.dag_id for dag in list(self.dags.values())]
         for dag in session.query(
                 DagModel).filter(~DagModel.dag_id.in_(active_dag_ids)).all():
@@ -554,6 +564,7 @@ class DagBag(BaseDagBag, LoggingMixin):
 
     @provide_session
     def paused_dags(self, session=None):
+        """获得所有已暂停的dag ."""
         dag_ids = [dp.dag_id for dp in session.query(DagModel).filter(
             DagModel.is_paused.__eq__(True))]
         return dag_ids
@@ -1162,7 +1173,7 @@ class TaskInstance(Base, LoggingMixin):
 
     @provide_session
     def refresh_from_db(self, session=None, lock_for_update=False):
-        """将db记录更新到orm模型
+        """将db中任务实例记录更新到orm模型
         Refreshes the task instance from the database based on the primary key
 
         :param lock_for_update: if True, indicates that the database should
@@ -1225,7 +1236,7 @@ class TaskInstance(Base, LoggingMixin):
 
     @property
     def is_premature(self):
-        """
+        """判断任务重试时间还没有到达
         Returns whether a task is in UP_FOR_RETRY state and its retry interval
         has elapsed.
         """
@@ -1234,7 +1245,7 @@ class TaskInstance(Base, LoggingMixin):
 
     @provide_session
     def are_dependents_done(self, session=None):
-        """
+        """验证当前调度的任务实例的所有下游任务实例是否都执行完成
         Checks whether the dependents of this task instance have all succeeded.
         This is meant to be used by wait_for_downstream.
 
@@ -1244,9 +1255,11 @@ class TaskInstance(Base, LoggingMixin):
         """
         task = self.task
 
+        # 判断任务是否有下游任务
         if not task.downstream_task_ids:
             return True
 
+        # 验证当前调度的任务实例的所有下游任务实例是否都执行完成
         ti = session.query(func.count(TaskInstance.task_id)).filter(
             TaskInstance.dag_id == self.dag_id,
             TaskInstance.task_id.in_(task.downstream_task_ids),
@@ -1263,6 +1276,7 @@ class TaskInstance(Base, LoggingMixin):
 
         dag = self.task.dag
         if dag:
+            # 获得当前任务实例关联的dag_run
             dr = self.get_dagrun(session=session)
 
             # LEGACY: most likely running from unit tests
@@ -1277,13 +1291,18 @@ class TaskInstance(Base, LoggingMixin):
                 return TaskInstance(task=self.task,
                                     execution_date=previous_scheduled_date)
 
+            # Note: 因为dag_run的dag属性默认为None
             dr.dag = dag
+            #
             if dag.catchup:
+                # 获得上一个调度的dag实例
                 last_dagrun = dr.get_previous_scheduled_dagrun(session=session)
             else:
+                # 获得上一个dag实例
                 last_dagrun = dr.get_previous_dagrun(session=session)
 
             if last_dagrun:
+                # 获得上一个任务实例
                 return last_dagrun.get_task_instance(self.task_id, session=session)
 
         return None
@@ -1294,7 +1313,7 @@ class TaskInstance(Base, LoggingMixin):
             dep_context=None,
             session=None,
             verbose=False):
-        """
+        """判断依赖是否满足
         Returns whether or not all the conditions are met for this task instance to be run
         given the context for the dependencies (e.g. a task instance being force run from
         the UI will ignore some dependencies).
@@ -1398,7 +1417,7 @@ class TaskInstance(Base, LoggingMixin):
 
     @provide_session
     def pool_full(self, session):
-        """
+        """判断任务实例的插槽是否已满
         Returns a boolean as to whether the slot pool has room for this
         task to run
         """
@@ -1413,13 +1432,14 @@ class TaskInstance(Base, LoggingMixin):
         )
         if not pool:
             return False
+        # 判断任务实例可用的插槽数量
         open_slots = pool.open_slots(session=session)
 
         return open_slots <= 0
 
     @provide_session
     def get_dagrun(self, session):
-        """
+        """获得当前任务实例关联的dag_run
         Returns the DagRun for this TaskInstance
 
         :param session:
@@ -1445,7 +1465,7 @@ class TaskInstance(Base, LoggingMixin):
             job_id=None,
             pool=None,
             session=None):
-        """
+        """任务实例执行前的验证
         Checks dependencies and then sets state to RUNNING if they are met. Returns
         True if and only if state is set to RUNNING, which implies that task should be
         executed, in preparation for _run_raw_task
@@ -1472,8 +1492,10 @@ class TaskInstance(Base, LoggingMixin):
         task = self.task
         self.pool = pool or task.pool
         self.test_mode = test_mode
+        # 将db中任务实例记录更新到orm模型
         self.refresh_from_db(session=session, lock_for_update=True)
         self.job_id = job_id
+        # 获得任务实例运行所在机器的主机名
         self.hostname = get_hostname()
         self.operator = task.__class__.__name__
 
@@ -1486,6 +1508,7 @@ class TaskInstance(Base, LoggingMixin):
             ignore_ti_state=ignore_ti_state,
             ignore_depends_on_past=ignore_depends_on_past,
             ignore_task_deps=ignore_task_deps)
+        # 判断任务是否在队列中
         if not self.are_dependencies_met(
                 dep_context=queue_dep_context,
                 session=session,
@@ -1504,6 +1527,7 @@ class TaskInstance(Base, LoggingMixin):
             total=self.max_tries + 1)
         self.start_date = timezone.utcnow()
 
+        # 验证任务实例是否满足并发限制
         dep_context = DepContext(
             deps=RUN_DEPS - QUEUE_DEPS,
             ignore_all_deps=ignore_all_deps,
@@ -1515,6 +1539,7 @@ class TaskInstance(Base, LoggingMixin):
             session=session,
             verbose=True)
 
+        # 如果任务超出了并发限制，则调度器需要重新调度这个任务实例
         if not runnable and not mark_success:
             # FIXME: we might have hit concurrency limits, which means we probably
             # have been running prematurely. This should be handled in the
@@ -1540,12 +1565,15 @@ class TaskInstance(Base, LoggingMixin):
             session.commit()
             return False
 
+        # 如果任务在队列中，且满足并发要求，可以执行
+
         # print status message
         self.log.info(hr + msg + hr)
         self._try_number += 1
 
         if not test_mode:
             session.add(Log(State.RUNNING, self))
+        # 修改任务实例状态为执行中，并记录进程ID
         self.state = State.RUNNING
         self.pid = os.getpid()
         self.end_date = None
@@ -1553,6 +1581,7 @@ class TaskInstance(Base, LoggingMixin):
             session.merge(self)
         session.commit()
 
+        # 关闭DB连接池
         # Closing all pooled connections to prevent
         # "max number of connections reached"
         settings.engine.dispose()
@@ -1575,7 +1604,7 @@ class TaskInstance(Base, LoggingMixin):
             job_id=None,
             pool=None,
             session=None):
-        """
+        """执行任务实例
         Immediately runs the task (without checking or changing db state
         before execution) and then sets the appropriate final state after
         completion and runs any post-execute callbacks. Meant to be called
@@ -1599,11 +1628,13 @@ class TaskInstance(Base, LoggingMixin):
         context = {}
         try:
             if not mark_success:
+                # 获得运行时上下文
                 context = self.get_template_context()
-
+                # 备份任务实例关联的任务
                 task_copy = copy.copy(task)
                 self.task = task_copy
 
+                # 任务实例收到终止信号后，执行on_kill()，停止子进程
                 def signal_handler(signum, frame):
                     self.log.error(
                         "Received SIGTERM. Terminating subprocesses.")
@@ -1611,31 +1642,41 @@ class TaskInstance(Base, LoggingMixin):
                     raise AirflowException("Task received SIGTERM signal")
                 signal.signal(signal.SIGTERM, signal_handler)
 
+                # 删除中间结果
                 # Don't clear Xcom until the task is certain to execute
                 self.clear_xcom_data()
 
+                # 渲染模板，设置任务属性
                 self.render_templates()
+
+                # 任务执行前的预处理操作hook
                 task_copy.pre_execute(context=context)
 
                 # If a timeout is specified for the task, make it fail
                 # if it goes beyond
+                # 判断任务是否执行超时
                 result = None
                 if task_copy.execution_timeout:
                     try:
                         with timeout(int(
                                 task_copy.execution_timeout.total_seconds())):
+                            # 执行任务
                             result = task_copy.execute(context=context)
                     except AirflowTaskTimeout:
+                        # 任务超时后执行on_kill()
                         task_copy.on_kill()
                         raise
                 else:
+                    # 执行任务
                     result = task_copy.execute(context=context)
 
+                # 如果任务实例有返回，则保持结果到中间表
                 # If the task returns a result, push an XCom containing it
                 if result is not None:
                     self.xcom_push(key=XCOM_RETURN_KEY, value=result)
 
                 # TODO remove deprecated behavior in Airflow 2.0
+                # 任务执行完毕后的处理操作hook
                 try:
                     task_copy.post_execute(context=context, result=result)
                 except TypeError as e:
@@ -1663,16 +1704,20 @@ class TaskInstance(Base, LoggingMixin):
             self.refresh_from_db()
             # for case when task is marked as success externally
             # current behavior doesn't hit the success callback
+            # 如果任务执行失败，但是用户在页面上强行标记了任务为成功
             if self.state == State.SUCCESS:
                 return
             else:
+                # 任务执行失败，发送通知，并执行失败回调函数
                 self.handle_failure(e, test_mode, context)
                 raise
         except (Exception, KeyboardInterrupt) as e:
+            # 任务执行失败，发送通知，并执行失败回调函数
             self.handle_failure(e, test_mode, context)
             raise
 
         # Recording SUCCESS
+        # 记录任务执行完成后的时间
         self.end_date = timezone.utcnow()
         self.set_duration()
         if not test_mode:
@@ -1681,6 +1726,7 @@ class TaskInstance(Base, LoggingMixin):
         session.commit()
 
         # Success callback
+        # 执行成功回调函数
         try:
             if task.on_success_callback:
                 task.on_success_callback(context)
@@ -1703,6 +1749,7 @@ class TaskInstance(Base, LoggingMixin):
             job_id=None,
             pool=None,
             session=None):
+        # 任务执行前需要进行验证
         res = self._check_and_change_state_before_execution(
             verbose=verbose,
             ignore_all_deps=ignore_all_deps,
@@ -1714,6 +1761,7 @@ class TaskInstance(Base, LoggingMixin):
             job_id=job_id,
             pool=pool,
             session=session)
+        # 如果满足可执行条件，则执行任务
         if res:
             self._run_raw_task(
                 mark_success=mark_success,
@@ -1743,6 +1791,7 @@ class TaskInstance(Base, LoggingMixin):
             session.add(Log(State.FAILED, self))
 
         # Log failure duration
+        # 记录失败的任务实例
         session.add(TaskFail(task, self.execution_date,
                              self.start_date, self.end_date))
 
@@ -1755,6 +1804,7 @@ class TaskInstance(Base, LoggingMixin):
             if task.retries and self.try_number <= self.max_tries:
                 self.state = State.UP_FOR_RETRY
                 self.log.info('Marking task as UP_FOR_RETRY')
+                # 重试时发送邮件
                 if task.email_on_retry and task.email:
                     self.email_alert(error, is_retry=True)
             else:
@@ -1763,6 +1813,7 @@ class TaskInstance(Base, LoggingMixin):
                     self.log.info('All retries failed; marking task as FAILED')
                 else:
                     self.log.info('Marking task as FAILED.')
+                # 任务失败时发送邮件
                 if task.email_on_failure and task.email:
                     self.email_alert(error, is_retry=False)
         except Exception as e2:
@@ -1771,8 +1822,10 @@ class TaskInstance(Base, LoggingMixin):
 
         # Handling callbacks pessimistically
         try:
+            # 执行重试回调
             if self.state == State.UP_FOR_RETRY and task.on_retry_callback:
                 task.on_retry_callback(context)
+            # 执行失败回调
             if self.state == State.FAILED and task.on_failure_callback:
                 task.on_failure_callback(context)
         except Exception as e3:
@@ -1788,15 +1841,18 @@ class TaskInstance(Base, LoggingMixin):
     def get_template_context(self, session=None):
         task = self.task
         from airflow import macros
+        # 从参数中获取tables
         tables = None
         if 'tables' in task.params:
             tables = task.params['tables']
 
+        # 获得调度时间相关变量
         ds = self.execution_date.isoformat()[:10]
         ts = self.execution_date.isoformat()
         yesterday_ds = (self.execution_date - timedelta(1)).isoformat()[:10]
         tomorrow_ds = (self.execution_date + timedelta(1)).isoformat()[:10]
 
+        # 获得上一个调度和下一个调度时间
         prev_execution_date = task.dag.previous_schedule(self.execution_date)
         next_execution_date = task.dag.following_schedule(self.execution_date)
 
@@ -1814,6 +1870,7 @@ class TaskInstance(Base, LoggingMixin):
         if hasattr(task, 'dag'):
             if task.dag.params:
                 params.update(task.dag.params)
+            # 获得dag_run的运行run_id
             dag_run = (
                 session.query(DagRun)
                 .filter_by(
@@ -1926,6 +1983,7 @@ class TaskInstance(Base, LoggingMixin):
         send_email(task.email, title, body)
 
     def set_duration(self):
+        """设置任务执行的多久 ."""
         if self.end_date and self.start_date:
             self.duration = (self.end_date - self.start_date).total_seconds()
         else:
@@ -2016,6 +2074,7 @@ class TaskInstance(Base, LoggingMixin):
 
     @provide_session
     def get_num_running_task_instances(self, session):
+        """获得正在运行的任务实例的数量 ."""
         TI = TaskInstance
         return session.query(TI).filter(
             TI.dag_id == self.dag_id,
@@ -2359,9 +2418,9 @@ class BaseOperator(LoggingMixin):
         self.task_id = task_id
         self.owner = owner
         self.email = email
-        # 任务重试时发送邮件
+        # 任务重试时发送邮件 task.email_on_retry and task.email:
         self.email_on_retry = email_on_retry
-        # 任务执行失败时发送邮件
+        # 任务执行失败时发送邮件 task.email_on_failure and task.email
         self.email_on_failure = email_on_failure
         # 任务开始时间
         self.start_date = start_date
@@ -2398,6 +2457,7 @@ class BaseOperator(LoggingMixin):
         self.queue = queue
         self.pool = pool
         self.sla = sla
+        # 任务实例的执行超时时间，如果超时则抛出异常AirflowTaskTimeout
         self.execution_timeout = execution_timeout
         # 成功或失败回调
         self.on_failure_callback = on_failure_callback
@@ -5089,7 +5149,7 @@ class DagRun(Base, LoggingMixin):
 
     @provide_session
     def get_previous_scheduled_dagrun(self, session=None):
-        """获得上一个已经调度的dag实例
+        """获得上一个调度的dag实例
         The previous, SCHEDULED DagRun, if there is one"""
         dag = self.get_dag()
 
