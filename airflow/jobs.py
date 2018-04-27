@@ -2584,7 +2584,7 @@ class BackfillJob(BaseJob):
 
 
 class LocalTaskJob(BaseJob):
-
+    """job表中类型为LocalTaskJob的记录 ."""
     __mapper_args__ = {
         'polymorphic_identity': 'LocalTaskJob'
     }
@@ -2616,8 +2616,10 @@ class LocalTaskJob(BaseJob):
         super(LocalTaskJob, self).__init__(*args, **kwargs)
 
     def _execute(self):
+        # 获得任务执行器
         self.task_runner = get_task_runner(self)
 
+        # job终止信号处理函数
         def signal_handler(signum, frame):
             """Setting kill signal handler"""
             self.log.error("Received SIGTERM. Terminating subprocesses")
@@ -2625,6 +2627,7 @@ class LocalTaskJob(BaseJob):
             raise AirflowException("LocalTaskJob received SIGTERM signal")
         signal.signal(signal.SIGTERM, signal_handler)
 
+        # 任务实例执行前的验证
         if not self.task_instance._check_and_change_state_before_execution(
                 mark_success=self.mark_success,
                 ignore_all_deps=self.ignore_all_deps,
@@ -2637,19 +2640,26 @@ class LocalTaskJob(BaseJob):
             return
 
         try:
+            # 执行任务实例
             self.task_runner.start()
 
             last_heartbeat_time = time.time()
+            # 超过了这个时间，我们任务job因为长时间没有上报心跳而僵死
             heartbeat_time_limit = conf.getint('scheduler',
                                                'scheduler_zombie_task_threshold')
+
+            # 周期性检测任务实例执行结果
+            # 直到任务实例执行完成，或者心跳上报异常
             while True:
                 # Monitor the task to see if it's done
+                # 任务实例执行完成
                 return_code = self.task_runner.return_code()
                 if return_code is not None:
                     self.log.info(
                         "Task exited with return code %s", return_code)
                     return
 
+                # 上报心跳，如果心跳上报正常则进行下一次任务实例执行结果检测
                 # Periodically heartbeat so that the scheduler doesn't think this
                 # is a zombie
                 try:
@@ -2661,6 +2671,7 @@ class LocalTaskJob(BaseJob):
                         "Exception while trying to heartbeat! Sleeping for %s seconds",
                         self.heartrate
                     )
+                    # 调度器的运行间隔
                     time.sleep(self.heartrate)
 
                 # If it's been too long since we've heartbeat, then it's possible that
@@ -2668,6 +2679,7 @@ class LocalTaskJob(BaseJob):
                 # processes.
                 time_since_last_heartbeat = time.time() - last_heartbeat_time
                 if time_since_last_heartbeat > heartbeat_time_limit:
+                    # 只有上报心跳异常才可能执行
                     Stats.incr(
                         'local_task_job_prolonged_heartbeat_failure', 1, 1)
                     self.log.error("Heartbeat time limited exceeded!")
@@ -2679,18 +2691,20 @@ class LocalTaskJob(BaseJob):
             self.on_kill()
 
     def on_kill(self):
+        """关闭任务执行器 ."""
         self.task_runner.terminate()
         self.task_runner.on_finish()
 
     @provide_session
     def heartbeat_callback(self, session=None):
         """Self destruct task if state has been moved away from running externally"""
-
+        # 每次心跳是否终止任务执行器
         if self.terminating:
             # ensure termination if processes are created later
             self.task_runner.terminate()
             return
 
+        # 将任务实例的DB更新到ORM
         self.task_instance.refresh_from_db()
         ti = self.task_instance
 
@@ -2715,5 +2729,6 @@ class LocalTaskJob(BaseJob):
                 "State of this instance has been externally set to %s. Taking the poison pill.",
                 ti.state
             )
+            # 如果任务实例执行完成，则终止执行器，并标记job为终止状态
             self.task_runner.terminate()
             self.terminating = True
