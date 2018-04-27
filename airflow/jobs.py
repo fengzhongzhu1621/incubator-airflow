@@ -232,11 +232,14 @@ class BaseJob(Base, LoggingMixin):
         :return: the TIs reset (in expired SQLAlchemy state)
         :rtype: List(TaskInstance)
         """
+        # 获得队列中的任务实例
         queued_tis = self.executor.queued_tasks
         # also consider running as the state might not have changed in the db
         # yet
+        # 获得正在执行的任务实例
         running_tis = self.executor.running
 
+        # 从DB中获取已调度和在队列中的任务实例
         resettable_states = [State.SCHEDULED, State.QUEUED]
         TI = models.TaskInstance
         DR = models.DagRun
@@ -259,6 +262,7 @@ class BaseJob(Base, LoggingMixin):
         tis_to_reset = []
         # Can't use an update here since it doesn't support joins
         for ti in resettable_tis:
+            # 判断任务实例的主键是否在队列中
             if ti.key not in queued_tis and ti.key not in running_tis:
                 tis_to_reset.append(ti)
 
@@ -268,12 +272,14 @@ class BaseJob(Base, LoggingMixin):
                            for ti in tis_to_reset])
         if len(tis_to_reset) == 0:
             return []
+        # 将未放入队列中的任务实例记录加锁
         reset_tis = (
             session
             .query(TI)
             .filter(or_(*filter_for_tis), TI.state.in_(resettable_states))
             .with_for_update()
             .all())
+        # 设置状态为None
         for ti in reset_tis:
             ti.state = State.NONE
             session.merge(ti)
@@ -564,12 +570,15 @@ class SchedulerJob(BaseJob):
         self.do_pickle = do_pickle
         super(SchedulerJob, self).__init__(*args, **kwargs)
 
+        # 调度器的运行间隔
         self.heartrate = conf.getint('scheduler', 'SCHEDULER_HEARTBEAT_SEC')
+        # 调度器的线程数
         self.max_threads = conf.getint('scheduler', 'max_threads')
 
         if log:
             self._log = log
 
+        # sqlite数据库不能运行调度多线程
         self.using_sqlite = False
         if 'sqlite' in conf.get('core', 'sql_alchemy_conn'):
             if self.max_threads > 1:
@@ -580,6 +589,7 @@ class SchedulerJob(BaseJob):
 
         # How often to scan the DAGs directory for new files. Default to 5
         # minutes.
+        # 默认5分钟扫描一次dag目录
         self.dag_dir_list_interval = conf.getint('scheduler',
                                                  'dag_dir_list_interval')
         # How often to print out DAG file processing stats to the log. Default to
@@ -595,19 +605,21 @@ class SchedulerJob(BaseJob):
         self.min_file_parsing_loop_time = min_file_parsing_loop_time
 
         self.max_tis_per_query = conf.getint('scheduler', 'max_tis_per_query')
+        # 调度器的运行时长，-1表示永久
         if run_duration is None:
             self.run_duration = conf.getint('scheduler',
                                             'run_duration')
 
     @provide_session
     def manage_slas(self, dag, session=None):
-        """
+        """管理dag中所有任务的sla
         Finding all tasks that have SLAs defined, and sending alert emails
         where needed. New SLA misses are also recorded in the database.
 
         Where assuming that the scheduler runs often, so we only check for
         tasks that should have succeeded in the past hour.
         """
+        # 如果dag中所有的任务都没有设置sla，则不需要处理
         if not any([ti.sla for ti in dag.tasks]):
             self.log.info(
                 "Skipping SLA check for %s because no tasks in DAG have SLAs",
@@ -615,6 +627,7 @@ class SchedulerJob(BaseJob):
             )
             return
 
+        # 获得dag最近运行的所有成功的任务实例
         TI = models.TaskInstance
         sq = (
             session
@@ -640,7 +653,9 @@ class SchedulerJob(BaseJob):
             task = dag.get_task(ti.task_id)
             dttm = ti.execution_date
             if task.sla:
+                # 获得下一次调度时间，如果是单次调度，则返回None
                 dttm = dag.following_schedule(dttm)
+                # 如果任务实例的下一次调度超时task.sla时间后没有执行，则记录到数据库中
                 while dttm < timezone.utcnow():
                     following_schedule = dag.following_schedule(dttm)
                     if following_schedule + task.sla < timezone.utcnow():
@@ -652,6 +667,7 @@ class SchedulerJob(BaseJob):
                     dttm = dag.following_schedule(dttm)
         session.commit()
 
+        # 获得还没有发送通知的任务失效记录
         slas = (
             session
             .query(SlaMiss)
@@ -662,6 +678,7 @@ class SchedulerJob(BaseJob):
 
         if slas:
             sla_dates = [sla.execution_date for sla in slas]
+            # 获得失效的任务实例
             qry = (
                 session
                 .query(TI)
@@ -689,6 +706,7 @@ class SchedulerJob(BaseJob):
             # We consider email or the alert callback as notifications
             email_sent = False
             notification_sent = False
+            # 调用服务失效回调函数
             if dag.sla_miss_callback:
                 # Execute the alert callback
                 self.log.info(
@@ -716,6 +734,7 @@ class SchedulerJob(BaseJob):
                     for email in l:
                         if email not in emails:
                             emails.append(email)
+            # 发送邮件通知失效任务实例，所在的dag所有的任务负责人
             if emails and len(slas):
                 try:
                     send_email(
@@ -727,6 +746,7 @@ class SchedulerJob(BaseJob):
                 except Exception:
                     self.log.exception("Could not send SLA Miss email notification for"
                                        " DAG %s", dag.dag_id)
+            # 标记发送通知成功
             # If we sent any notification, update the sla_miss table
             if notification_sent:
                 for sla in slas:
@@ -739,7 +759,7 @@ class SchedulerJob(BaseJob):
     @staticmethod
     @provide_session
     def clear_nonexistent_import_errors(session, known_file_paths):
-        """
+        """清除已经解决的，不存在的导入错误
         Clears import errors for files that no longer exist.
 
         :param session: session for ORM operations
@@ -768,12 +788,14 @@ class SchedulerJob(BaseJob):
         :type dagbag: models.Dagbag
         """
         # Clear the errors of the processed files
+        # 删除已经接近的导入错误
         for dagbag_file in dagbag.file_last_changed:
             session.query(models.ImportError).filter(
                 models.ImportError.filename == dagbag_file
             ).delete()
 
         # Add the errors of the processed files
+        # 遍历导入异常，记录到数据库
         for filename, stacktrace in six.iteritems(dagbag.import_errors):
             session.add(models.ImportError(
                 filename=filename,
@@ -788,12 +810,14 @@ class SchedulerJob(BaseJob):
         Returns DagRun if one is scheduled. Otherwise returns None.
         """
         if dag.schedule_interval:
+            # 获得正在运行的所有内部dag_run
             active_runs = DagRun.find(
                 dag_id=dag.dag_id,
                 state=State.RUNNING,
                 external_trigger=False,
                 session=session
             )
+            # 如果一个dag的最大运行dag_run超出了阈值，则不再创建新的dag_run
             # return if already reached maximum active runs and no timeout
             # setting
             if len(active_runs) >= dag.max_active_runs and not dag.dagrun_timeout:
@@ -813,6 +837,7 @@ class SchedulerJob(BaseJob):
                 return
 
             # this query should be replaced by find dagrun
+            # 获得最近的一个dag_run
             qry = (
                 session.query(func.max(DagRun.execution_date))
                 .filter_by(dag_id=dag.dag_id)
@@ -830,6 +855,7 @@ class SchedulerJob(BaseJob):
 
             # don't do scheduler catchup for dag's that don't have dag.catchup
             # = True
+            # 设置dag的开始时间
             if not (dag.catchup or dag.schedule_interval == '@once'):
                 # The logic is that we move start_date up until
                 # one period before, so that timezone.utcnow() is AFTER
@@ -863,6 +889,7 @@ class SchedulerJob(BaseJob):
                 next_run_date = dag.following_schedule(last_scheduled_run)
 
             # make sure backfills are also considered
+            # 获得最近的dagrun
             last_run = dag.get_last_dagrun(session=session)
             if last_run and next_run_date:
                 while next_run_date <= last_run.execution_date:
@@ -918,7 +945,7 @@ class SchedulerJob(BaseJob):
 
     @provide_session
     def _process_task_instances(self, dag, queue, session=None):
-        """
+        """将正在运行的dag_run中的任务实例加入到queue中
         This method schedules the tasks for a single DAG by looking at the
         active DAG runs and adding task instances that should run to the
         queue.
@@ -952,6 +979,7 @@ class SchedulerJob(BaseJob):
             # todo: preferably the integrity check happens at dag collection
             # time
             run.verify_integrity(session=session)
+            # 更新dagrun的状态，由所有的任务实例的状态决定
             run.update_state(session=session)
             if run.state == State.RUNNING:
                 make_transient(run)
@@ -1041,7 +1069,7 @@ class SchedulerJob(BaseJob):
 
     @provide_session
     def __get_task_concurrency_map(self, states, session=None):
-        """
+        """获得dag中每个任务的实例数量
         Returns a map from tasks to number in the states list given.
 
         :param states: List of states to query for

@@ -3311,7 +3311,7 @@ class DAG(BaseDag, LoggingMixin):
         self.safe_dag_id = dag_id.replace('.', '__dot__')
         # 每个dag最多运行的dag_run数量
         self.max_active_runs = max_active_runs
-        # dag实例的超时时间，如果超时则创建一个新的dagrun
+        # dag实例的超时时间，如果超时则将当前正在运行的dag_run标记为失败，并重新创建一个新的dagrun
         self.dagrun_timeout = dagrun_timeout
         # 服务失效回调函数
         self.sla_miss_callback = sla_miss_callback
@@ -5431,7 +5431,9 @@ class Pool(Base):
 
 
 class SlaMiss(Base):
-    """
+    """SLA(正常运行时间保障协议)
+    SLA本质是一份服务水平保障协议，是服务供应商和客户之间达成的协议，它定义了前者像后者提供的服务级别和服务水平保证。无论租用共享空间、VPS、云服务器还是香港独立服务器，都需要SLA的保障。它的本质是保证您的网站或应用不应任何原因导致业务中止的比例。未符合您需求的正常运行时间SLA，可能无法保证您的网站或应用的可用性，从而使您丢失客户，并损害您的运营。
+    SLA则是服务商与您达成的正常运行时间保证。
     Model that stores a history of the SLA that have been missed.
     It is used to keep track of SLA failures over time and to avoid double
     triggering alert emails.
