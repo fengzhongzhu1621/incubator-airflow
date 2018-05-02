@@ -470,7 +470,7 @@ class DagBag(BaseDagBag, LoggingMixin):
             self,
             dag_folder=None,
             only_if_updated=True):
-        """
+        """根据dag文件夹路径加载dag
         Given a file path or a folder, this method looks for python modules,
         imports them and adds them to the dagbag collection.
 
@@ -897,6 +897,7 @@ class TaskInstance(Base, LoggingMixin):
         self.execution_date = execution_date
 
         self.queue = task.queue
+        # 任务插槽，用于对任务实例的数量进行限制
         self.pool = task.pool
         self.priority_weight = task.priority_weight_total
         # 记录了第几次重试
@@ -4209,6 +4210,7 @@ class DAG(BaseDag, LoggingMixin):
         # 获得执行器
         from airflow.jobs import BackfillJob
         if not executor and local:
+            # 使用单机并发执行器 LocalExecutor
             executor = LocalExecutor()
         elif not executor:
             executor = GetDefaultExecutor()
@@ -4217,14 +4219,22 @@ class DAG(BaseDag, LoggingMixin):
             self,
             start_date=start_date,
             end_date=end_date,
+            # 将任务实例标记为成功
             mark_success=mark_success,
+            # TODO 参数未使用
             include_adhoc=include_adhoc,
             executor=executor,
+            # 是否需要将dag对象序列化到db中，False表示需要
             donot_pickle=donot_pickle,
+            # 是否忽略任务依赖
             ignore_task_deps=ignore_task_deps,
+            # 是否忽略上次任务实例的依赖
             ignore_first_depends_on_past=ignore_first_depends_on_past,
+            # 任务实例插槽的数量，用于对任务实例的数量进行限制
             pool=pool,
+            # 如果dag_run实例超过了阈值，job执行时需要循环等待其他的dag_run运行完成，设置循环的间隔
             delay_on_limit_secs=delay_on_limit_secs)
+        # 运行job
         job.run()
 
     def cli(self):
@@ -4245,7 +4255,7 @@ class DAG(BaseDag, LoggingMixin):
                       external_trigger=False,
                       conf=None,
                       session=None):
-        """
+        """创建dag实例
         Creates a dag run from this dag including the tasks associated with this dag.
         Returns the dag run.
 
@@ -4262,6 +4272,7 @@ class DAG(BaseDag, LoggingMixin):
         :param session: database session
         :type session: Session
         """
+        # 创建一个dag实例
         run = DagRun(
             dag_id=self.dag_id,
             run_id=run_id,
@@ -4281,7 +4292,8 @@ class DAG(BaseDag, LoggingMixin):
 
         # create the associated task instances
         # state is None at the moment of creation
-        # 当创建一个dag_run，需要重新验证一下是否所有人任务都已经入库
+        # 创建任务实例
+        # 当创建一个dag_run，需要重新验证一下是否所有的任务都已经入库
         run.verify_integrity(session=session)
 
         # 从DB中获取最新的dag_run状态
@@ -5012,6 +5024,7 @@ class DagRun(Base, LoggingMixin):
 
         exec_date = func.cast(self.execution_date, DateTime)
 
+        # TODO (dag_id, run_id)可以确认唯一性，所以exec_date条件是多余的
         dr = session.query(DR).filter(
             DR.dag_id == self.dag_id,
             func.cast(DR.execution_date, DateTime) == exec_date,

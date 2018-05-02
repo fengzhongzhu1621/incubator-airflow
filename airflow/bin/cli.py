@@ -76,7 +76,9 @@ from airflow.www_rbac.app import cached_appbuilder
 from sqlalchemy import func
 from sqlalchemy.orm import exc
 
+# 加载认证模块
 api.load_auth()
+# 加载api连接类
 api_module = import_module(conf.get('cli', 'api_client'))
 api_client = api_module.Client(api_base_url=conf.get('cli', 'endpoint_url'),
                                auth=api.api_auth.client_auth)
@@ -92,9 +94,12 @@ def sigquit_handler(sig, frame):
     """Helps debug deadlocks by printing stacktraces when this gets a SIGQUIT
     e.g. kill -s QUIT <PID> or CTRL+\
     """
+    # 获得主线程
     print("Dumping stack traces for all threads in PID {}".format(os.getpid()))
+    # 获得活动子线程的线程ID和名称的映射关系
     id_to_name = dict([(th.ident, th.name) for th in threading.enumerate()])
     code = []
+    # 获得线程栈
     for thread_id, stack in sys._current_frames().items():
         code.append("\n# Thread: {}({})"
                     .format(id_to_name.get(thread_id, ""), thread_id))
@@ -107,6 +112,7 @@ def sigquit_handler(sig, frame):
 
 
 def setup_logging(filename):
+    """初始化root日志 ."""
     root = logging.getLogger()
     handler = logging.FileHandler(filename)
     formatter = logging.Formatter(settings.SIMPLE_LOG_FORMAT)
@@ -118,19 +124,25 @@ def setup_logging(filename):
 
 
 def setup_locations(process, pid=None, stdout=None, stderr=None, log=None):
+    """获得pid文件路径 ."""
     if not stderr:
-        stderr = os.path.join(os.path.expanduser(settings.AIRFLOW_HOME), "airflow-{}.err".format(process))
+        stderr = os.path.join(os.path.expanduser(
+            settings.AIRFLOW_HOME), "airflow-{}.err".format(process))
     if not stdout:
-        stdout = os.path.join(os.path.expanduser(settings.AIRFLOW_HOME), "airflow-{}.out".format(process))
+        stdout = os.path.join(os.path.expanduser(
+            settings.AIRFLOW_HOME), "airflow-{}.out".format(process))
     if not log:
-        log = os.path.join(os.path.expanduser(settings.AIRFLOW_HOME), "airflow-{}.log".format(process))
+        log = os.path.join(os.path.expanduser(
+            settings.AIRFLOW_HOME), "airflow-{}.log".format(process))
     if not pid:
-        pid = os.path.join(os.path.expanduser(settings.AIRFLOW_HOME), "airflow-{}.pid".format(process))
+        pid = os.path.join(os.path.expanduser(
+            settings.AIRFLOW_HOME), "airflow-{}.pid".format(process))
 
     return pid, stdout, stderr, log
 
 
 def process_subdir(subdir):
+    """将子dag路径中的DAGS_FOLDER常量替换 ."""
     if subdir:
         subdir = subdir.replace('DAGS_FOLDER', settings.DAGS_FOLDER)
         subdir = os.path.abspath(os.path.expanduser(subdir))
@@ -138,6 +150,7 @@ def process_subdir(subdir):
 
 
 def get_dag(args):
+    """根据命令行参数dag_id获得dag对象 ."""
     dagbag = DagBag(process_subdir(args.subdir))
     if args.dag_id not in dagbag.dags:
         raise AirflowException(
@@ -147,6 +160,7 @@ def get_dag(args):
 
 
 def get_dags(args):
+    """根据命令行参数dag_id/dag_regex(模糊匹配)获得多个dag对象 ."""
     if not args.dag_regex:
         return [get_dag(args)]
     dagbag = DagBag(process_subdir(args.subdir))
@@ -185,19 +199,30 @@ def backfill(args, dag=None):
         for task in dag.tasks:
             print("Task {0}".format(task.task_id))
             ti = TaskInstance(task, args.start_date)
+            # 渲染任务模板参数，并打印渲染后的内容，不会运行任务实例
             ti.dry_run()
     else:
         dag.run(
+            # 开始调度时间 (>=)
             start_date=args.start_date,
+            # 结束调度时间 (<=)
             end_date=args.end_date,
+            # 将任务实例标记为成功
             mark_success=args.mark_success,
+            # TODO 参数未使用
             include_adhoc=args.include_adhoc,
+            # 使用单机并发执行器 LocalExecutor
             local=args.local,
+            # 是否需要将dag对象序列化到db中，False表示需要
             donot_pickle=(args.donot_pickle or
                           conf.getboolean('core', 'donot_pickle')),
+            # 是否忽略上次任务实例的依赖
             ignore_first_depends_on_past=args.ignore_first_depends_on_past,
+            # 是否忽略任务依赖
             ignore_task_deps=args.ignore_dependencies,
+            # 任务插槽名称，用于对任务实例的数量进行限制
             pool=args.pool,
+            # 如果dag_run实例超过了阈值，job执行时需要循环等待其他的dag_run运行完成，设置循环的间隔
             delay_on_limit_secs=args.delay_on_limit)
 
 
@@ -340,7 +365,8 @@ def export_helper(filepath):
 
     with open(filepath, 'w') as varfile:
         varfile.write(json.dumps(var_dict, sort_keys=True, indent=4))
-    print("{} variables successfully exported to {}".format(len(var_dict), filepath))
+    print("{} variables successfully exported to {}".format(
+        len(var_dict), filepath))
 
 
 @cli_utils.action_logging
@@ -681,15 +707,18 @@ def restart_workers(gunicorn_master_proc, num_workers_expected, master_timeout):
             num_ready_workers_running = \
                 get_num_ready_workers_running(gunicorn_master_proc)
 
-            state = '[{0} / {1}]'.format(num_ready_workers_running, num_workers_running)
+            state = '[{0} / {1}]'.format(num_ready_workers_running,
+                                         num_workers_running)
 
-            # Whenever some workers are not ready, wait until all workers are ready
+            # Whenever some workers are not ready, wait until all workers are
+            # ready
             if num_ready_workers_running < num_workers_running:
                 log.debug('%s some workers are starting up, waiting...', state)
                 sys.stdout.flush()
                 time.sleep(1)
 
-            # Kill a worker gracefully by asking gunicorn to reduce number of workers
+            # Kill a worker gracefully by asking gunicorn to reduce number of
+            # workers
             elif num_workers_running > num_workers_expected:
                 excess = num_workers_running - num_workers_expected
                 log.debug('%s killing %s workers', state, excess)
@@ -698,12 +727,15 @@ def restart_workers(gunicorn_master_proc, num_workers_expected, master_timeout):
                     gunicorn_master_proc.send_signal(signal.SIGTTOU)
                     excess -= 1
                     wait_until_true(lambda: num_workers_expected + excess ==
-                                    get_num_workers_running(gunicorn_master_proc),
+                                    get_num_workers_running(
+                                        gunicorn_master_proc),
                                     master_timeout)
 
-            # Start a new worker by asking gunicorn to increase number of workers
+            # Start a new worker by asking gunicorn to increase number of
+            # workers
             elif num_workers_running == num_workers_expected:
-                refresh_interval = conf.getint('webserver', 'worker_refresh_interval')
+                refresh_interval = conf.getint(
+                    'webserver', 'worker_refresh_interval')
                 log.debug(
                     '%s sleeping for %ss starting doing a refresh...',
                     state, refresh_interval
@@ -736,8 +768,10 @@ def restart_workers(gunicorn_master_proc, num_workers_expected, master_timeout):
 def webserver(args):
     print(settings.HEADER)
 
-    access_logfile = args.access_logfile or conf.get('webserver', 'access_logfile')
-    error_logfile = args.error_logfile or conf.get('webserver', 'error_logfile')
+    access_logfile = args.access_logfile or conf.get(
+        'webserver', 'access_logfile')
+    error_logfile = args.error_logfile or conf.get(
+        'webserver', 'error_logfile')
     num_workers = args.workers or conf.get('webserver', 'workers')
     worker_timeout = (args.worker_timeout or
                       conf.get('webserver', 'web_server_worker_timeout'))
@@ -812,8 +846,10 @@ def webserver(args):
         def monitor_gunicorn(gunicorn_master_proc):
             # These run forever until SIG{INT, TERM, KILL, ...} signal is sent
             if conf.getint('webserver', 'worker_refresh_interval') > 0:
-                master_timeout = conf.getint('webserver', 'web_server_master_timeout')
-                restart_workers(gunicorn_master_proc, num_workers, master_timeout)
+                master_timeout = conf.getint(
+                    'webserver', 'web_server_master_timeout')
+                restart_workers(gunicorn_master_proc,
+                                num_workers, master_timeout)
             else:
                 while True:
                     time.sleep(1)
@@ -841,7 +877,8 @@ def webserver(args):
                             gunicorn_master_proc_pid = int(f.read())
                             break
                     except IOError:
-                        log.debug("Waiting for gunicorn's pid file to be created.")
+                        log.debug(
+                            "Waiting for gunicorn's pid file to be created.")
                         time.sleep(0.1)
 
                 gunicorn_master_proc = psutil.Process(gunicorn_master_proc_pid)
@@ -869,7 +906,8 @@ def scheduler(args):
         do_pickle=args.do_pickle)
 
     if args.daemon:
-        pid, stdout, stderr, log_file = setup_locations("scheduler", args.pid, args.stdout, args.stderr, args.log_file)
+        pid, stdout, stderr, log_file = setup_locations(
+            "scheduler", args.pid, args.stdout, args.stderr, args.log_file)
         handle = setup_logging(log_file)
         stdout = open(stdout, 'w+')
         stderr = open(stderr, 'w+')
@@ -932,7 +970,8 @@ def worker(args):
     }
 
     if args.daemon:
-        pid, stdout, stderr, log_file = setup_locations("worker", args.pid, args.stdout, args.stderr, args.log_file)
+        pid, stdout, stderr, log_file = setup_locations(
+            "worker", args.pid, args.stdout, args.stderr, args.log_file)
         handle = setup_logging(log_file)
         stdout = open(stdout, 'w+')
         stderr = open(stderr, 'w+')
@@ -944,7 +983,8 @@ def worker(args):
             stderr=stderr,
         )
         with ctx:
-            sp = subprocess.Popen(['airflow', 'serve_logs'], env=env, close_fds=True)
+            sp = subprocess.Popen(
+                ['airflow', 'serve_logs'], env=env, close_fds=True)
             worker.run(**options)
             sp.kill()
 
@@ -954,7 +994,8 @@ def worker(args):
         signal.signal(signal.SIGINT, sigint_handler)
         signal.signal(signal.SIGTERM, sigint_handler)
 
-        sp = subprocess.Popen(['airflow', 'serve_logs'], env=env, close_fds=True)
+        sp = subprocess.Popen(['airflow', 'serve_logs'],
+                              env=env, close_fds=True)
 
         worker.run(**options)
         sp.kill()
@@ -972,7 +1013,7 @@ def resetdb(args):
     print("DB: " + repr(settings.engine.url))
     if args.yes or input(
         "This will drop existing tables if they exist. "
-        "Proceed? (y/n)").upper() == "Y":
+            "Proceed? (y/n)").upper() == "Y":
         db_utils.resetdb(settings.RBAC)
     else:
         print("Bail.")
@@ -989,7 +1030,7 @@ def upgradedb(args):  # noqa
     if not ds_rows:
         qry = (
             session.query(DagRun.dag_id, DagRun.state, func.count('*'))
-                .group_by(DagRun.dag_id, DagRun.state)
+            .group_by(DagRun.dag_id, DagRun.state)
         )
         for dag_id, state, count in qry:
             session.add(DagStat(dag_id=dag_id, state=state, count=count))
@@ -1113,8 +1154,8 @@ def connections(args):
 
         session = settings.Session()
         if not (session
-                    .query(Connection)
-                    .filter(Connection.conn_id == new_conn.conn_id).first()):
+                .query(Connection)
+                .filter(Connection.conn_id == new_conn.conn_id).first()):
             session.add(new_conn)
             session.commit()
             msg = '\n\tSuccessfully added `conn_id`={conn_id} : {uri}\n'
@@ -1147,7 +1188,8 @@ def flower(args):
         flower_conf = '--conf=' + args.flower_conf
 
     if args.daemon:
-        pid, stdout, stderr, log_file = setup_locations("flower", args.pid, args.stdout, args.stderr, args.log_file)
+        pid, stdout, stderr, log_file = setup_locations(
+            "flower", args.pid, args.stdout, args.stderr, args.log_file)
         stdout = open(stdout, 'w+')
         stderr = open(stderr, 'w+')
 

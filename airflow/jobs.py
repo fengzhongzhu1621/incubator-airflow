@@ -2542,6 +2542,7 @@ class BackfillJob(BaseJob):
             session.commit()
             pickle_id = pickle.id
 
+        # 启动调度器
         executor = self.executor
         executor.start()
 
