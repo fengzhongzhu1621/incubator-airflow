@@ -133,7 +133,6 @@ gcp_api = [
     'google-api-python-client>=1.5.0, <1.6.0',
     'oauth2client>=2.0.2, <2.1.0',
     'PyOpenSSL',
-    'google-cloud-dataflow>=2.2.0',
     'pandas-gbq'
 ]
 hdfs = ['snakebite>=2.7.8']
@@ -152,6 +151,7 @@ mysql = ['mysqlclient>=1.3.6']
 rabbitmq = ['librabbitmq>=1.6.1']
 oracle = ['cx_Oracle>=5.1.2']
 postgres = ['psycopg2-binary>=2.7.4']
+pinot = ['pinotdb>=0.1.1']
 ssh = ['paramiko>=2.1.1', 'pysftp>=0.2.9']
 salesforce = ['simple-salesforce>=0.72']
 s3 = ['boto3>=1.7.0']
@@ -178,7 +178,7 @@ snowflake = ['snowflake-connector-python>=1.5.2',
              'snowflake-sqlalchemy>=1.1.0']
 zendesk = ['zdesk']
 
-all_dbs = postgres + mysql + hive + mssql + hdfs + vertica + cloudant + druid
+all_dbs = postgres + mysql + hive + mssql + hdfs + vertica + cloudant + druid + pinot
 devel = [
     'click',
     'freezegun',
@@ -201,13 +201,12 @@ devel_hadoop = devel_minreq + hive + hdfs + webhdfs + kerberos
 devel_all = (sendgrid + devel + all_dbs + doc + samba + s3 + slack + crypto + oracle +
              docker + ssh + kubernetes + celery + azure + redis + gcp_api + datadog +
              zendesk + jdbc + ldap + kerberos + password + webhdfs + jenkins +
-             druid + snowflake + elasticsearch)
+             druid + pinot + snowflake + elasticsearch)
 
 # Snakebite & Google Cloud Dataflow are not Python 3 compatible :'(
 if PY3:
     devel_ci = [package for package in devel_all if package not in
-                ['snakebite>=2.7.8', 'snakebite[kerberos]>=2.7.8',
-                 'google-cloud-dataflow>=2.2.0']]
+                ['snakebite>=2.7.8', 'snakebite[kerberos]>=2.7.8']]
 else:
     devel_ci = devel_all
 
@@ -295,6 +294,7 @@ def do_setup():
             'mysql': mysql,
             'oracle': oracle,
             'password': password,
+            'pinot': pinot,
             'postgres': postgres,
             'qds': qds,
             'rabbitmq': rabbitmq,
