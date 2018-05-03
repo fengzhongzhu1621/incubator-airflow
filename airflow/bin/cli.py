@@ -188,18 +188,20 @@ def backfill(args, dag=None):
     args.end_date = args.end_date or args.start_date
     args.start_date = args.start_date or args.end_date
 
+    # 获得dag的子集，如果忽略依赖则匹配的任务不会包含上游任务
     if args.task_regex:
         dag = dag.sub_dag(
             task_regex=args.task_regex,
             include_upstream=not args.ignore_dependencies)
 
+    # 模拟运行
     if args.dry_run:
         print("Dry run of DAG {0} on {1}".format(args.dag_id,
                                                  args.start_date))
         for task in dag.tasks:
             print("Task {0}".format(task.task_id))
             ti = TaskInstance(task, args.start_date)
-            # 渲染任务模板参数，并打印渲染后的内容，不会运行任务实例
+            # 渲染任务模板参数，并打印渲染后的模板参数内容，不会运行任务实例
             ti.dry_run()
     else:
         dag.run(

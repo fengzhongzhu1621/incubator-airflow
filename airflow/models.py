@@ -2474,6 +2474,8 @@ class BaseOperator(LoggingMixin):
         self.retry_exponential_backoff = retry_exponential_backoff
         self.max_retry_delay = max_retry_delay
         self.params = params or {}  # Available in templates!
+        # 即席查询（Ad Hoc）是用户根据自己的需求，灵活的选择查询条件，系统能够根据用户的选择生成相应的统计报表。
+        # 即席查询与普通应用查询最大的不同是普通的应用查询是定制开发的，而即席查询是由用户自定义查询条件的。
         self.adhoc = adhoc
         # 任务优先级
         self.priority_weight = priority_weight
@@ -4015,33 +4017,39 @@ class DAG(BaseDag, LoggingMixin):
 
     def sub_dag(self, task_regex, include_downstream=False,
                 include_upstream=True):
-        """
+        """返回当前dag的子集
         Returns a subset of the current dag as a deep copy of the current dag
         based on a regex that should match one or many tasks, and includes
         upstream and downstream neighbours based on the flag passed.
         """
-
+        # 拷贝dag
         dag = copy.deepcopy(self)
 
+        # 根据任务ID模糊匹配，获得匹配的任务
         regex_match = [
             t for t in dag.tasks if re.findall(task_regex, t.task_id)]
         also_include = []
         for t in regex_match:
+            # 包含匹配任务的所有下游任务
             if include_downstream:
                 also_include += t.get_flat_relatives(upstream=False)
+            # 包含匹配任务的所有上游任务
             if include_upstream:
                 also_include += t.get_flat_relatives(upstream=True)
 
         # Compiling the unique list of tasks that made the cut
         dag.task_dict = {t.task_id: t for t in regex_match + also_include}
+        # dag.tasks 其实就是 regex_match + also_include
         for t in dag.tasks:
             # Removing upstream/downstream references to tasks that did not
             # made the cut
+            # 通过交集，去掉原有任务的上下游关联任务
             t._upstream_task_ids = t._upstream_task_ids.intersection(
                 dag.task_dict.keys())
             t._downstream_task_ids = t._downstream_task_ids.intersection(
                 dag.task_dict.keys())
 
+        # 如果dag子集的任务数量小于父集的数量，则标记子集的partial为True
         if len(dag.tasks) < len(self.tasks):
             dag.partial = True
 
@@ -4272,7 +4280,9 @@ class DAG(BaseDag, LoggingMixin):
         :param session: database session
         :type session: Session
         """
-        # 创建一个dag实例
+        # 创建一个dag实例，插入到DB中
+        # （dag_id, run_id）是唯一键，需要在调用函数中判断唯一性
+        # 注意：同一个调度时间可能有多个不同的run_id
         run = DagRun(
             dag_id=self.dag_id,
             run_id=run_id,
@@ -4283,20 +4293,23 @@ class DAG(BaseDag, LoggingMixin):
             state=state
         )
         session.add(run)
-
+        # 添加dag状态统计记录
         DagStat.set_dirty(dag_id=self.dag_id, session=session)
 
         session.commit()
 
+        # 因为dag_run中没有设置dag的外键，所以需要显式设置
         run.dag = self
 
         # create the associated task instances
         # state is None at the moment of creation
-        # 创建任务实例
+        # 根据dag实例，创建任务实例
         # 当创建一个dag_run，需要重新验证一下是否所有的任务都已经入库
+        # TODO 没有必要调用
         run.verify_integrity(session=session)
 
-        # 从DB中获取最新的dag_run状态
+        # 从DB中获取最新的dag_run状态和自增ID
+        # TODO 没有必要调用
         run.refresh_from_db()
 
         return run
@@ -4850,15 +4863,16 @@ class DagStat(Base):
         :return:
         """
         # 给dag的每一种状态都创建一条记录
+        # 将统计表中不存在的状态插入到db中
         DagStat.create(dag_id=dag_id, session=session)
 
         try:
-            # 给指定的dag记录加行锁
+            # 给指定的dag所有的状态行加行锁
             stats = session.query(DagStat).filter(
                 DagStat.dag_id == dag_id
             ).with_for_update().all()
 
-            # 设置dirty标记
+            # 修改设置dirty标记
             for stat in stats:
                 stat.dirty = True
             session.commit()
@@ -5090,10 +5104,10 @@ class DagRun(Base, LoggingMixin):
 
     @provide_session
     def get_task_instances(self, state=None, session=None):
-        """
+        """获得当前dag实例的多个任务实例
         Returns the task instances for this dag run
         """
-        # 获得任务实例
+        # 获得当前dag实例的所有任务实例
         TI = TaskInstance
         tis = session.query(TI).filter(
             TI.dag_id == self.dag_id,
@@ -5113,7 +5127,7 @@ class DagRun(Base, LoggingMixin):
                 else:
                     tis = tis.filter(TI.state.in_(state))
 
-        # 是否获得部分任务，由dag设置
+        # 如果dag是子集，则只需要获得部分任务实例
         if self.dag and self.dag.partial:
             tis = tis.filter(TI.task_id.in_(self.dag.task_ids))
 
@@ -5285,13 +5299,14 @@ class DagRun(Base, LoggingMixin):
 
     @provide_session
     def verify_integrity(self, session=None):
-        """验证任务实例，因为任务可能被删除或者新的任务没有被添加到DB中
+        """根据dag实例，创建任务实例；验证任务实例，因为任务可能被删除或者新的任务没有被添加到DB中
         Verifies the DagRun by checking for removed tasks or tasks that are not in the
         database yet. It will set state to removed or add the task if required.
         """
         dag = self.get_dag()
 
-        # 获得关联的所有任务实例
+        # 根据(dag_id,execution_date)获得当前dagrun关联的所有任务实例
+        # 注意： 同一个execution_date可能有多个run_id
         tis = self.get_task_instances(session=session)
 
         # check for removed or restored tasks
@@ -5299,13 +5314,18 @@ class DagRun(Base, LoggingMixin):
         for ti in tis:
             task_ids.append(ti.task_id)
             task = None
+            # 将不存在的任务标记为删除
             try:
                 task = dag.get_task(ti.task_id)
             except AirflowException:
-                # 任务不存在且实例已经被标记为删除
+                # dag.task_dict中不存在这个任务
+                # 用户修改了dag文件，去掉了部分task声明
                 if ti.state == State.REMOVED:
+                    # 任务不存在且实例已经被标记为删除
                     pass  # ti has already been removed, just ignore it
                 elif self.state is not State.RUNNING and not dag.partial:
+                    # 任务不存在且实例不是运行态
+                    # TODO 不明白为什么要对dag.partial进行判断
                     self.log.warning("Failed to get task '{}' for dag '{}'. "
                                      "Marking it as removed.".format(ti, dag))
                     Stats.incr(
@@ -5313,10 +5333,7 @@ class DagRun(Base, LoggingMixin):
                     # 标记任务实例为删除状态
                     ti.state = State.REMOVED
 
-            # 如果任务存在，但是被标记为删除状态，需要变更任务状态为None
-            # 区别如下：
-            # 1. None状态任务实例： 表明任务在dag中，但是被标记为了REMOVED
-            # 2. REMOVE状态任务实例： 表明任务不再dag中，且没有运行，且dag不是部分任务
+            # 如果任务在dag.task_dict中存在，但是被标记为删除状态，需要变更任务状态为None
             is_task_in_dag = task is not None
             should_restore_task = is_task_in_dag and ti.state == State.REMOVED
             if should_restore_task:
@@ -5328,6 +5345,7 @@ class DagRun(Base, LoggingMixin):
         # 添加缺失的任务实例： 例如dag变更后新增了任务
         # check for missing tasks
         for task in six.itervalues(dag.task_dict):
+            # 如果任务类型是即席查询，则不会创建任务实例
             if task.adhoc:
                 continue
 

@@ -43,7 +43,8 @@ def trigger_dag(dag_id, run_id=None, conf=None, execution_date=None):
     # 去掉微妙
     execution_date = execution_date.replace(microsecond=0)
 
-    # 获得dag实例运行ID
+    # 获得dag实例运行ID，默认调度时间与run_id关联
+    # 还有一种情况是，同一个调度时间有多个run_id
     if not run_id:
         run_id = "manual__{0}".format(execution_date.isoformat())
 
@@ -60,7 +61,7 @@ def trigger_dag(dag_id, run_id=None, conf=None, execution_date=None):
     if conf:
         run_conf = json.loads(conf)
 
-    # 创建dag_run
+    # 创建dag_run，并返回此实例
     trigger = dag.create_dagrun(
         run_id=run_id,
         execution_date=execution_date,
@@ -69,4 +70,5 @@ def trigger_dag(dag_id, run_id=None, conf=None, execution_date=None):
         external_trigger=True
     )
 
+    # 返回dag实例
     return trigger
