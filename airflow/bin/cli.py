@@ -204,6 +204,7 @@ def backfill(args, dag=None):
             # 渲染任务模板参数，并打印渲染后的模板参数内容，不会运行任务实例
             ti.dry_run()
     else:
+        # 调用 BackfillJob.run()
         dag.run(
             # 开始调度时间 (>=)
             start_date=args.start_date,
