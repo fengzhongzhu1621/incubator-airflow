@@ -4303,13 +4303,11 @@ class DAG(BaseDag, LoggingMixin):
 
         # create the associated task instances
         # state is None at the moment of creation
-        # 根据dag实例，创建任务实例
-        # 当创建一个dag_run，需要重新验证一下是否所有的任务都已经入库
-        # TODO 没有必要调用
+        # 根据dag实例，创建所有的任务实例
         run.verify_integrity(session=session)
 
         # 从DB中获取最新的dag_run状态和自增ID
-        # TODO 没有必要调用
+        # 在外部触发时，下面的方法其实没有必要调用
         run.refresh_from_db()
 
         return run
@@ -5307,9 +5305,12 @@ class DagRun(Base, LoggingMixin):
 
         # 根据(dag_id,execution_date)获得当前dagrun关联的所有任务实例
         # 注意： 同一个execution_date可能有多个run_id
+        # 一般情况下创建一个新的dag_run，tis为[]
         tis = self.get_task_instances(session=session)
 
         # check for removed or restored tasks
+        # 这种情况发生在 execution_date 相同但是run_id不同的情况下
+        # 即系统触发的dag_run和用户外部触发的dag_run调度时间刚好一致，但是run_id不一样
         task_ids = []
         for ti in tis:
             task_ids.append(ti.task_id)
@@ -5320,6 +5321,7 @@ class DagRun(Base, LoggingMixin):
             except AirflowException:
                 # dag.task_dict中不存在这个任务
                 # 用户修改了dag文件，去掉了部分task声明
+                # 此时用户手工触发dag_run，它的调度时间刚好和系统正在调度的时间一致
                 if ti.state == State.REMOVED:
                     # 任务不存在且实例已经被标记为删除
                     pass  # ti has already been removed, just ignore it
@@ -5349,6 +5351,7 @@ class DagRun(Base, LoggingMixin):
             if task.adhoc:
                 continue
 
+            # 补齐确实的任务实例
             if task.task_id not in task_ids:
                 ti = TaskInstance(task, self.execution_date)
                 session.add(ti)
