@@ -68,6 +68,21 @@ def utcnow():
     return d
 
 
+def utc_epoch():
+    """
+    Gets the epoch in the users timezone
+    :return:
+    """
+
+    # pendulum utcnow() is not used as that sets a TimezoneInfo object
+    # instead of a Timezone. This is not pickable and also creates issues
+    # when using replace()
+    d = dt.datetime(1970, 1, 1)
+    d = d.replace(tzinfo=utc)
+
+    return d
+
+
 def convert_to_utc(value):
     """
     1. 给无时区的datetime对象添加默认时区信息，并转化为UTC时区

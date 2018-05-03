@@ -1265,6 +1265,8 @@ def create_user(args):
 
     if args.use_random_password:
         password = ''.join(random.choice(string.printable) for _ in range(16))
+    elif args.password:
+        password = args.password
     else:
         password = getpass.getpass('Password:')
         password_confirmation = getpass.getpass('Repeat for confirmation:')
@@ -1666,6 +1668,10 @@ class CLIFactory(object):
             ('-u', '--username',),
             help='Username of the user',
             type=str),
+        'password': Arg(
+            ('-p', '--password',),
+            help='Password of the user',
+            type=str),
         'use_random_password': Arg(
             ('--use_random_password',),
             help='Do not prompt for password.  Use random string instead',
@@ -1812,7 +1818,7 @@ class CLIFactory(object):
             'func': create_user,
             'help': "Create an admin account",
             'args': ('role', 'username', 'email', 'firstname', 'lastname',
-                     'use_random_password'),
+                     'password', 'use_random_password'),
         },
     )
     subparsers_dict = {sp['func'].__name__: sp for sp in subparsers}
