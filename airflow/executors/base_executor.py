@@ -87,7 +87,7 @@ class BaseExecutor(LoggingMixin):
             pool=pool,
             pickle_id=pickle_id,
             cfg_path=cfg_path)
-        # 将任务放入队列
+        # 将任务实例放入队列
         self.queue_command(
             task_instance,
             command,

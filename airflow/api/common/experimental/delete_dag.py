@@ -56,6 +56,7 @@ def delete_dag(dag_id):
         if hasattr(m, "dag_id"):
             # 注意：dag子集中的dag_id = dag_id + .
             cond = or_(m.dag_id == dag_id, m.dag_id.like(dag_id + ".%"))
+            # TODO 为什么使用fetch模式
             count += session.query(m).filter(
                 cond).delete(synchronize_session='fetch')
 

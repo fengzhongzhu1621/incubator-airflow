@@ -311,6 +311,7 @@ def variables(args):
         session.close()
     if args.set:
         Variable.set(args.set[0], args.set[1])
+    # 从文件中批量导入
     # Work around 'import' as a reserved keyword
     imp = getattr(args, 'import')
     if imp:
@@ -318,6 +319,7 @@ def variables(args):
             import_helper(imp)
         else:
             print("Missing variables file.")
+    # 批量导出
     if args.export:
         export_helper(args.export)
     if not (args.set or args.get or imp or args.export or args.delete):
@@ -340,6 +342,7 @@ def import_helper(filepath):
         try:
             n = 0
             for k, v in d.items():
+                # 仅支持字典格式
                 if isinstance(v, dict):
                     Variable.set(k, v, serialize_json=True)
                 else:
@@ -396,18 +399,24 @@ def set_is_paused(is_paused, args, dag=None):
 
 
 def _run(args, dag, ti):
+    """执行任务实例 ."""
     if args.local:
         run_job = jobs.LocalTaskJob(
             task_instance=ti,
             mark_success=args.mark_success,
             pickle_id=args.pickle,
+            # 是否忽略所有依赖
             ignore_all_deps=args.ignore_all_dependencies,
+            # 是否忽略过去的任务实例依赖
             ignore_depends_on_past=args.ignore_depends_on_past,
+            # 是否忽略任务依赖
             ignore_task_deps=args.ignore_dependencies,
+            # 是否忽略任务实例状态
             ignore_ti_state=args.force,
             pool=args.pool)
         run_job.run()
     elif args.raw:
+        # 不检查依赖，也不经过调度器而直接执行operator
         ti._run_raw_task(
             mark_success=args.mark_success,
             job_id=args.job_id,
@@ -431,8 +440,11 @@ def _run(args, dag, ti):
                 print(e)
                 raise e
 
+        # 获得默认执行器并执行
         executor = GetDefaultExecutor()
         executor.start()
+
+        # 将任务实例生成可执行的shell命令，发送给任务队列
         print("Sending to executor.")
         executor.queue_task_instance(
             ti,
@@ -443,6 +455,8 @@ def _run(args, dag, ti):
             ignore_task_deps=args.ignore_dependencies,
             ignore_ti_state=args.force,
             pool=args.pool)
+
+        # 执行shell命令（airflow run --raw）
         executor.heartbeat()
         executor.end()
 
@@ -451,6 +465,7 @@ def _run(args, dag, ti):
 def run(args, dag=None):
     # Disable connection pooling to reduce the # of connections on the DB
     # while it's waiting for the task to finish.
+    # 创建没有DB连接池的session
     settings.configure_orm(disable_connection_pool=True)
 
     if dag:
@@ -459,6 +474,7 @@ def run(args, dag=None):
     log = LoggingMixin().log
 
     # Load custom airflow config
+    # 加载自定义配置文件
     if args.cfg_path:
         with open(args.cfg_path, 'r') as conf_file:
             conf_dict = json.load(conf_file)
@@ -472,6 +488,7 @@ def run(args, dag=None):
         settings.configure_vars()
         settings.configure_orm()
 
+    # 获得dag
     if not args.pickle and not dag:
         dag = get_dag(args)
     elif not dag:
@@ -483,18 +500,26 @@ def run(args, dag=None):
             raise AirflowException("Who hid the pickle!? [missing pickle]")
         dag = dag_pickle.pickle
 
+    # 获得指定的任务
     task = dag.get_task(task_id=args.task_id)
+
+    # 创建任务实例
     ti = TaskInstance(task, args.execution_date)
     ti.refresh_from_db()
 
+    # 将任务实例设置到日志的上下文中
+    # 执行处理器的set_context()方法
+    # 即创建任务实例的日志目录
     ti.init_run_context(raw=args.raw)
 
     hostname = get_hostname()
     log.info("Running %s on host %s", ti, hostname)
 
+    # 执行任务实例
     if args.interactive:
         _run(args, dag, ti)
     else:
+        # 输入输出重定向到ti.log
         with redirect_stdout(ti.log, logging.INFO), redirect_stderr(ti.log, logging.WARN):
             _run(args, dag, ti)
     logging.shutdown()
@@ -515,10 +540,13 @@ def task_failed_deps(args):
     task = dag.get_task(task_id=args.task_id)
     ti = TaskInstance(task, args.execution_date)
 
+    # 创建调度依赖上下文
     dep_context = DepContext(deps=SCHEDULER_DEPS)
+    # 判断当前任务实例是否满足上面的依赖
     failed_deps = list(ti.get_failed_dep_statuses(dep_context=dep_context))
     # TODO, Do we want to print or log this
     if failed_deps:
+        # 打印不满足的依赖
         print("Task instance dependencies not met:")
         for dep in failed_deps:
             print("{}: {}".format(dep.dep_name, dep.reason))
@@ -528,7 +556,7 @@ def task_failed_deps(args):
 
 @cli_utils.action_logging
 def task_state(args):
-    """
+    """返回任务实例的状态
     Returns the state of a TaskInstance at the command line.
     >>> airflow task_state tutorial sleep 2015-01-01
     success
@@ -547,12 +575,14 @@ def dag_state(args):
     running
     """
     dag = get_dag(args)
+    # 因为(dag_id, run_id)是唯一键，所以可能有多个
     dr = DagRun.find(dag.dag_id, execution_date=args.execution_date)
     print(dr[0].state if len(dr) > 0 else None)
 
 
 @cli_utils.action_logging
 def list_dags(args):
+    """打印dags的简单信息，包括dag的目录，dag的数量，任务的数量，dag实例的执行时间 ."""
     dagbag = DagBag(process_subdir(args.subdir))
     s = textwrap.dedent("""\n
     -------------------------------------------------------------------
@@ -568,6 +598,7 @@ def list_dags(args):
 
 @cli_utils.action_logging
 def list_tasks(args, dag=None):
+    """打印任务名称列表 ."""
     dag = dag or get_dag(args)
     if args.tree:
         dag.tree_view()
@@ -580,21 +611,28 @@ def list_tasks(args, dag=None):
 def test(args, dag=None):
     dag = dag or get_dag(args)
 
+    # 获得任务
     task = dag.get_task(task_id=args.task_id)
+    # 获得任务参数
     # Add CLI provided task_params to task.params
     if args.task_params:
         passed_in_params = json.loads(args.task_params)
         task.params.update(passed_in_params)
+    # 创建任务实例
     ti = TaskInstance(task, args.execution_date)
 
     if args.dry_run:
+        # 只渲染模板参数，不实际运行任务实例
         ti.dry_run()
     else:
+        # 执行任务实例：忽略任务依赖和实例状态
+        # 因为开启了测试模式，所以只执行operator，并不会修改实例的状态
         ti.run(ignore_task_deps=True, ignore_ti_state=True, test_mode=True)
 
 
 @cli_utils.action_logging
 def render(args):
+    """渲染实例模板，打印模板参数 ."""
     dag = get_dag(args)
     task = dag.get_task(task_id=args.task_id)
     ti = TaskInstance(task, args.execution_date)

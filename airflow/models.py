@@ -957,7 +957,7 @@ class TaskInstance(Base, LoggingMixin):
             job_id=None,
             pool=None,
             cfg_path=None):
-        """
+        """将任务实例转换为可执行的shell命令
         Returns a command that can be executed anywhere where airflow is
         installed. This command is part of the message sent to executors by
         the orchestrator.
@@ -1183,6 +1183,7 @@ class TaskInstance(Base, LoggingMixin):
         """
         TI = TaskInstance
 
+        # 从DB中获取任务实例
         qry = session.query(TI).filter(
             TI.dag_id == self.dag_id,
             TI.task_id == self.task_id,
@@ -1193,6 +1194,8 @@ class TaskInstance(Base, LoggingMixin):
             ti = qry.with_for_update().first()
         else:
             ti = qry.first()
+
+        # 如果实例存在，将db数据更新到orm
         if ti:
             self.state = ti.state
             self.start_date = ti.start_date
@@ -1205,6 +1208,7 @@ class TaskInstance(Base, LoggingMixin):
             self.pid = ti.pid
             self.executor_config = ti.executor_config
         else:
+            # 如果任务实例不存在，设置任务实例状态为None
             self.state = None
 
     @provide_session
@@ -1492,6 +1496,7 @@ class TaskInstance(Base, LoggingMixin):
         """
         task = self.task
         self.pool = pool or task.pool
+        # 是否是测试模式
         self.test_mode = test_mode
         # 将db中任务实例记录更新到orm模型
         self.refresh_from_db(session=session, lock_for_update=True)
@@ -1572,16 +1577,20 @@ class TaskInstance(Base, LoggingMixin):
         self.log.info(hr + msg + hr)
         self._try_number += 1
 
+        # 测试模式不记录日志
         if not test_mode:
             session.add(Log(State.RUNNING, self))
         # 修改任务实例状态为执行中，并记录进程ID
         self.state = State.RUNNING
         self.pid = os.getpid()
         self.end_date = None
+        # 测试模式不修改任务实例的值
         if not test_mode:
+            # 更新任务实例
             session.merge(self)
         session.commit()
 
+        # TODO 为什么要在这里关闭DB连接
         # 关闭DB连接池
         # Closing all pooled connections to prevent
         # "max number of connections reached"
@@ -1605,7 +1614,7 @@ class TaskInstance(Base, LoggingMixin):
             job_id=None,
             pool=None,
             session=None):
-        """执行任务实例
+        """不经过调度器而直接执行operator
         Immediately runs the task (without checking or changing db state
         before execution) and then sets the appropriate final state after
         completion and runs any post-execute callbacks. Meant to be called
@@ -1758,6 +1767,7 @@ class TaskInstance(Base, LoggingMixin):
             ignore_task_deps=ignore_task_deps,
             ignore_ti_state=ignore_ti_state,
             mark_success=mark_success,
+            # 测试模式
             test_mode=test_mode,
             job_id=job_id,
             pool=pool,
@@ -2084,7 +2094,7 @@ class TaskInstance(Base, LoggingMixin):
         ).count()
 
     def init_run_context(self, raw=False):
-        """
+        """设置日志的上下文为任务实例
         Sets the log context.
         """
         self.raw = raw
@@ -4587,6 +4597,7 @@ class Variable(Base, LoggingMixin):
         default_sentinel = object()
         obj = Variable.get(key, default_var=default_sentinel,
                            deserialize_json=deserialize_json)
+        # 如果是空的json对象
         if obj is default_sentinel:
             if default is not None:
                 Variable.set(key, default, serialize_json=deserialize_json)
@@ -4600,12 +4611,14 @@ class Variable(Base, LoggingMixin):
     @provide_session
     def get(cls, key, default_var=None, deserialize_json=False, session=None):
         obj = session.query(cls).filter(cls.key == key).first()
+        # 对象不存在获取默认值
         if obj is None:
             if default_var is not None:
                 return default_var
             else:
                 raise KeyError('Variable {} does not exist'.format(key))
         else:
+            # 是否存储的是json数据
             if deserialize_json:
                 return json.loads(obj.val)
             else:
@@ -4622,6 +4635,8 @@ class Variable(Base, LoggingMixin):
 
         session.query(cls).filter(cls.key == key).delete()
         session.add(Variable(key=key, val=stored_value))
+        # TODO 写数据到数据库，但是不commit，其它的事务无法看到这个更新后的结果
+        # 作用是防止其它事务获取到正在修改的值
         session.flush()
 
 
