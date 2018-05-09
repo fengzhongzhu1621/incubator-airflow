@@ -133,7 +133,7 @@ _CONTEXT_MANAGER_DAG = None
 def clear_task_instances(tis, session, activate_dag_runs=True, dag=None):
     """重置任务实例
     - 正在运行的任务改为关闭状态
-    - 非正在运行的任务改为 None 状态，并设置任务实例的最大重试次数 max_tries
+    - 非正在运行的任务改为 None 状态，并修改任务实例的最大重试次数 max_tries
 
     Clears a set of task instances, but makes sure the running ones
     get killed.
@@ -141,15 +141,19 @@ def clear_task_instances(tis, session, activate_dag_runs=True, dag=None):
     job_ids = []
     for ti in tis:
         if ti.state == State.RUNNING:
-            # 正在运行的任务实例设置为关闭状态
+            # 如果任务实例已经被调度，则设置为关闭状态
             if ti.job_id:
                 ti.state = State.SHUTDOWN
                 job_ids.append(ti.job_id)
         else:
+            # TODO 修改任务实例重试次数的原因 ？
             task_id = ti.task_id
             if dag and dag.has_task(task_id):
+                # 获得任务
                 task = dag.get_task(task_id)
+                # 获得任务的重试次数
                 task_retries = task.retries
+                # 重新设置任务实例的最大重试次数
                 ti.max_tries = ti.try_number + task_retries - 1
             else:
                 # Ignore errors when updating max_tries if dag is None or
@@ -158,6 +162,7 @@ def clear_task_instances(tis, session, activate_dag_runs=True, dag=None):
                 # original max_tries or the current task try number.
                 ti.max_tries = max(ti.max_tries, ti.try_number - 1)
             ti.state = State.NONE
+            # TODO why merge
             session.merge(ti)
 
     # 将正在运行的任务实例，关联的job设置为关闭状态
@@ -3877,6 +3882,7 @@ class DAG(BaseDag, LoggingMixin):
     @provide_session
     def set_dag_runs_state(
             self, state=State.RUNNING, session=None):
+        # TODO 更新dag每个状态的dag_run的数量，并设置dirty为False
         drs = session.query(DagModel).filter_by(dag_id=self.dag_id).all()
         dirty_ids = []
         for dr in drs:
@@ -3922,12 +3928,13 @@ class DAG(BaseDag, LoggingMixin):
         if only_running:
             tis = tis.filter(TI.state == State.RUNNING)
 
-        # 不会删除正在运行的dag_run
         if dry_run:
+            # 不会删除dag_run
             tis = tis.all()
             session.expunge_all()
             return tis
 
+        # 获得任务实例的数量
         count = tis.count()
         do_it = True
         if count == 0:
@@ -3944,6 +3951,7 @@ class DAG(BaseDag, LoggingMixin):
             # 将任务实例和job关闭，将dag_run设置为运行态
             clear_task_instances(tis.all(), session, dag=self)
             if reset_dag_runs:
+                # 在dag统计表中，更新dag每个状态的dag_run的数量，并设置dirty为False
                 self.set_dag_runs_state(session=session)
         else:
             count = 0
@@ -4898,7 +4906,7 @@ class DagStat(Base):
     @staticmethod
     @provide_session
     def update(dag_ids=None, dirty_only=True, session=None):
-        """更新每条记录的数量，并设置dirty为False
+        """更新dag每个状态的dag_run的数量，并设置dirty为False
         Updates the stats for dirty/out-of-sync dags
 
         :param dag_ids: dag_ids to be updated

@@ -648,6 +648,7 @@ def render(args):
 
 @cli_utils.action_logging
 def clear(args):
+    """重新执行指定调度时间范围的dag ."""
     logging.basicConfig(
         level=settings.LOGGING_LEVEL,
         format=settings.SIMPLE_LOG_FORMAT)
@@ -671,11 +672,15 @@ def clear(args):
 
 
 def get_num_ready_workers_running(gunicorn_master_proc):
+    """获得进程状态为ready的gunicorn的子进程的数量 ."""
+    # 获得进程的所有子进程
     workers = psutil.Process(gunicorn_master_proc.pid).children()
 
     def ready_prefix_on_cmdline(proc):
         try:
+            # 获得启动进程的命令行
             cmdline = proc.cmdline()
+            # 判断是用gunicorn启动的进程，且进程状态为ready
             if len(cmdline) > 0:
                 return settings.GUNICORN_WORKER_READY_PREFIX in cmdline[0]
         except psutil.NoSuchProcess:
@@ -687,6 +692,7 @@ def get_num_ready_workers_running(gunicorn_master_proc):
 
 
 def get_num_workers_running(gunicorn_master_proc):
+    """获得gunicorn的子进程的数量 ."""
     workers = psutil.Process(gunicorn_master_proc.pid).children()
     return len(workers)
 
