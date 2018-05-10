@@ -999,8 +999,8 @@ def scheduler(args):
     job = jobs.SchedulerJob(
         dag_id=args.dag_id,
         subdir=process_subdir(args.subdir),
-        run_duration=args.run_duration,
-        num_runs=args.num_runs,
+        run_duration=args.run_duration,     # 运行的时长
+        num_runs=args.num_runs,     # 运行的次数
         do_pickle=args.do_pickle)
 
     if args.daemon:
@@ -1051,6 +1051,7 @@ def serve_logs(args):
 
 @cli_utils.action_logging
 def worker(args):
+    """启动celery ."""
     env = os.environ.copy()
     env['AIRFLOW_HOME'] = settings.AIRFLOW_HOME
 
