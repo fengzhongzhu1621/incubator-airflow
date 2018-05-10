@@ -698,7 +698,7 @@ def get_num_workers_running(gunicorn_master_proc):
 
 
 def restart_workers(gunicorn_master_proc, num_workers_expected, master_timeout):
-    """
+    """监控gunicorn master
     Runs forever, monitoring the child processes of @gunicorn_master_proc and
     restarting workers occasionally.
     Each iteration of the loop traverses one edge of this state transition
@@ -724,7 +724,9 @@ def restart_workers(gunicorn_master_proc, num_workers_expected, master_timeout):
         Sleeps until fn is true
         """
         t = time.time()
+        # 如果子进程有挂掉的情况
         while not fn():
+            # 如果子进程挂掉的时间超过了阈值，则抛出异常
             if 0 < timeout and timeout <= time.time() - t:
                 raise AirflowWebServerTimeout(
                     "No response from gunicorn master within {0} seconds"
@@ -746,11 +748,14 @@ def restart_workers(gunicorn_master_proc, num_workers_expected, master_timeout):
                             master_timeout)
 
     try:
+        # 检测子进程是否挂掉，如果挂掉，在超时后抛出异常 AirflowWebServerTimeout
         wait_until_true(lambda: num_workers_expected ==
                         get_num_workers_running(gunicorn_master_proc),
                         master_timeout)
         while True:
+            # 获得子进程的数量
             num_workers_running = get_num_workers_running(gunicorn_master_proc)
+            # 获得ready状态的子进程的数量
             num_ready_workers_running = \
                 get_num_ready_workers_running(gunicorn_master_proc)
 
@@ -766,6 +771,7 @@ def restart_workers(gunicorn_master_proc, num_workers_expected, master_timeout):
 
             # Kill a worker gracefully by asking gunicorn to reduce number of
             # workers
+            # 删除多余的子进程
             elif num_workers_running > num_workers_expected:
                 excess = num_workers_running - num_workers_expected
                 log.debug('%s killing %s workers', state, excess)
@@ -773,6 +779,7 @@ def restart_workers(gunicorn_master_proc, num_workers_expected, master_timeout):
                 for _ in range(excess):
                     gunicorn_master_proc.send_signal(signal.SIGTTOU)
                     excess -= 1
+                    # 验证需要删除的子进程在规定时间内是否被关闭，如果没有关闭则抛出异常 AirflowWebServerTimeout
                     wait_until_true(lambda: num_workers_expected + excess ==
                                     get_num_workers_running(
                                         gunicorn_master_proc),
@@ -815,13 +822,17 @@ def restart_workers(gunicorn_master_proc, num_workers_expected, master_timeout):
 def webserver(args):
     print(settings.HEADER)
 
+    # 获得日志配置
     access_logfile = args.access_logfile or conf.get(
         'webserver', 'access_logfile')
     error_logfile = args.error_logfile or conf.get(
         'webserver', 'error_logfile')
+    # 获得webserver worker数量
     num_workers = args.workers or conf.get('webserver', 'workers')
+    # 获得worker超时时间
     worker_timeout = (args.worker_timeout or
                       conf.get('webserver', 'web_server_worker_timeout'))
+    # 获得证书配置
     ssl_cert = args.ssl_cert or conf.get('webserver', 'web_server_ssl_cert')
     ssl_key = args.ssl_key or conf.get('webserver', 'web_server_ssl_key')
     if not ssl_cert and ssl_key:
@@ -857,6 +868,39 @@ def webserver(args):
                 =================================================================\
             '''.format(**locals())))
 
+        # -w
+        # 用于处理工作进程的数量，为正整数，默认为1。worker推荐的数量为当前的CPU个数*2 + 1。计算当前的CPU个数方法：
+        # import multiprocessing
+        # print multiprocessing.cpu_count()
+
+        # -k
+        # 要使用的工作模式，默认为sync。可引用以下常见类型“字符串”作为捆绑类：
+        # sync
+        # eventlet：需要下载eventlet>=0.9.7
+        # gevent：需要下载gevent>=0.13
+        # tornado：需要下载tornado>=0.2
+        # gthread
+        # gaiohttp：需要python 3.4和aiohttp>=0.21.5
+
+        # -t 默认值：30
+        # 用于设定request超时的限制。默认是30秒。
+        # 即30秒内worker不能进行返回结果，gunicorn就认定这个request超时，终止worker继续执行，向客户端返回出错的信息，
+        # 用于避免系统出现异常时，所有worker都被占住，无法处理更多的正常request，导致整个系统无法访问。
+        # 可以适当调高gunicorn的超时限制或者使用异步的worker，如果是系统处理速度遇到瓶颈，那可能要从数据库，缓存，算法等各个方面来提升速度。
+        # gunicorn前面很有可能还有一层nginx，如果要调高超时限制，可能需要修改nginx的配置同时调高nginx的超时限制
+
+        # -b
+        # 绑定服务器套接字，Host形式的字符串格式。Gunicorn可绑定多个套接字
+        # gunicorn -b 127.0.0.1:8000 -b [::1]:9000 manager:app
+
+        # -n
+        # 进程名称
+
+        # -p
+        # PID文件路径
+
+        # -c
+        # 配置文件路径，路径形式的字符串格式
         run_args = [
             'gunicorn',
             '-w', str(num_workers),
@@ -874,6 +918,7 @@ def webserver(args):
         if args.error_logfile:
             run_args += ['--error-logfile', str(args.error_logfile)]
 
+        # 守护Gunicorn进程，默认False
         if args.daemon:
             run_args += ['-D']
 
@@ -886,6 +931,7 @@ def webserver(args):
         gunicorn_master_proc = None
 
         def kill_proc(dummy_signum, dummy_frame):
+            """关闭gunicorn ."""
             gunicorn_master_proc.terminate()
             gunicorn_master_proc.wait()
             sys.exit(0)
@@ -905,7 +951,7 @@ def webserver(args):
             base, ext = os.path.splitext(pid)
             ctx = daemon.DaemonContext(
                 pidfile=TimeoutPIDLockFile(base + "-monitor" + ext, -1),
-                files_preserve=[handle],
+                files_preserve=[handle],    # 日志流
                 stdout=stdout,
                 stderr=stderr,
                 signal_map={
@@ -914,6 +960,7 @@ def webserver(args):
                 },
             )
             with ctx:
+                # 启动gunicorn进程
                 subprocess.Popen(run_args, close_fds=True)
 
                 # Reading pid file directly, since Popen#pid doesn't
@@ -928,17 +975,21 @@ def webserver(args):
                             "Waiting for gunicorn's pid file to be created.")
                         time.sleep(0.1)
 
+                # 启动gunicorn进程
                 gunicorn_master_proc = psutil.Process(gunicorn_master_proc_pid)
                 monitor_gunicorn(gunicorn_master_proc)
 
             stdout.close()
             stderr.close()
         else:
+            # 启动gunicorn进程
             gunicorn_master_proc = subprocess.Popen(run_args, close_fds=True)
 
+            # 注册信号处理函数
             signal.signal(signal.SIGINT, kill_proc)
             signal.signal(signal.SIGTERM, kill_proc)
 
+            # 监控gunicorn master
             monitor_gunicorn(gunicorn_master_proc)
 
 
