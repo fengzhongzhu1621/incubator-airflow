@@ -1781,7 +1781,7 @@ class CLIFactory(object):
             'help': "Run subsections of a DAG for a specified date range",
             'args': (
                 'dag_id', 'task_regex', 'start_date', 'end_date',
-                'mark_success', 'local', 'donot_pickle', 'include_adhoc',
+                'mark_success', 'local', 'donot_pickle',
                 'bf_ignore_dependencies', 'bf_ignore_first_depends_on_past',
                 'subdir', 'pool', 'delay_on_limit', 'dry_run')
         }, {

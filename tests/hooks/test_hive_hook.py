@@ -19,6 +19,7 @@
 #
 
 import datetime
+import pandas as pd
 import random
 
 import mock
@@ -104,6 +105,32 @@ class TestHiveCliHook(unittest.TestCase):
             .format(filepath=filepath, table=table)
         )
         mock_run_cli.assert_called_with(query)
+
+    @mock.patch('airflow.hooks.hive_hooks.HiveCliHook.load_file')
+    @mock.patch('pandas.DataFrame.to_csv')
+    def test_load_df(self, mock_to_csv, mock_load_file):
+        df = pd.DataFrame({"c": ["foo", "bar", "baz"]})
+        table = "t"
+        delimiter = ","
+        encoding = "utf-8"
+
+        hook = HiveCliHook()
+        hook.load_df(df=df,
+                     table=table,
+                     delimiter=delimiter,
+                     encoding=encoding)
+
+        mock_to_csv.assert_called_once()
+        kwargs = mock_to_csv.call_args[1]
+        self.assertEqual(kwargs["header"], False)
+        self.assertEqual(kwargs["index"], False)
+        self.assertEqual(kwargs["sep"], delimiter.encode(encoding))
+
+        mock_load_file.assert_called_once()
+        kwargs = mock_load_file.call_args[1]
+        self.assertEqual(kwargs["delimiter"], delimiter)
+        self.assertEqual(kwargs["field_dict"], {"c": u"STRING"})
+        self.assertEqual(kwargs["table"], table)
 
 
 class TestHiveMetastoreHook(HiveEnvironmentTest):
@@ -208,7 +235,7 @@ class TestHiveMetastoreHook(HiveEnvironmentTest):
                                       pattern=self.table + "*")
         self.assertIn(self.table, {table.tableName for table in tables})
 
-    def get_databases(self):
+    def test_get_databases(self):
         databases = self.hook.get_databases(pattern='*')
         self.assertIn(self.database, databases)
 
