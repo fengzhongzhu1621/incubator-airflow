@@ -28,6 +28,9 @@ if __name__ == '__main__':
         os.environ['KRB5CCNAME'] = configuration.conf.get('kerberos', 'ccache')
         os.environ['KRB5_KTNAME'] = configuration.conf.get('kerberos', 'keytab')
 
+    # 创建命令行解析器
     parser = CLIFactory.get_parser()
     args = parser.parse_args()
+
+    # 解析命令行参数
     args.func(args)

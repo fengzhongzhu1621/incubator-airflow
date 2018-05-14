@@ -213,8 +213,6 @@ def backfill(args, dag=None):
             end_date=args.end_date,
             # 将任务实例标记为成功
             mark_success=args.mark_success,
-            # TODO 参数未使用
-            include_adhoc=args.include_adhoc,
             # 使用单机并发执行器 LocalExecutor
             local=args.local,
             # 是否需要将dag对象序列化到db中，False表示需要
@@ -464,14 +462,6 @@ def _run(args, dag, ti):
 
 @cli_utils.action_logging
 def run(args, dag=None):
-<<<<<<< HEAD
-    # Disable connection pooling to reduce the # of connections on the DB
-    # while it's waiting for the task to finish.
-    # 创建没有DB连接池的session
-    settings.configure_orm(disable_connection_pool=True)
-
-=======
->>>>>>> 92363490b725cca345298a9f10613257a7500c9a
     if dag:
         args.dag_id = dag.dag_id
 
@@ -1119,7 +1109,6 @@ def worker(args):
         sp.kill()
 
 
-@cli_utils.action_logging
 def initdb(args):  # noqa
     print("DB: " + repr(settings.engine.url))
     db_utils.initdb(settings.RBAC)
@@ -1457,9 +1446,6 @@ class CLIFactory(object):
                 "to the workers, just tell the workers to run their version "
                 "of the code."),
             "store_true"),
-        'include_adhoc': Arg(
-            ("-a", "--include_adhoc"),
-            "Include dags with the adhoc parameter.", "store_true"),
         'bf_ignore_dependencies': Arg(
             ("-i", "--ignore_dependencies"),
             (

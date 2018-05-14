@@ -90,7 +90,7 @@ def provide_session(func):
 @provide_session
 def merge_conn(conn, session=None):
     """添加连接记录 ."""
-    from xTool import models
+    from airflow import models
     C = models.Connection
     # 如果连接记录conn不存在连接表中，则将此连接记录新增到表中
     if not session.query(C).filter(C.conn_id == conn.conn_id).first():
@@ -280,15 +280,11 @@ def initdb(rbac=False):
     merge_conn(
         models.Connection(
             conn_id='qubole_default', conn_type='qubole',
-<<<<<<< HEAD
-            host='localhost'))
-=======
             host= 'localhost'))
     merge_conn(
         models.Connection(
             conn_id='segment_default', conn_type='segment',
             extra='{"write_key": "my-segment-write-key"}'))
->>>>>>> 92363490b725cca345298a9f10613257a7500c9a
 
     # 添加 KnownEventType 记录
     # Known event types

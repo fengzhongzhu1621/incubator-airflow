@@ -269,19 +269,6 @@ class BaseJob(Base, LoggingMixin):
 
         if len(tis_to_reset) == 0:
             return []
-<<<<<<< HEAD
-        # 将未放入队列中的任务实例记录加锁
-        reset_tis = (
-            session
-            .query(TI)
-            .filter(or_(*filter_for_tis), TI.state.in_(resettable_states))
-            .with_for_update()
-            .all())
-        # 设置状态为None
-        for ti in reset_tis:
-            ti.state = State.NONE
-            session.merge(ti)
-=======
 
         def query(result, items):
             filter_for_tis = ([and_(TI.dag_id == ti.dag_id,
@@ -304,7 +291,6 @@ class BaseJob(Base, LoggingMixin):
                                              [],
                                              self.max_tis_per_query)
 
->>>>>>> 92363490b725cca345298a9f10613257a7500c9a
         task_instance_str = '\n\t'.join(
             ["{}".format(x) for x in reset_tis])
         session.commit()
@@ -626,11 +612,6 @@ class SchedulerJob(BaseJob):
         # files have finished parsing.
         self.min_file_parsing_loop_time = min_file_parsing_loop_time
 
-<<<<<<< HEAD
-        self.max_tis_per_query = conf.getint('scheduler', 'max_tis_per_query')
-        # 调度器的运行时长，-1表示永久
-=======
->>>>>>> 92363490b725cca345298a9f10613257a7500c9a
         if run_duration is None:
             self.run_duration = conf.getint('scheduler',
                                             'run_duration')
@@ -1348,13 +1329,8 @@ class SchedulerJob(BaseJob):
 
         # save which TIs we set before session expires them
         filter_for_ti_enqueue = ([and_(TI.dag_id == ti.dag_id,
-<<<<<<< HEAD
-                                       TI.task_id == ti.task_id,
-                                       TI.execution_date == ti.execution_date)
-=======
                                   TI.task_id == ti.task_id,
                                   TI.execution_date == ti.execution_date)
->>>>>>> 92363490b725cca345298a9f10613257a7500c9a
                                   for ti in tis_to_set_to_queued])
         session.commit()
 
@@ -1377,13 +1353,6 @@ class SchedulerJob(BaseJob):
                                                     [],
                                                     self.max_tis_per_query)
 
-<<<<<<< HEAD
-        task_instance_str = "\n\t".join(
-            ["{}".format(x) for x in tis_to_be_queued])
-        self.log.info(
-            "Setting the follow tasks to queued state:\n\t%s", task_instance_str)
-=======
->>>>>>> 92363490b725cca345298a9f10613257a7500c9a
         return tis_to_be_queued
 
     def _enqueue_task_instances_with_queued_state(self, simple_dag_bag, task_instances):
@@ -1469,29 +1438,9 @@ class SchedulerJob(BaseJob):
                 simple_dag_bag,
                 tis_with_state_changed)
             session.commit()
-<<<<<<< HEAD
-            return len(tis_with_state_changed)
-        else:
-            # makes chunks of max_tis_per_query size
-            chunks = ([executable_tis[i:i + self.max_tis_per_query]
-                       for i in range(0, len(executable_tis), self.max_tis_per_query)])
-            total_tis_queued = 0
-            for chunk in chunks:
-                tis_with_state_changed = self._change_state_for_executable_task_instances(
-                    chunk,
-                    states,
-                    session=session)
-                self._enqueue_task_instances_with_queued_state(
-                    simple_dag_bag,
-                    tis_with_state_changed)
-                session.commit()
-                total_tis_queued += len(tis_with_state_changed)
-            return total_tis_queued
-=======
             return result + len(tis_with_state_changed)
 
         return helpers.reduce_in_chunks(query, executable_tis, 0, self.max_tis_per_query)
->>>>>>> 92363490b725cca345298a9f10613257a7500c9a
 
     def _process_dags(self, dagbag, dags, tis_out):
         """
