@@ -16,26 +16,29 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-from __future__ import unicode_literals
-from __future__ import absolute_import
 
-import os
-import json
-from tempfile import mkstemp
-
-from airflow import configuration as conf
+from airflow.exceptions import AirflowException
+from airflow.models import DagBag
 
 
-def tmp_configuration_copy():
-    """
-    Returns a path for a temporary file including a full copy of the configuration
-    settings.
-    :return: a path to a temporary file
-    """
-    cfg_dict = conf.as_dict(display_sensitive=True)
-    temp_fd, cfg_path = mkstemp()
+def get_dag_run_state(dag_id, execution_date):
+    """Return the task object identified by the given dag_id and task_id."""
 
-    with os.fdopen(temp_fd, 'w') as temp_file:
-        json.dump(cfg_dict, temp_file)
+    dagbag = DagBag()
 
-    return cfg_path
+    # Check DAG exists.
+    if dag_id not in dagbag.dags:
+        error_message = "Dag id {} not found".format(dag_id)
+        raise AirflowException(error_message)
+
+    # Get DAG object and check Task Exists
+    dag = dagbag.get_dag(dag_id)
+
+    # Get DagRun object and check that it exists
+    dagrun = dag.get_dagrun(execution_date=execution_date)
+    if not dagrun:
+        error_message = ('Dag Run for date {} not found in dag {}'
+                         .format(execution_date, dag_id))
+        raise AirflowException(error_message)
+
+    return {'state': dagrun.get_state()}

@@ -19,6 +19,7 @@
 # under the License.
 
 from __future__ import print_function
+from backports.configparser import NoSectionError
 import logging
 
 import os
@@ -463,11 +464,14 @@ def _run(args, dag, ti):
 
 @cli_utils.action_logging
 def run(args, dag=None):
+<<<<<<< HEAD
     # Disable connection pooling to reduce the # of connections on the DB
     # while it's waiting for the task to finish.
     # 创建没有DB连接池的session
     settings.configure_orm(disable_connection_pool=True)
 
+=======
+>>>>>>> 92363490b725cca345298a9f10613257a7500c9a
     if dag:
         args.dag_id = dag.dag_id
 
@@ -482,11 +486,26 @@ def run(args, dag=None):
         if os.path.exists(args.cfg_path):
             os.remove(args.cfg_path)
 
+        # Do not log these properties since some may contain passwords.
+        # This may also set default values for database properties like
+        # core.sql_alchemy_pool_size
+        # core.sql_alchemy_pool_recycle
         for section, config in conf_dict.items():
             for option, value in config.items():
-                conf.set(section, option, value)
+                try:
+                    conf.set(section, option, value)
+                except NoSectionError:
+                    log.error('Section {section} Option {option} '
+                              'does not exist in the config!'.format(section=section,
+                                                                     option=option))
+
         settings.configure_vars()
-        settings.configure_orm()
+
+    # IMPORTANT, have to use the NullPool, otherwise, each "run" command may leave
+    # behind multiple open sleeping connections while heartbeating, which could
+    # easily exceed the database connection limit when
+    # processing hundreds of simultaneous tasks.
+    settings.configure_orm(disable_connection_pool=True)
 
     # 获得dag
     if not args.pickle and not dag:

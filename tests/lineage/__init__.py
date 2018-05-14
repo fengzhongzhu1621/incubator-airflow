@@ -16,26 +16,3 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-from __future__ import unicode_literals
-from __future__ import absolute_import
-
-import os
-import json
-from tempfile import mkstemp
-
-from airflow import configuration as conf
-
-
-def tmp_configuration_copy():
-    """
-    Returns a path for a temporary file including a full copy of the configuration
-    settings.
-    :return: a path to a temporary file
-    """
-    cfg_dict = conf.as_dict(display_sensitive=True)
-    temp_fd, cfg_path = mkstemp()
-
-    with os.fdopen(temp_fd, 'w') as temp_file:
-        json.dump(cfg_dict, temp_file)
-
-    return cfg_path

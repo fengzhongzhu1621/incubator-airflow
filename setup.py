@@ -107,6 +107,7 @@ async = [
     'eventlet>= 0.9.7',
     'gevent>=0.13'
 ]
+atlas = ['atlasclient>=0.1.2']
 azure = ['azure-storage>=0.34.0']
 sendgrid = ['sendgrid>=5.2.0']
 celery = [
@@ -177,6 +178,7 @@ redis = ['redis>=2.10.5']
 s3 = ['boto3>=1.7.0']
 salesforce = ['simple-salesforce>=0.72']
 samba = ['pysmbclient>=0.1.3']
+segment = ['analytics-python>=1.2.9']
 slack = ['slackclient>=1.0.0']
 snowflake = ['snowflake-connector-python>=1.5.2',
              'snowflake-sqlalchemy>=1.1.0']
@@ -211,7 +213,7 @@ devel_hadoop = devel_minreq + hive + hdfs + webhdfs + kerberos
 devel_all = (sendgrid + devel + all_dbs + doc + samba + s3 + slack + crypto + oracle +
              docker + ssh + kubernetes + celery + azure + redis + gcp_api + datadog +
              zendesk + jdbc + ldap + kerberos + password + webhdfs + jenkins +
-             druid + pinot + snowflake + elasticsearch)
+             druid + pinot + segment + snowflake + elasticsearch + atlas)
 
 # Snakebite & Google Cloud Dataflow are not Python 3 compatible :'(
 if PY3:
@@ -240,7 +242,7 @@ def do_setup():
             'croniter>=0.3.17, <0.4',
             'dill>=0.2.2, <0.3',
             'flask>=0.12, <0.13',
-            'flask-appbuilder>=1.9.6, <2.0.0',
+            'flask-appbuilder>=1.10.0, <2.0.0',
             'flask-admin==1.4.1',
             'flask-caching>=1.3.3, <1.4.0',
             'flask-login==0.2.11',
@@ -278,6 +280,7 @@ def do_setup():
             'all': devel_all,
             'devel_ci': devel_ci,
             'all_dbs': all_dbs,
+            'atlas': atlas,
             'async': async,
             'azure': azure,
             'celery': celery,
@@ -316,6 +319,7 @@ def do_setup():
             'salesforce': salesforce,
             'samba': samba,
             'sendgrid': sendgrid,
+            'segment': segment,
             'slack': slack,
             'snowflake': snowflake,
             'ssh': ssh,

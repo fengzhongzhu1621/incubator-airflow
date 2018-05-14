@@ -154,11 +154,29 @@ def configure_orm(disable_connection_pool=False):
     # 不使用DB连接池
     if disable_connection_pool or not pool_connections:
         engine_args['poolclass'] = NullPool
+        log.info("settings.configure_orm(): Using NullPool")
     elif 'sqlite' not in SQL_ALCHEMY_CONN:
-        # Engine args not supported by sqlite
-        engine_args['pool_size'] = conf.getint('core', 'SQL_ALCHEMY_POOL_SIZE')
-        engine_args['pool_recycle'] = conf.getint('core',
-                                                  'SQL_ALCHEMY_POOL_RECYCLE')
+        # Engine args not supported by sqlite.
+        # If no config value is defined for the pool size, select a reasonable value.
+        # 0 means no limit, which could lead to exceeding the Database connection limit.
+        try:
+            pool_size = conf.getint('core', 'SQL_ALCHEMY_POOL_SIZE')
+        except conf.AirflowConfigException:
+            pool_size = 5
+
+        # The DB server already has a value for wait_timeout (number of seconds after
+        # which an idle sleeping connection should be killed). Since other DBs may
+        # co-exist on the same server, SQLAlchemy should set its
+        # pool_recycle to an equal or smaller value.
+        try:
+            pool_recycle = conf.getint('core', 'SQL_ALCHEMY_POOL_RECYCLE')
+        except conf.AirflowConfigException:
+            pool_recycle = 1800
+
+        log.info("setting.configure_orm(): Using pool settings. pool_size={}, "
+                 "pool_recycle={}".format(pool_size, pool_recycle))
+        engine_args['pool_size'] = pool_size
+        engine_args['pool_recycle'] = pool_recycle
 
     # 连接数据库
     engine = create_engine(SQL_ALCHEMY_CONN, **engine_args)
@@ -216,6 +234,7 @@ except:
 configure_logging()
 configure_vars()
 configure_adapters()
+# The webservers import this file from models.py with the default settings.
 configure_orm()
 configure_action_logging()
 
