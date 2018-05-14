@@ -103,18 +103,26 @@ class BaseJob(Base, LoggingMixin):
             executor=executors.GetDefaultExecutor(),
             heartrate=conf.getfloat('scheduler', 'JOB_HEARTBEAT_SEC'),
             *args, **kwargs):
+        # 当前机器的主机名
         self.hostname = get_hostname()
+        # 执行器： 从任务队列中获取任务，并执行
         self.executor = executor
+        # 获得执行器的类名
         self.executor_class = executor.__class__.__name__
+        # 设置开始时间和心跳开始时间
         self.start_date = timezone.utcnow()
         self.latest_heartbeat = timezone.utcnow()
+        # 心跳频率
         self.heartrate = heartrate
+        # 调度器进程所在机器的执行用户
         self.unixname = getpass.getuser()
+        # TODO 暂不清楚max_tis_per_query的含义
         self.max_tis_per_query = conf.getint('scheduler', 'max_tis_per_query')
         super(BaseJob, self).__init__(*args, **kwargs)
 
     def is_alive(self):
         """判断job是否存活 ."""
+        # 如果job超过2个心跳周期都没有上报心跳，则认为job已经死亡
         return (
             (timezone.utcnow() - self.latest_heartbeat).seconds <
             (conf.getint('scheduler', 'JOB_HEARTBEAT_SEC') * 2.1)
@@ -122,18 +130,22 @@ class BaseJob(Base, LoggingMixin):
 
     @provide_session
     def kill(self, session=None):
+        """关闭job ."""
         job = session.query(BaseJob).filter(BaseJob.id == self.id).first()
         job.end_date = timezone.utcnow()
+        # 杀死job
         try:
             self.on_kill()
         except Exception as e:
             self.log.error('on_kill() method failed: {}'.format(e))
+        # 保持job的关闭时间
         session.merge(job)
         session.commit()
+        # 抛出异常
         raise AirflowException("Job shut down externally.")
 
     def on_kill(self):
-        '''
+        '''杀死job
         Will be called when an external kill command is received
         '''
         pass
@@ -2600,10 +2612,15 @@ class LocalTaskJob(BaseJob):
             pickle_id=None,
             pool=None,
             *args, **kwargs):
+        # 任务实例
         self.task_instance = task_instance
+        # 忽略任务的所有依赖
         self.ignore_all_deps = ignore_all_deps
+        # 忽略上一个周期的任务依赖
         self.ignore_depends_on_past = ignore_depends_on_past
+        # 忽略任务依赖
         self.ignore_task_deps = ignore_task_deps
+        # 忽略任务实例依赖
         self.ignore_ti_state = ignore_ti_state
         self.pool = pool
         self.pickle_id = pickle_id

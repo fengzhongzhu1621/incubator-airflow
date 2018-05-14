@@ -123,14 +123,15 @@ class BaseExecutor(LoggingMixin):
         self.log.debug("%s in queue", len(self.queued_tasks))
         self.log.debug("%s open slots", open_slots)
 
-        # 按优先级逆序，优先级大的放在前面
+        # 按优先级逆序，优先级大的放在前面，优先执行
         sorted_queue = sorted(
             [(k, v) for k, v in self.queued_tasks.items()],
             key=lambda x: x[1][1],
             reverse=True)
 
+        # 执行任务实例
         for i in range(min((open_slots, len(self.queued_tasks)))):
-            # 遍历队列
+            # 遍历队列，优先级大的优先执行
             key, (command, _, queue, ti) = sorted_queue.pop(0)
             # TODO(jlowin) without a way to know what Job ran which tasks,
             # there is a danger that another Job started running a task
@@ -155,6 +156,7 @@ class BaseExecutor(LoggingMixin):
                     'executor: {}'.format(key))
 
         # Calling child class sync method
+        # 阻塞操作，同步任务实例执行结果
         self.log.debug("Calling the %s sync method", self.__class__)
         self.sync()
 

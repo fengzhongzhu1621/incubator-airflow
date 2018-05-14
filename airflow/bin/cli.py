@@ -457,6 +457,7 @@ def _run(args, dag, ti):
 
         # 执行shell命令（airflow run --raw）
         executor.heartbeat()
+        # 等待任务实例执行完成
         executor.end()
 
 
