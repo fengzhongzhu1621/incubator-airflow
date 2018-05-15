@@ -116,7 +116,7 @@ class BaseJob(Base, LoggingMixin):
         self.heartrate = heartrate
         # 调度器进程所在机器的执行用户
         self.unixname = getpass.getuser()
-        # TODO 暂不清楚max_tis_per_query的含义
+        # 因为需要批量更新TI的状态，为了防止SQL过长，需要设置每批更新的TI的数量
         self.max_tis_per_query = conf.getint('scheduler', 'max_tis_per_query')
         super(BaseJob, self).__init__(*args, **kwargs)
 
@@ -184,6 +184,7 @@ class BaseJob(Base, LoggingMixin):
             # 关闭job，抛出 AirflowException
             self.kill()
 
+        # 获得到下一次心跳需要睡眠的时间间隔
         # Figure out how long to sleep for
         sleep_for = 0
         if job.latest_heartbeat:
@@ -193,6 +194,7 @@ class BaseJob(Base, LoggingMixin):
 
         sleep(sleep_for)
 
+        # 睡眠之后会重新连接DB
         # Update last heartbeat time
         with create_session() as session:
             # 更新心跳时间
@@ -208,7 +210,7 @@ class BaseJob(Base, LoggingMixin):
         Stats.incr(self.__class__.__name__.lower() + '_start', 1, 1)
         # Adding an entry in the DB
         with create_session() as session:
-            # 将job设置为运行态
+            # 新增job
             self.state = State.RUNNING
             session.add(self)
             session.commit()
@@ -219,6 +221,7 @@ class BaseJob(Base, LoggingMixin):
             # Run
             self._execute()
 
+            # job执行完成后，记录完成时间和状态
             # Marking the success in the DB
             self.end_date = timezone.utcnow()
             self.state = State.SUCCESS
@@ -245,14 +248,16 @@ class BaseJob(Base, LoggingMixin):
         :return: the TIs reset (in expired SQLAlchemy state)
         :rtype: List(TaskInstance)
         """
-        # 获得队列中的任务实例
+        # 获得执行器等待执行队列中的任务实例
         queued_tis = self.executor.queued_tasks
         # also consider running as the state might not have changed in the db
         # yet
-        # 获得正在执行的任务实例
+        # 获得执行器中正在执行的任务实例
         running_tis = self.executor.running
 
         # 从DB中获取已调度和在队列中的任务实例
+        # 根据 filter_by_dag_run 参数决定是否对dag_run的状态进行判断
+        # TODO 全表扫描，SQL待优化
         resettable_states = [State.SCHEDULED, State.QUEUED]
         TI = models.TaskInstance
         DR = models.DagRun
@@ -272,6 +277,7 @@ class BaseJob(Base, LoggingMixin):
         else:
             resettable_tis = filter_by_dag_run.get_task_instances(state=resettable_states,
                                                                   session=session)
+        # 获得不在执行器队列（待执行队列和运行队列）中的任务实例
         tis_to_reset = []
         # Can't use an update here since it doesn't support joins
         for ti in resettable_tis:
@@ -282,6 +288,8 @@ class BaseJob(Base, LoggingMixin):
         if len(tis_to_reset) == 0:
             return []
 
+        # 将不在执行器队列（待执行队列和运行队列）中的任务实例状态设置为None
+        # TODO 为什么不根据任务实例的ID来设置where添加呢？待优化！！！
         def query(result, items):
             filter_for_tis = ([and_(TI.dag_id == ti.dag_id,
                                     TI.task_id == ti.task_id,
@@ -311,6 +319,7 @@ class BaseJob(Base, LoggingMixin):
             "Reset the following %s TaskInstances:\n\t%s",
             len(reset_tis), task_instance_str
         )
+        # 返回设置状态为None之后的任务实例列表
         return reset_tis
 
 
@@ -318,6 +327,7 @@ class DagFileProcessor(AbstractDagFileProcessor, LoggingMixin):
     """Helps call SchedulerJob.process_file() in a separate process."""
 
     # Counter that increments everytime an instance of this class is created
+    # 记录这个类实例的创建数量
     class_creation_counter = 0
 
     def __init__(self, file_path, pickle_dags, dag_id_white_list):
@@ -329,18 +339,23 @@ class DagFileProcessor(AbstractDagFileProcessor, LoggingMixin):
         :param dag_id_whitelist: If specified, only look at these DAG ID's
         :type dag_id_whitelist: list[unicode]
         """
+        # DAG文件的路径
         self._file_path = file_path
+        # 创建一个多进程队列
         # Queue that's used to pass results from the child process.
         self._result_queue = multiprocessing.Queue()
         # The process that was launched to process the given .
         self._process = None
+        # 需要调度的DAG ID列表
         self._dag_id_white_list = dag_id_white_list
+        # 是否需要序列化DAG到DB中
         self._pickle_dags = pickle_dags
         # The result of Scheduler.process_file(file_path).
         self._result = None
         # Whether the process is done running.
         self._done = False
         # When the process started.
+        # 记录DAG文件进程的启动时间
         self._start_time = None
         # This ID is use to uniquely name the process / thread that's launched
         # by this processor instance
@@ -349,6 +364,7 @@ class DagFileProcessor(AbstractDagFileProcessor, LoggingMixin):
 
     @property
     def file_path(self):
+        """返回DAG文件的路径 ."""
         return self._file_path
 
     @staticmethod
@@ -357,7 +373,7 @@ class DagFileProcessor(AbstractDagFileProcessor, LoggingMixin):
                         pickle_dags,
                         dag_id_white_list,
                         thread_name):
-        """
+        """创建一个DAG文件处理进程
         Launch a process to process the given file.
 
         :param result_queue: the queue to use for passing back the result
@@ -379,9 +395,11 @@ class DagFileProcessor(AbstractDagFileProcessor, LoggingMixin):
             # This helper runs in the newly created process
             log = logging.getLogger("airflow.processor")
 
+            # 重定向输入输出
             stdout = StreamLogWriter(log, logging.INFO)
             stderr = StreamLogWriter(log, logging.WARN)
 
+            # 设置日志处理器上下文，即创建日志目录
             set_context(log, file_path)
 
             try:
@@ -389,6 +407,7 @@ class DagFileProcessor(AbstractDagFileProcessor, LoggingMixin):
                 sys.stdout = stdout
                 sys.stderr = stderr
 
+                # 创建DB连接池
                 # Re-configure the ORM engine as there are issues with multiple
                 # processes
                 settings.configure_orm()
@@ -401,10 +420,13 @@ class DagFileProcessor(AbstractDagFileProcessor, LoggingMixin):
 
                 log.info("Started process (PID=%s) to work on %s",
                          os.getpid(), file_path)
+                # 创建一个调度job
                 scheduler_job = SchedulerJob(
                     dag_ids=dag_id_white_list, log=log)
+                # 执行DAG
                 result = scheduler_job.process_file(file_path,
                                                     pickle_dags)
+                # 将执行结果保存到结果队列
                 result_queue.put(result)
                 end_time = time.time()
                 log.info(
@@ -421,6 +443,7 @@ class DagFileProcessor(AbstractDagFileProcessor, LoggingMixin):
                 # tear it down manually here
                 settings.dispose_orm()
 
+        # 创建DAG文件处理子进程
         p = multiprocessing.Process(target=helper,
                                     args=(),
                                     name="{}-Process".format(thread_name))
@@ -431,6 +454,7 @@ class DagFileProcessor(AbstractDagFileProcessor, LoggingMixin):
         """
         Launch the process and start processing the DAG.
         """
+        # 创建一个DAG文件处理子进程，并将结果保存到self._result_queue结果队列
         self._process = DagFileProcessor._launch_process(
             self._result_queue,
             self.file_path,
@@ -440,7 +464,7 @@ class DagFileProcessor(AbstractDagFileProcessor, LoggingMixin):
         self._start_time = timezone.utcnow()
 
     def terminate(self, sigkill=False):
-        """
+        """终止文件处理子进程
         Terminate (and then kill) the process launched to process the file.
         :param sigkill: whether to issue a SIGKILL if SIGTERM doesn't work.
         :type sigkill: bool
@@ -449,16 +473,20 @@ class DagFileProcessor(AbstractDagFileProcessor, LoggingMixin):
             raise AirflowException("Tried to call stop before starting!")
         # The queue will likely get corrupted, so remove the reference
         self._result_queue = None
+        # 终止进程
         self._process.terminate()
         # Arbitrarily wait 5s for the process to die
+        # 等待进程被杀死
         self._process.join(5)
+        # 是否需要强制再次杀死存活的文件处理进程
         if sigkill and self._process.is_alive():
+            # 如果进程被终止后依然存活，发送SIGKILL信号杀死进程
             self.log.warning("Killing PID %s", self._process.pid)
             os.kill(self._process.pid, signal.SIGKILL)
 
     @property
     def pid(self):
-        """
+        """获得文件处理子进程的PID
         :return: the PID of the process launched to process the given file
         :rtype: int
         """
@@ -468,7 +496,7 @@ class DagFileProcessor(AbstractDagFileProcessor, LoggingMixin):
 
     @property
     def exit_code(self):
-        """
+        """获得文件处理子进程的错误码
         After the process is finished, this can be called to get the return code
         :return: the exit code of the process
         :rtype: int
@@ -480,7 +508,7 @@ class DagFileProcessor(AbstractDagFileProcessor, LoggingMixin):
 
     @property
     def done(self):
-        """
+        """判断文件处理子进程是否已经执行完成
         Check if the process launched to process this file is done.
         :return: whether the process is finished running
         :rtype: bool
@@ -492,19 +520,27 @@ class DagFileProcessor(AbstractDagFileProcessor, LoggingMixin):
         if self._done:
             return True
 
+        # 如果子进程有结果返回
         if not self._result_queue.empty():
+            # 获得执行结果
             self._result = self._result_queue.get_nowait()
             self._done = True
             self.log.debug("Waiting for %s", self._process)
+            # 等待子进程释放资源并结束
             self._process.join()
             return True
 
         # Potential error case when process dies
+        # 如果子进程已经执行完成
         if not self._process.is_alive():
+            # 设置完成标记
             self._done = True
+            # 获得子进程执行结果
             # Get the object from the queue or else join() can hang.
             if not self._result_queue.empty():
                 self._result = self._result_queue.get_nowait()
+            # 等待子进程资源释放
+            # TODO join操作是没有必要的
             self.log.debug("Waiting for %s", self._process)
             self._process.join()
             return True
@@ -513,7 +549,7 @@ class DagFileProcessor(AbstractDagFileProcessor, LoggingMixin):
 
     @property
     def result(self):
-        """
+        """获得文件处理子进程的执行结果
         :return: result of running SchedulerJob.process_file()
         :rtype: SimpleDag
         """
@@ -523,7 +559,7 @@ class DagFileProcessor(AbstractDagFileProcessor, LoggingMixin):
 
     @property
     def start_time(self):
-        """
+        """获得文件处理子进程的启动时间
         :return: when this started to process the file
         :rtype: datetime
         """

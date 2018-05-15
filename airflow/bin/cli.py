@@ -413,6 +413,7 @@ def _run(args, dag, ti):
             # 是否忽略任务实例状态
             ignore_ti_state=args.force,
             pool=args.pool)
+        # 在DB中新增一个job，并执行
         run_job.run()
     elif args.raw:
         # 不检查依赖，也不经过调度器而直接执行operator
@@ -514,6 +515,7 @@ def run(args, dag=None):
     task = dag.get_task(task_id=args.task_id)
 
     # 创建任务实例
+    # TODO 如果任务实例在DB中不存在
     ti = TaskInstance(task, args.execution_date)
     ti.refresh_from_db()
 
