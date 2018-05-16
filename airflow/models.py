@@ -52,7 +52,7 @@ import hashlib
 
 import uuid
 from datetime import datetime
-from urllib.parse import urlparse, quote
+from urllib.parse import urlparse, quote, parse_qsl
 
 from sqlalchemy import (
     Column, Integer, String, DateTime, Text, Boolean, ForeignKey, PickleType,
@@ -647,6 +647,7 @@ class Connection(Base, LoggingMixin):
         ('emr', 'Elastic MapReduce',),
         ('snowflake', 'Snowflake',),
         ('segment', 'Segment',),
+        ('azure_data_lake', 'Azure Data Lake'),
     ]
 
     def __init__(
@@ -680,6 +681,8 @@ class Connection(Base, LoggingMixin):
         self.login = temp_uri.username
         self.password = temp_uri.password
         self.port = temp_uri.port
+        if temp_uri.query:
+            self.extra = json.dumps(dict(parse_qsl(temp_uri.query)))
 
     def get_password(self):
         if self._password and self.is_encrypted:
@@ -792,6 +795,9 @@ class Connection(Base, LoggingMixin):
             elif self.conn_type == 'docker':
                 from airflow.hooks.docker_hook import DockerHook
                 return DockerHook(docker_conn_id=self.conn_id)
+            elif self.conn_type == 'azure_data_lake':
+                from airflow.contrib.hooks.azure_data_lake_hook import AzureDataLakeHook
+                return AzureDataLakeHook(azure_data_lake_conn_id=self.conn_id)
         except:
             pass
 

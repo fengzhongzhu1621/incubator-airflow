@@ -284,7 +284,11 @@ def initdb(rbac=False):
     merge_conn(
         models.Connection(
             conn_id='segment_default', conn_type='segment',
-            extra='{"write_key": "my-segment-write-key"}'))
+            extra='{"write_key": "my-segment-write-key"}')),
+    merge_conn(
+        models.Connection(
+            conn_id='azure_data_lake_default', conn_type='azure_data_lake',
+            extra='{"tenant": "<TENANT>", "account_name": "<ACCOUNTNAME>" }'))
 
     # 添加 KnownEventType 记录
     # Known event types
