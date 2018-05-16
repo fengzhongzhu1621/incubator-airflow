@@ -398,7 +398,13 @@ def set_is_paused(is_paused, args, dag=None):
 
 
 def _run(args, dag, ti):
-    """执行任务实例 ."""
+    """执行任务实例 .
+    
+    任务实例执行的顺序:
+        1. airflow run
+        2. 使用调度器executor执行命令 airflow run --local
+        3. 使用任务执行器taskrunner执行命令 airflow run --raw
+    """
     if args.local:
         run_job = jobs.LocalTaskJob(
             task_instance=ti,
@@ -416,7 +422,7 @@ def _run(args, dag, ti):
         # 在DB中新增一个job，并执行
         run_job.run()
     elif args.raw:
-        # 不检查依赖，也不经过调度器而直接执行operator
+        # 不检查依赖，也不经过job和执行器而直接执行operator
         ti._run_raw_task(
             mark_success=args.mark_success,
             job_id=args.job_id,
@@ -456,7 +462,7 @@ def _run(args, dag, ti):
             ignore_ti_state=args.force,
             pool=args.pool)
 
-        # 执行shell命令（airflow run --raw）
+        # 执行shell命令: 同步或分布式异步celery worker执行命令（airflow run --local
         executor.heartbeat()
         # 等待任务实例执行完成
         executor.end()

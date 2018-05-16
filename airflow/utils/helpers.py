@@ -239,21 +239,29 @@ def reap_process_group(pid, log, sig=signal.SIGTERM,
 
     parent = psutil.Process(pid)
 
+    # 根据进程ID，获得所有子进程和当前进程
     children = parent.children(recursive=True)
     children.append(parent)
 
+    # 杀掉进程组
     log.info("Sending %s to GPID %s", sig, os.getpgid(pid))
     os.killpg(os.getpgid(pid), sig)
 
+    # 等待子进程结束
     gone, alive = psutil.wait_procs(children, timeout=timeout, callback=on_terminate)
 
+    # 判断子进程是否存活
     if alive:
         for p in alive:
             log.warn("process %s (%s) did not respond to SIGTERM. Trying SIGKILL", p, pid)
 
+        # 如果子进程仍然存活，则调用SIGKILL信号重新杀死
         os.killpg(os.getpgid(pid), signal.SIGKILL)
 
+        # 等待子进程结束
         gone, alive = psutil.wait_procs(alive, timeout=timeout, callback=on_terminate)
+
+        # 如果子进程仍然存活，则记录错误日志
         if alive:
             for p in alive:
                 log.error("Process %s (%s) could not be killed. Giving up.", p, p.pid)

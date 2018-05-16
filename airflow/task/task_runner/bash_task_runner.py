@@ -31,12 +31,20 @@ class BashTaskRunner(BaseTaskRunner):
         super(BashTaskRunner, self).__init__(local_task_job)
 
     def start(self):
+        """执行bash命令 .
+
+        如果用-c 那么bash 会从第一个非选项参数后面的字符串中读取命令，如果字符串有多个空格，第一个空格前面的字符串是要执行的命令，也就是$0, 后面的是参数，即$1, $2....
+        
+        bash -c "cmd string"
+        bash -c "./atest hello world"
+        """
         self.process = self.run_command(['bash', '-c'], join_args=True)
 
     def return_code(self):
         return self.process.poll()
 
     def terminate(self):
+        """终止bash进程 ."""
         if self.process and psutil.pid_exists(self.process.pid):
             reap_process_group(self.process.pid, self.log)
 

@@ -106,7 +106,7 @@ class BaseTaskRunner(LoggingMixin):
                           line.rstrip('\n'))
 
     def run_command(self, run_with, join_args=False):
-        """
+        """运行任务实例： airflow run --raw
         Run the task command
 
         :param run_with: list of tokens to run the task command with
@@ -118,6 +118,7 @@ class BaseTaskRunner(LoggingMixin):
         :return: the process that was run
         :rtype: subprocess.Popen
         """
+        # 运行operator
         cmd = [" ".join(self._command)] if join_args else self._command
         full_cmd = run_with + cmd
         self.log.info('Running: %s', full_cmd)
@@ -131,11 +132,14 @@ class BaseTaskRunner(LoggingMixin):
             preexec_fn=os.setsid
         )
 
+        # 启动一个线程，在命令执行完成后记录相关日志
+        # airflow run --raw 命令执行完成后打印日志
         # Start daemon thread to read subprocess logging output
         log_reader = threading.Thread(
             target=self._read_task_logs,
             args=(proc.stdout,),
         )
+        # 主线程结束时，子线程也随之结束
         log_reader.daemon = True
         log_reader.start()
         return proc
@@ -161,7 +165,7 @@ class BaseTaskRunner(LoggingMixin):
         raise NotImplementedError()
 
     def on_finish(self):
-        """
+        """删除临时配置文件
         A callback that should be called when this is done running.
         """
         if self._cfg_path and os.path.isfile(self._cfg_path):

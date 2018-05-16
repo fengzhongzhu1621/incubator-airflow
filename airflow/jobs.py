@@ -111,7 +111,7 @@ class BaseJob(Base, LoggingMixin):
         self.executor_class = executor.__class__.__name__
         # 设置开始时间和心跳开始时间
         self.start_date = timezone.utcnow()
-        self.latest_heartbeat = timezone.utcnow()
+        self.latest_heartbeat = self.start_date
         # 心跳频率
         self.heartrate = heartrate
         # 调度器进程所在机器的执行用户
@@ -172,6 +172,7 @@ class BaseJob(Base, LoggingMixin):
         heart rate. If you go over 60 seconds before calling it, it won't
         sleep at all.
         '''
+        # 每次心跳获得最新的job状态
         with create_session() as session:
             job = session.query(BaseJob).filter_by(id=self.id).one()
             # 将job复制，并去掉与sesion的关联
@@ -373,7 +374,7 @@ class DagFileProcessor(AbstractDagFileProcessor, LoggingMixin):
                         pickle_dags,
                         dag_id_white_list,
                         thread_name):
-        """创建一个DAG文件处理进程
+        """创建一个DAG文件处理进程，执行 SchedulerJob
         Launch a process to process the given file.
 
         :param result_queue: the queue to use for passing back the result
@@ -2658,6 +2659,7 @@ class LocalTaskJob(BaseJob):
         self.ignore_task_deps = ignore_task_deps
         # 忽略任务实例依赖
         self.ignore_ti_state = ignore_ti_state
+        # 任务实例插槽
         self.pool = pool
         self.pickle_id = pickle_id
         self.mark_success = mark_success
@@ -2669,7 +2671,7 @@ class LocalTaskJob(BaseJob):
         super(LocalTaskJob, self).__init__(*args, **kwargs)
 
     def _execute(self):
-        # 获得任务执行器
+        # 获得任务实例运行期
         self.task_runner = get_task_runner(self)
 
         # job终止信号处理函数
@@ -2693,7 +2695,8 @@ class LocalTaskJob(BaseJob):
             return
 
         try:
-            # 执行任务实例
+            # 如果依赖满足，则调用任务实例运行器执行任务实例
+            # 执行airflow run --raw 命令
             self.task_runner.start()
 
             last_heartbeat_time = time.time()
@@ -2705,20 +2708,22 @@ class LocalTaskJob(BaseJob):
             # 直到任务实例执行完成，或者心跳上报异常
             while True:
                 # Monitor the task to see if it's done
-                # 任务实例执行完成
+                # 任务实例执行完成后，检查状态码
                 return_code = self.task_runner.return_code()
                 if return_code is not None:
                     self.log.info(
                         "Task exited with return code %s", return_code)
                     return
 
-                # 上报心跳，如果心跳上报正常则进行下一次任务实例执行结果检测
+                # 睡眠之后，更新心跳时间
+                # 如果job状态为SHUTDOWN，则调用kill函数
                 # Periodically heartbeat so that the scheduler doesn't think this
                 # is a zombie
                 try:
                     self.heartbeat()
                     last_heartbeat_time = time.time()
                 except OperationalError:
+                    # DB操作失败，则重新发起心跳
                     Stats.incr('local_task_job_heartbeat_failure', 1, 1)
                     self.log.exception(
                         "Exception while trying to heartbeat! Sleeping for %s seconds",
@@ -2727,6 +2732,8 @@ class LocalTaskJob(BaseJob):
                     # 调度器的运行间隔
                     time.sleep(self.heartrate)
 
+                # TODO 心跳长时间未上报成功
+                # 唯一失败的原因是DB连接失败导致的
                 # If it's been too long since we've heartbeat, then it's possible that
                 # the scheduler rescheduled this task, so kill launched
                 # processes.
@@ -2750,7 +2757,8 @@ class LocalTaskJob(BaseJob):
 
     @provide_session
     def heartbeat_callback(self, session=None):
-        """Self destruct task if state has been moved away from running externally"""
+        """每次心跳时执行此函数
+        Self destruct task if state has been moved away from running externally"""
         # 每次心跳是否终止任务执行器
         if self.terminating:
             # ensure termination if processes are created later
