@@ -195,7 +195,7 @@ def backfill(args, dag=None):
             task_regex=args.task_regex,
             include_upstream=not args.ignore_dependencies)
 
-    # 模拟运行
+    # 模拟运行，仅仅渲染模板参数
     if args.dry_run:
         print("Dry run of DAG {0} on {1}".format(args.dag_id,
                                                  args.start_date))
@@ -224,6 +224,7 @@ def backfill(args, dag=None):
             ignore_task_deps=args.ignore_dependencies,
             # 任务插槽名称，用于对任务实例的数量进行限制
             pool=args.pool,
+            # 补录间隔时间
             # 如果dag_run实例超过了阈值，job执行时需要循环等待其他的dag_run运行完成，设置循环的间隔
             delay_on_limit_secs=args.delay_on_limit)
 
@@ -403,7 +404,8 @@ def _run(args, dag, ti):
     任务实例执行的顺序:
         1. airflow run
         2. 使用调度器executor执行命令 airflow run --local
-        3. 使用任务执行器taskrunner执行命令 airflow run --raw
+        3. 使用LocalTaskJob，启动一个任务执行器taskrunner，检查任务实例的依赖，并执行命令 airflow run --raw
+        4. 执行operator
     """
     if args.local:
         run_job = jobs.LocalTaskJob(

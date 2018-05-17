@@ -3507,7 +3507,7 @@ class DAG(BaseDag, LoggingMixin):
         using_end_date = end_date
 
         # dates for dag runs
-        # 如果开始时间为空，则去所有任务的最小开始时间
+        # 如果开始时间为空，则取所有任务的最小开始时间
         using_start_date = using_start_date or min(
             [t.start_date for t in self.tasks])
         # 结束时间为空，则去当前时间
@@ -4278,12 +4278,13 @@ class DAG(BaseDag, LoggingMixin):
         # 创建job
         job = BackfillJob(
             self,
+            # 开始调度时间 (>=)
             start_date=start_date,
+            # 结束调度时间 (<=)
             end_date=end_date,
             # 将任务实例标记为成功
             mark_success=mark_success,
-            # TODO 参数未使用
-            include_adhoc=include_adhoc,
+            # 选择的执行器
             executor=executor,
             # 是否需要将dag对象序列化到db中，False表示需要
             donot_pickle=donot_pickle,

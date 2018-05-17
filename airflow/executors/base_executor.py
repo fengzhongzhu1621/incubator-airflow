@@ -156,7 +156,8 @@ class BaseExecutor(LoggingMixin):
                     'executor: {}'.format(key))
 
         # Calling child class sync method
-        # 阻塞操作，同步任务实例执行结果
+        # 如果是本地或顺序调度器，则是阻塞操作，同步任务实例执行结果
+        # 如果是celery等分布式调度器，则是非阻塞操作，异步获取任务实例执行结果
         self.log.debug("Calling the %s sync method", self.__class__)
         self.sync()
 

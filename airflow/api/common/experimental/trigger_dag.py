@@ -41,14 +41,9 @@ def trigger_dag(dag_id, run_id=None, conf=None, execution_date=None,
 
     # 验证调度时间必须存在时区信息
     assert timezone.is_localized(execution_date)
-<<<<<<< HEAD
-    # 去掉微妙
-    execution_date = execution_date.replace(microsecond=0)
-=======
 
     if replace_microseconds:
         execution_date = execution_date.replace(microsecond=0)
->>>>>>> 1e5ae969675ad290c89ffe982e7257dc0bdab596
 
     # 获得dag实例运行ID，默认调度时间与run_id关联
     # 还有一种情况是，同一个调度时间有多个run_id

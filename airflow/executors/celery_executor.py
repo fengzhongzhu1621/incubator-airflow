@@ -93,7 +93,7 @@ class CeleryExecutor(BaseExecutor):
         self.last_state[key] = celery_states.PENDING
 
     def sync(self):
-        """阻塞操作，同步任务执行结果 ."""
+        """非阻塞操作，获取任务执行结果 ."""
         self.log.debug("Inquiring about %s celery task(s)", len(self.tasks))
         for key, async in list(self.tasks.items()):
             try:
