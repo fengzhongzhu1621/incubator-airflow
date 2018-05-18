@@ -236,7 +236,7 @@ class BaseJob(Base, LoggingMixin):
 
     @provide_session
     def reset_state_for_orphaned_tasks(self, filter_by_dag_run=None, session=None):
-        """验证是否存在孤儿任务实例
+        """验证是否存在孤儿任务实例，并将其状态设置为None
         This function checks if there are any tasks in the dagrun (or all)
         that have a scheduled state but are not known by the
         executor. If it finds those it will reset the state to None
@@ -350,7 +350,7 @@ class DagFileProcessor(AbstractDagFileProcessor, LoggingMixin):
         self._result_queue = multiprocessing.Queue()
         # The process that was launched to process the given .
         self._process = None
-        # 需要调度的DAG ID列表
+        # 需要调度的DAG ID列表，为[]则不需要过滤
         self._dag_id_white_list = dag_id_white_list
         # 是否需要序列化DAG到DB中
         self._pickle_dags = pickle_dags
@@ -624,9 +624,12 @@ class SchedulerJob(BaseJob):
 
         self.subdir = subdir
 
+        # 运行的次数
         self.num_runs = num_runs
+        # 运行的时长
         self.run_duration = run_duration
 
+        # 是否将DAG实例化到DB中
         self.do_pickle = do_pickle
         super(SchedulerJob, self).__init__(*args, **kwargs)
 
@@ -658,6 +661,7 @@ class SchedulerJob(BaseJob):
                                                 'print_stats_interval')
         # Parse and schedule each file no faster than this interval. Default
         # to 3 minutes.
+        # 一个新的DAG从文件系统序列化到DB的需要的最小时间
         self.file_process_interval = file_process_interval
 
         # Wait until at least this many seconds have passed before parsing files once all
@@ -665,6 +669,7 @@ class SchedulerJob(BaseJob):
         self.min_file_parsing_loop_time = min_file_parsing_loop_time
 
         if run_duration is None:
+            # 从配置文件中获得默认配置
             self.run_duration = conf.getint('scheduler',
                                             'run_duration')
 
@@ -1646,6 +1651,7 @@ class SchedulerJob(BaseJob):
     def _execute(self):
         self.log.info("Starting the scheduler")
 
+        # 根据executor判断DAG是否可以序列化
         # DAGs can be pickled for easier remote execution by some executors
         pickle_dags = False
         if self.do_pickle and self.executor.__class__ not in \
@@ -1667,6 +1673,7 @@ class SchedulerJob(BaseJob):
         self.log.info("Checking for new files in %s every %s seconds",
                       self.subdir, self.dag_dir_list_interval)
 
+        # 搜索遍历DAG目录返回所有的DAG路径
         # Build up a list of Python files that could contain DAGs
         self.log.info("Searching for files in %s", self.subdir)
         known_file_paths = list_py_file_paths(self.subdir)
@@ -1678,6 +1685,7 @@ class SchedulerJob(BaseJob):
                                     pickle_dags,
                                     self.dag_ids)
 
+        # 创建文件处理器进程管理类
         processor_manager = DagFileProcessorManager(self.subdir,
                                                     known_file_paths,
                                                     self.max_threads,
@@ -1686,6 +1694,7 @@ class SchedulerJob(BaseJob):
                                                     self.num_runs,
                                                     processor_factory)
 
+        # 启动 executor
         try:
             self._execute_helper(processor_manager)
         finally:
@@ -1693,6 +1702,7 @@ class SchedulerJob(BaseJob):
 
             # Kill all child processes on exit since we don't want to leave
             # them as orphaned.
+            # 获得DAG文件处理器进程的PIDS
             pids_to_kill = processor_manager.get_all_pids()
             if len(pids_to_kill) > 0:
                 # First try SIGTERM
@@ -1700,12 +1710,15 @@ class SchedulerJob(BaseJob):
                 # Only check child processes to ensure that we don't have a case
                 # where we kill the wrong process because a child process died
                 # but the PID got reused.
+                # 获得存活的子进程
                 child_processes = [x for x in this_process.children(recursive=True)
                                    if x.is_running() and x.pid in pids_to_kill]
+                # 终止多个DAG处理子进程
                 for child in child_processes:
                     self.log.info("Terminating child PID: %s", child.pid)
                     child.terminate()
                 # TODO: Remove magic number
+                # 等待多个DAG处理子进程结束
                 timeout = 5
                 self.log.info(
                     "Waiting up to %s seconds for processes to exit...", timeout)
@@ -1717,6 +1730,7 @@ class SchedulerJob(BaseJob):
                     self.log.debug(
                         "Ran out of time while waiting for processes to exit")
 
+                # 判断子进程是否结束
                 # Then SIGKILL
                 child_processes = [x for x in this_process.children(recursive=True)
                                    if x.is_running() and x.pid in pids_to_kill]
@@ -1734,8 +1748,10 @@ class SchedulerJob(BaseJob):
         :type processor_manager: DagFileProcessorManager
         :return: None
         """
+        # 启动 executor
         self.executor.start()
 
+        # 验证是否存在孤儿任务实例，并将其状态设置为None
         self.log.info("Resetting orphaned tasks for active dag runs")
         self.reset_state_for_orphaned_tasks()
 
@@ -1752,6 +1768,8 @@ class SchedulerJob(BaseJob):
         # Use this value initially
         known_file_paths = processor_manager.file_paths
 
+        # 判断scheduler job是否结束
+        # 如果 run_duration 是否负数，则为死循环
         # For the execute duration, parse and schedule DAGs
         while (timezone.utcnow() - execute_start_time).total_seconds() < \
                 self.run_duration or self.run_duration < 0:
@@ -1763,6 +1781,7 @@ class SchedulerJob(BaseJob):
             elapsed_time_since_refresh = (timezone.utcnow() -
                                           last_dag_dir_refresh_time).total_seconds()
 
+            # 如果超出了文件扫描间隔，则重新加载DAG目录下的DAG文件
             if elapsed_time_since_refresh > self.dag_dir_list_interval:
                 # Build up a list of Python files that could contain DAGs
                 self.log.info("Searching for files in %s", self.subdir)
@@ -1770,16 +1789,20 @@ class SchedulerJob(BaseJob):
                 last_dag_dir_refresh_time = timezone.utcnow()
                 self.log.info("There are %s files in %s",
                               len(known_file_paths), self.subdir)
+                # 设置DAG目录下最新的DAG文件路径数组
                 processor_manager.set_file_paths(known_file_paths)
 
+                # 清除已经解决的，不存在的导入错误
                 self.log.debug("Removing old import errors")
                 self.clear_nonexistent_import_errors(
                     known_file_paths=known_file_paths)
 
+            # 启动DAG文件子进程
             # Kick of new processes and collect results from finished ones
             self.log.debug("Heartbeating the process manager")
             simple_dags = processor_manager.heartbeat()
 
+            # 因为sqlite只支持单进程，所以需要等待DAG子进程处理完成
             if self.using_sqlite:
                 # For the sqlite case w/ 1 thread, wait until the processor
                 # is finished to avoid concurrent access to the DB.
@@ -1812,6 +1835,10 @@ class SchedulerJob(BaseJob):
                 self._execute_task_instances(simple_dag_bag,
                                              (State.SCHEDULED,))
 
+            # executor 心跳
+            # 睡眠之后，更新心跳时间
+            # 如果job状态为SHUTDOWN，则调用kill函数
+            # 执行心跳处理函数
             # Call heartbeats
             self.log.debug("Heartbeating the executor")
             self.executor.heartbeat()
@@ -1846,6 +1873,7 @@ class SchedulerJob(BaseJob):
                               self.num_runs)
                 break
 
+        # 停止所有的DAG文件处理子进程
         # Stop any processors
         processor_manager.terminate()
 
@@ -1854,18 +1882,23 @@ class SchedulerJob(BaseJob):
         # deleted.
         all_files_processed = True
         for file_path in known_file_paths:
+            # 判断DAG是否运行完成
             if processor_manager.get_last_finish_time(file_path) is None:
                 all_files_processed = False
                 break
+        # 如果所有的DAG文件都运行完成了
         if all_files_processed:
             self.log.info(
                 "Deactivating DAGs that haven't been touched since %s",
                 execute_start_time.isoformat()
             )
+            # TODO 为什么要删除呢？可能会引起问题
             models.DAG.deactivate_stale_dags(execute_start_time)
 
+        # 结束executor
         self.executor.end()
 
+        # 删除session
         settings.Session.remove()
 
     @provide_session
@@ -2447,6 +2480,7 @@ class BackfillJob(BaseJob):
                                                           executors.SequentialExecutor):
                                     cfg_path = tmp_configuration_copy()
 
+                                # 将任务实例加入 executors 中
                                 executor.queue_task_instance(
                                     ti,
                                     mark_success=self.mark_success,
@@ -2455,6 +2489,7 @@ class BackfillJob(BaseJob):
                                     ignore_depends_on_past=ignore_depends_on_past,
                                     pool=self.pool,
                                     cfg_path=cfg_path)
+
                                 ti_status.started[key] = ti
                                 ti_status.to_run.pop(key)
                         session.commit()

@@ -345,13 +345,18 @@ class DagFileProcessorManager(LoggingMixin):
 
         """
         self._file_paths = file_paths
+        # DAG文件队列
         self._file_path_queue = []
-        # 处理器的最大数量
+        # DAG处理器进程的最大数量
         self._parallelism = parallelism
+        # DAG文件的目录，用于搜索DAG
         self._dag_directory = dag_directory
+        # job运行的最大次数，默认是-1
         self._max_runs = max_runs
+        # 一个新的DAG从文件系统序列化到DB的需要的最小时间
         self._process_file_interval = process_file_interval
         self._min_file_parsing_loop_time = min_file_parsing_loop_time
+        # DAG文件处理进程
         self._processor_factory = processor_factory
         # Map from file path to the processor
         self._processors = {}
@@ -444,6 +449,7 @@ class DagFileProcessorManager(LoggingMixin):
         :type new_file_paths: list[unicode]
         :return: None
         """
+        # 设置DAG目录下最新的DAG文件路径数组
         self._file_paths = new_file_paths
         # 获得 self._file_path_queue 和  new_file_paths的交集
         # 即从文件队列中删除不存在的文件
@@ -588,19 +594,22 @@ class DagFileProcessorManager(LoggingMixin):
                self._file_path_queue):
             # 从队列中出队一个文件
             file_path = self._file_path_queue.pop(0)
-            # 创建处理器
+            # 创建DAG文件处理器子进程
             processor = self._processor_factory(file_path)
-            # 启动处理器进程
+            # 启动DAG文件处理器子进程
             processor.start()
             self.log.info(
                 "Started a process (PID: %s) to generate tasks for %s",
                 processor.pid, file_path
             )
+            # 记录文件子进程
             self._processors[file_path] = processor
 
+        # 记录心跳的数量
         # Update scheduler heartbeat count.
         self._run_count[self._heart_beat_key] += 1
 
+        # 返回
         return simple_dags
 
     def max_runs_reached(self):

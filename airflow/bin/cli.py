@@ -483,6 +483,7 @@ def run(args, dag=None):
         with open(args.cfg_path, 'r') as conf_file:
             conf_dict = json.load(conf_file)
 
+        # 加载完文件后立即删除
         if os.path.exists(args.cfg_path):
             os.remove(args.cfg_path)
 
