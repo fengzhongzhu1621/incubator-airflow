@@ -289,6 +289,10 @@ def initdb(rbac=False):
         models.Connection(
             conn_id='azure_data_lake_default', conn_type='azure_data_lake',
             extra='{"tenant": "<TENANT>", "account_name": "<ACCOUNTNAME>" }'))
+    merge_conn(
+        models.Connection(
+            conn_id='cassandra_default', conn_type='cassandra',
+            host='localhost', port=9042))
 
     # 添加 KnownEventType 记录
     # Known event types
