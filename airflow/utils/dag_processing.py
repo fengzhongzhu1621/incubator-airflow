@@ -597,6 +597,7 @@ class DagFileProcessorManager(LoggingMixin):
             # 创建DAG文件处理器子进程
             processor = self._processor_factory(file_path)
             # 启动DAG文件处理器子进程
+            # 执行SchedulerJob(dag_ids=dag_id_white_list, log=log).process_file(file_path, pickle_dags)
             processor.start()
             self.log.info(
                 "Started a process (PID: %s) to generate tasks for %s",
@@ -609,7 +610,7 @@ class DagFileProcessorManager(LoggingMixin):
         # Update scheduler heartbeat count.
         self._run_count[self._heart_beat_key] += 1
 
-        # 返回
+        # 返回已完成处理器的执行结果
         return simple_dags
 
     def max_runs_reached(self):

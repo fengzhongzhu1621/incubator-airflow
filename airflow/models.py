@@ -28,6 +28,7 @@ from builtins import str
 from builtins import object, bytes
 import copy
 from collections import namedtuple, defaultdict
+import cryptography
 from datetime import timedelta
 
 import dill
@@ -59,7 +60,6 @@ from sqlalchemy import (
     Index, Float, LargeBinary)
 from sqlalchemy import func, or_, and_, true as sqltrue
 from sqlalchemy.ext.declarative import declarative_base, declared_attr
-from sqlalchemy.dialects.mysql import LONGTEXT
 from sqlalchemy.orm import reconstructor, relationship, synonym
 from sqlalchemy_utc import UtcDateTime
 
@@ -77,7 +77,6 @@ from airflow.lineage import apply_lineage, prepare_lineage
 from airflow.ti_deps.deps.not_in_retry_period_dep import NotInRetryPeriodDep
 from airflow.ti_deps.deps.prev_dagrun_dep import PrevDagrunDep
 from airflow.ti_deps.deps.trigger_rule_dep import TriggerRuleDep
-from airflow.ti_deps.deps.task_concurrency_dep import TaskConcurrencyDep
 
 from airflow.ti_deps.dep_context import DepContext, QUEUE_DEPS, RUN_DEPS
 from airflow.utils import timezone
@@ -86,7 +85,7 @@ from airflow.utils.db import provide_session
 from airflow.utils.decorators import apply_defaults
 from airflow.utils.email import send_email
 from airflow.utils.helpers import (
-    as_tuple, is_container, is_in, validate_key, pprinttable)
+    as_tuple, is_container, validate_key, pprinttable)
 from airflow.utils.operator_resources import Resources
 from airflow.utils.state import State
 from airflow.utils.timeout import timeout
@@ -118,9 +117,8 @@ def get_fernet():
     """
     try:
         from cryptography.fernet import Fernet
-    except:
-        raise AirflowException(
-            'Failed to import Fernet, it may not be installed')
+    except ImportError:
+        raise AirflowException('Failed to import Fernet, it may not be installed')
     try:
         return Fernet(configuration.conf.get('core', 'FERNET_KEY').encode('utf-8'))
     except (ValueError, TypeError) as ve:
@@ -267,9 +265,8 @@ class DagBag(BaseDagBag, LoggingMixin):
             found_dags = self.process_file(
                 filepath=orm_dag.fileloc, only_if_updated=False)
 
-            # If the source file no longer exports `dag_id`, delete it from
-            # self.dags
-            if found_dags and dag_id in [dag.dag_id for dag in found_dags]:
+            # If the source file no longer exports `dag_id`, delete it from self.dags
+            if found_dags and dag_id in [found_dag.dag_id for found_dag in found_dags]:
                 return self.dags[dag_id]
             elif dag_id in self.dags:
                 del self.dags[dag_id]
@@ -386,7 +383,6 @@ class DagBag(BaseDagBag, LoggingMixin):
                             cycle_exception)
                         self.file_last_changed[dag.full_filepath] = \
                             file_last_changed_on_disk
-
         # 记录所 加载文件的最近修改时间
         self.file_last_changed[filepath] = file_last_changed_on_disk
         return found_dags
@@ -689,7 +685,7 @@ class Connection(Base, LoggingMixin):
         if self._password and self.is_encrypted:
             try:
                 fernet = get_fernet()
-            except:
+            except AirflowException:
                 raise AirflowException(
                     "Can't decrypt encrypted password for login={}, \
                     FERNET_KEY configuration is missing".format(self.login))
@@ -718,7 +714,7 @@ class Connection(Base, LoggingMixin):
         if self._extra and self.is_extra_encrypted:
             try:
                 fernet = get_fernet()
-            except:
+            except AirflowException:
                 raise AirflowException(
                     "Can't decrypt `extra` params for login={},\
                     FERNET_KEY configuration is missing".format(self.login))
@@ -802,7 +798,7 @@ class Connection(Base, LoggingMixin):
             elif self.conn_type == 'cassandra':
                 from airflow.contrib.hooks.cassandra_hook import CassandraHook
                 return CassandraHook(cassandra_conn_id=self.conn_id)
-        except:
+        except Exception:
             pass
 
     def __repr__(self):
@@ -1410,10 +1406,14 @@ class TaskInstance(Base, LoggingMixin):
             min_backoff = int(delay.total_seconds() *
                               (2 ** (self.try_number - 2)))
             # deterministic per task instance
-            hash = int(hashlib.sha1("{}#{}#{}#{}".format(self.dag_id, self.task_id,
-                                                         self.execution_date, self.try_number).encode('utf-8')).hexdigest(), 16)
             # between 0.5 * delay * (2^retry_number) and 1.0 * delay *
-            # (2^retry_number)
+            # (2^retry_number)			
+            hash = int(hashlib.sha1("{}#{}#{}#{}".format(self.dag_id,
+                                                         self.task_id,
+                                                         self.execution_date,
+                                                         self.try_number)
+                                    .encode('utf-8')).hexdigest(), 16)
+            # between 0.5 * delay * (2^retry_number) and 1.0 * delay * (2^retry_number)
             modded_hash = min_backoff + hash % min_backoff
             # timedelta has a maximum representable value. The exponentiation
             # here means this value can be exceeded after a certain number
@@ -1614,8 +1614,8 @@ class TaskInstance(Base, LoggingMixin):
         settings.engine.dispose()
         if verbose:
             if mark_success:
-                msg = "Marking success for {} on {}".format(
-                    self.task, self.execution_date)
+                msg = "Marking success for {} on {}".format(self.task,
+                                                            self.execution_date)
                 self.log.info(msg)
             else:
                 msg = "Executing {} on {}".format(
@@ -2898,13 +2898,12 @@ class BaseOperator(LoggingMixin):
         return self._downstream_task_ids
 
     @provide_session
-    def clear(
-            self,
-            start_date=None,
-            end_date=None,
-            upstream=False,
-            downstream=False,
-            session=None):
+    def clear(self,
+              start_date=None,
+              end_date=None,
+              upstream=False,
+              downstream=False,
+              session=None):
         """
         Clears the state of task instances associated with the task, following
         the parameters specified.
@@ -3139,8 +3138,9 @@ class DagModel(Base):
     dag_id = Column(String(ID_LEN), primary_key=True)
     # A DAG can be paused from the UI / DB
     # Set this default value of is_paused based on a configuration value!
-    is_paused_at_creation = configuration.conf.getboolean('core',
-                                                          'dags_are_paused_at_creation')
+    is_paused_at_creation = configuration.conf\
+        .getboolean('core',
+                    'dags_are_paused_at_creation')
     is_paused = Column(Boolean, default=is_paused_at_creation)
     # Whether the DAG is a subdag
     is_subdag = Column(Boolean, default=False)
@@ -3242,7 +3242,8 @@ class DAG(BaseDag, LoggingMixin):
     :param sla_miss_callback: specify a function to call when reporting SLA
         timeouts.
     :type sla_miss_callback: types.FunctionType
-    :param default_view: Specify DAG default view (tree, graph, duration, gantt, landing_times)
+    :param default_view: Specify DAG default view (tree, graph, duration,
+                                                   gantt, landing_times)
     :type default_view: string
     :param orientation: Specify DAG orientation in graph view (LR, TB, RL, BT)
     :type orientation: string
@@ -3794,14 +3795,14 @@ class DAG(BaseDag, LoggingMixin):
         # Check SubDag for class but don't check class directly, see
         # https://github.com/airbnb/airflow/issues/1168
         from airflow.operators.subdag_operator import SubDagOperator
-        l = []
+        subdag_lst = []
         for task in self.tasks:
             if (isinstance(task, SubDagOperator) or
-                # TODO remove in Airflow 2.0
+                    # TODO remove in Airflow 2.0
                     type(task).__name__ == 'SubDagOperator'):
-                l.append(task.subdag)
-                l += task.subdag.subdags
-        return l
+                subdag_lst.append(task.subdag)
+                subdag_lst += task.subdag.subdags
+        return subdag_lst
 
     def resolve_template_files(self):
         """删除所有任务的临时文件 ."""
@@ -4236,7 +4237,6 @@ class DAG(BaseDag, LoggingMixin):
             start_date=None,
             end_date=None,
             mark_success=False,
-            include_adhoc=False,
             local=False,
             executor=None,
             donot_pickle=configuration.conf.getboolean('core', 'donot_pickle'),
@@ -4253,8 +4253,6 @@ class DAG(BaseDag, LoggingMixin):
         :type end_date: datetime
         :param mark_success: True to mark jobs as succeeded without running them
         :type mark_success: bool
-        :param include_adhoc: True to include dags with the adhoc parameter
-        :type include_adhoc: bool
         :param local: True to run the tasks using the LocalExecutor
         :type local: bool
         :param executor: The executor instance to run the tasks
@@ -4596,13 +4594,13 @@ class Variable(Base, LoggingMixin):
         if self._val and self.is_encrypted:
             try:
                 fernet = get_fernet()
-            except:
+            except Exception:
                 log.error("Can't decrypt _val for key={}, FERNET_KEY "
                           "configuration missing".format(self.key))
                 return None
             try:
                 return fernet.decrypt(bytes(self._val, 'utf-8')).decode()
-            except:
+            except cryptography.fernet.InvalidToken:
                 log.error("Can't decrypt _val for key={}, invalid token "
                           "or value".format(self.key))
                 return None
@@ -4617,7 +4615,8 @@ class Variable(Base, LoggingMixin):
                 self.is_encrypted = True
             except AirflowException:
                 self.log.exception(
-                    "Failed to load fernet while encrypting value, using non-encrypted value."
+                    "Failed to load fernet while encrypting value, "
+                    "using non-encrypted value."
                 )
                 self._val = value
                 self.is_encrypted = False
@@ -4777,20 +4776,21 @@ class XCom(Base, LoggingMixin):
 
     @classmethod
     @provide_session
-    def get_one(
-            cls,
-            execution_date,
-            key=None,
-            task_id=None,
-            dag_id=None,
-            include_prior_dates=False,
-            enable_pickling=None,
-            session=None):
+    def get_one(cls,
+                execution_date,
+                key=None,
+                task_id=None,
+                dag_id=None,
+                include_prior_dates=False,
+                enable_pickling=None,
+                session=None):
         """获得一条中间结果
         Retrieve an XCom value, optionally meeting certain criteria.
-        TODO: "pickling" has been deprecated and JSON is preferred. "pickling" will be removed in Airflow 2.0.
+        TODO: "pickling" has been deprecated and JSON is preferred.
+              "pickling" will be removed in Airflow 2.0.
 
-        :param enable_pickling: If pickling is not enabled, the XCOM value will be parsed to JSON instead.
+        :param enable_pickling: If pickling is not enabled,
+                                the XCOM value will be parsed to JSON instead.
         :return: XCom value
         """
         filters = []
@@ -4806,9 +4806,8 @@ class XCom(Base, LoggingMixin):
             filters.append(cls.execution_date == execution_date)
 
         query = (
-            session.query(cls.value)
-            .filter(and_(*filters))
-            .order_by(cls.execution_date.desc(), cls.timestamp.desc()))
+            session.query(cls.value).filter(and_(*filters))
+                   .order_by(cls.execution_date.desc(), cls.timestamp.desc()))
 
         # 获得最近的一条记录
         result = query.first()
@@ -4833,19 +4832,19 @@ class XCom(Base, LoggingMixin):
 
     @classmethod
     @provide_session
-    def get_many(
-            cls,
-            execution_date,
-            key=None,
-            task_ids=None,
-            dag_ids=None,
-            include_prior_dates=False,
-            limit=100,
-            enable_pickling=None,
-            session=None):
+    def get_many(cls,
+                 execution_date,
+                 key=None,
+                 task_ids=None,
+                 dag_ids=None,
+                 include_prior_dates=False,
+                 limit=100,
+                 enable_pickling=None,
+                 session=None):
         """
         Retrieve an XCom value, optionally meeting certain criteria
-        TODO: "pickling" has been deprecated and JSON is preferred. "pickling" will be removed in Airflow 2.0.
+        TODO: "pickling" has been deprecated and JSON is preferred.
+              "pickling" will be removed in Airflow 2.0.
         """
         filters = []
         if key:
@@ -4860,10 +4859,9 @@ class XCom(Base, LoggingMixin):
             filters.append(cls.execution_date == execution_date)
 
         query = (
-            session.query(cls)
-            .filter(and_(*filters))
-            .order_by(cls.execution_date.desc(), cls.timestamp.desc())
-            .limit(limit))
+            session.query(cls).filter(and_(*filters))
+                              .order_by(cls.execution_date.desc(), cls.timestamp.desc())
+                              .limit(limit))
         results = query.all()
         if enable_pickling is None:
             enable_pickling = configuration.conf.getboolean(
@@ -4961,7 +4959,7 @@ class DagStat(Base):
             if dag_ids:
                 qry = qry.filter(DagStat.dag_id.in_(set(dag_ids)))
             if dirty_only:
-                qry = qry.filter(DagStat.dirty == True)
+                qry = qry.filter(DagStat.dirty == True) # noqa
 
             # 添加行级锁
             qry = qry.with_for_update().all()
@@ -5280,14 +5278,9 @@ class DagRun(Base, LoggingMixin):
             state=State.unfinished(),
             session=session
         )
-
-        # 确认所有的任务实例都不依赖于上一个调度的任务实例
-        none_depends_on_past = all(
-            not t.task.depends_on_past for t in unfinished_tasks)
-
-        # 确认所有的任务实例都没有并发限制
-        none_task_concurrency = all(
-            t.task.task_concurrency is None for t in unfinished_tasks)
+        none_depends_on_past = all(not t.task.depends_on_past for t in unfinished_tasks)
+        none_task_concurrency = all(t.task.task_concurrency is None
+                                    for t in unfinished_tasks)
         # small speed up
         if unfinished_tasks and none_depends_on_past and none_task_concurrency:
             # todo: this can actually get pretty slow: one task costs between
@@ -5434,7 +5427,7 @@ class DagRun(Base, LoggingMixin):
         """
         qry = session.query(DagRun).filter(
             DagRun.dag_id == dag_id,
-            DagRun.external_trigger == False,
+            DagRun.external_trigger == False, # noqa
             DagRun.execution_date == execution_date,
         )
         return qry.first()

@@ -128,6 +128,7 @@ class TriggerRuleDep(BaseTIDep):
 
         task = ti.task
         upstream = len(task.upstream_task_ids)
+		# 任务规则
         tr = task.trigger_rule
         # 判断上游任务是否全部完成
         upstream_done = done >= upstream

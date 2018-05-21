@@ -38,10 +38,10 @@ class KubernetesPodOperator(BaseOperator):
     :type image: str
     :param: namespace: the namespace to run within kubernetes
     :type: namespace: str
-    :param cmds: entrypoint of the container.
+    :param cmds: entrypoint of the container. (templated)
         The docker images's entrypoint is used if this is not provide.
     :type cmds: list of str
-    :param arguments: arguments of to the entrypoint.
+    :param arguments: arguments of to the entrypoint. (templated)
         The docker image's CMD is used if this is not provided.
     :type arguments: list of str
     :param volume_mounts: volumeMounts for launched pod
@@ -55,7 +55,7 @@ class KubernetesPodOperator(BaseOperator):
     :param name: name of the task you want to run,
         will be used to generate a pod id
     :type name: str
-    :param env_vars: Environment variables initialized in the container
+    :param env_vars: Environment variables initialized in the container. (templated)
     :type env_vars: dict
     :param secrets: Kubernetes secrets to inject in the container,
         They can be exposed as environment vars or files in a volume.
@@ -64,6 +64,8 @@ class KubernetesPodOperator(BaseOperator):
     :type in_cluster: bool
     :param get_logs: get the stdout of the container as logs of the tasks
     :type get_logs: bool
+    :param affinity: A dict containing a group of affinity scheduling rules
+    :type affinity: dict
     """
     template_fields = ('cmds', 'arguments', 'env_vars')
 
@@ -91,6 +93,7 @@ class KubernetesPodOperator(BaseOperator):
             pod.image_pull_policy = self.image_pull_policy
             pod.annotations = self.annotations
             pod.resources = self.resources
+            pod.affinity = self.affinity
 
             launcher = pod_launcher.PodLauncher(client)
             final_state = launcher.run_pod(
@@ -122,6 +125,7 @@ class KubernetesPodOperator(BaseOperator):
                  image_pull_policy='IfNotPresent',
                  annotations=None,
                  resources=None,
+                 affinity=None,
                  *args,
                  **kwargs):
         super(KubernetesPodOperator, self).__init__(*args, **kwargs)
@@ -140,4 +144,5 @@ class KubernetesPodOperator(BaseOperator):
         self.get_logs = get_logs
         self.image_pull_policy = image_pull_policy
         self.annotations = annotations or {}
+        self.affinity = affinity or {}
         self.resources = resources or Resources()

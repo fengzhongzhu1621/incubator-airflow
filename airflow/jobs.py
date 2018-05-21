@@ -1041,6 +1041,7 @@ class SchedulerJob(BaseJob):
             run.dag = dag
             # todo: preferably the integrity check happens at dag collection
             # time
+            # 根据dag实例，创建所有的任务实例
             run.verify_integrity(session=session)
             # 更新dagrun的状态，由所有的任务实例的状态决定
             run.update_state(session=session)
@@ -1067,6 +1068,8 @@ class SchedulerJob(BaseJob):
                 if task.adhoc:
                     continue
 
+                # 验证上游依赖任务
+                # 根据上游任务失败的情况设置当前任务实例的状态
                 if ti.are_dependencies_met(
                         dep_context=DepContext(flag_upstream_failed=True),
                         session=session):
@@ -1529,10 +1532,13 @@ class SchedulerJob(BaseJob):
 
             self.log.info("Processing %s", dag.dag_id)
 
+            # 创建dag_run实例
             dag_run = self.create_dag_run(dag)
             if dag_run:
                 self.log.info("Created %s", dag_run)
+            # 创建任务实例
             self._process_task_instances(dag, tis_out)
+            # 如果任务实例执行超时，则记录到sla表中，并发送通知邮件
             self.manage_slas(dag)
 
         models.DagStat.update([d.dag_id for d in dags])
@@ -1797,7 +1803,8 @@ class SchedulerJob(BaseJob):
                 self.clear_nonexistent_import_errors(
                     known_file_paths=known_file_paths)
 
-            # 启动DAG文件子进程
+            # 启动DAG文件子进程，启动子SchedulerJob
+            # 返回子进程已经执行完毕的 DAG对象，即这个DAG的任务实例已经被标记为SCHEDULERED
             # Kick of new processes and collect results from finished ones
             self.log.debug("Heartbeating the process manager")
             simple_dags = processor_manager.heartbeat()
@@ -1812,7 +1819,7 @@ class SchedulerJob(BaseJob):
 
             # Send tasks for execution if available
             simple_dag_bag = SimpleDagBag(simple_dags)
-            if len(simple_dags) > 0:
+            if simple_dags:
 
                 # Handle cases where a DAG run state is set (perhaps manually) to
                 # a non-running state. Handle task instances that belong to
@@ -1831,7 +1838,8 @@ class SchedulerJob(BaseJob):
                                                           [State.QUEUED,
                                                            State.SCHEDULED],
                                                           State.NONE)
-
+                
+                # 将任务实例加入到executor队列中
                 self._execute_task_instances(simple_dag_bag,
                                              (State.SCHEDULED,))
 
@@ -1841,6 +1849,7 @@ class SchedulerJob(BaseJob):
             # 执行心跳处理函数
             # Call heartbeats
             self.log.debug("Heartbeating the executor")
+            # 同步或异步执行任务实例，并获取结果
             self.executor.heartbeat()
 
             # Process events from the executor
@@ -1895,7 +1904,7 @@ class SchedulerJob(BaseJob):
             # TODO 为什么要删除呢？可能会引起问题
             models.DAG.deactivate_stale_dags(execute_start_time)
 
-        # 结束executor
+        # 结束executor, 获取任务实例执行结果
         self.executor.end()
 
         # 删除session
@@ -1903,7 +1912,7 @@ class SchedulerJob(BaseJob):
 
     @provide_session
     def process_file(self, file_path, pickle_dags=False, session=None):
-        """
+        """执行一个DAG文件
         Process a Python file containing Airflow DAGs.
 
         This includes:
@@ -1932,6 +1941,7 @@ class SchedulerJob(BaseJob):
         # SimpleDags
         simple_dags = []
 
+        # 加载DAG文件
         try:
             dagbag = models.DagBag(file_path)
         except Exception:
@@ -1948,14 +1958,17 @@ class SchedulerJob(BaseJob):
             self.update_import_errors(session, dagbag)
             return []
 
+        # 将最新的DAG对象同步到DB中
         # Save individual DAGs in the ORM and update
         # DagModel.last_scheduled_time
         for dag in dagbag.dags.values():
             dag.sync_to_db()
 
+        # 获得已暂停的dag
         paused_dag_ids = [dag.dag_id for dag in dagbag.dags.values()
                           if dag.is_paused]
 
+        # 返回可运行的SimpleDag
         # Pickle the DAGs (if necessary) and put them into a SimpleDag
         for dag_id in dagbag.dags:
             dag = dagbag.get_dag(dag_id)
@@ -1967,7 +1980,8 @@ class SchedulerJob(BaseJob):
             if dag_id not in paused_dag_ids:
                 simple_dags.append(SimpleDag(dag, pickle_id=pickle_id))
 
-        if len(self.dag_ids) > 0:
+        # 白名单过滤
+        if self.dag_ids:
             dags = [dag for dag in dagbag.dags.values()
                     if dag.dag_id in self.dag_ids and
                     dag.dag_id not in paused_dag_ids]
@@ -1981,13 +1995,16 @@ class SchedulerJob(BaseJob):
         # returns true?)
         ti_keys_to_schedule = []
 
+        # 创建DAG实例，任务实例，记录SLA，并发送通知邮件
         self._process_dags(dagbag, dags, ti_keys_to_schedule)
 
+        # 遍历可调度的任务实例
         for ti_key in ti_keys_to_schedule:
             dag = dagbag.dags[ti_key[0]]
             task = dag.get_task(ti_key[1])
             ti = models.TaskInstance(task, ti_key[2])
 
+            # 将任务实例刷新到DB中
             ti.refresh_from_db(session=session, lock_for_update=True)
             # We can defer checking the task dependency checks to the worker themselves
             # since they can be expensive to run in the scheduler.
@@ -2000,6 +2017,8 @@ class SchedulerJob(BaseJob):
             # dependencies twice; once to get the task scheduled, and again to actually
             # run the task. We should try to come up with a way to only check
             # them once.
+            # 任务实例入队验证，忽略任务依赖
+            # 标记任务状态为可调度
             if ti.are_dependencies_met(
                     dep_context=dep_context,
                     session=session,
@@ -2019,6 +2038,7 @@ class SchedulerJob(BaseJob):
             self.update_import_errors(session, dagbag)
         except Exception:
             self.log.exception("Error logging import errors!")
+        # 判断是否存在僵死的job，并记录失败的任务实例，发送告警
         try:
             dagbag.kill_zombies()
         except Exception:
