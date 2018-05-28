@@ -4497,10 +4497,10 @@ class DAG(BaseDag, LoggingMixin):
         return qry.scalar()
 
     def test_cycle(self):
-        '''检验dag中是否有环
+        """检验dag中是否有环
         Check to see if there are any cycles in the DAG. Returns False if no cycle found,
         otherwise raises exception.
-        '''
+        """
 
         # default of int is 0 which corresponds to CYCLE_NEW
         visit_map = defaultdict(int)
@@ -4511,9 +4511,9 @@ class DAG(BaseDag, LoggingMixin):
         return False
 
     def _test_cycle_helper(self, visit_map, task_id):
-        '''
+        """
         Checks if a cycle exists from the input task using DFS traversal
-        '''
+        """
 
         # print('Inspecting %s' % task_id)
         if visit_map[task_id] == DagBag.CYCLE_DONE:
@@ -4896,8 +4896,7 @@ class XCom(Base, LoggingMixin):
         for xcom in xcoms:
             if not isinstance(xcom, XCom):
                 raise TypeError(
-                    'Expected XCom; received {}'.format(
-                        xcom.__class__.__name__)
+                    'Expected XCom; received {}'.format(xcom.__class__.__name__)
                 )
             session.delete(xcom)
         session.commit()
@@ -5309,8 +5308,7 @@ class DagRun(Base, LoggingMixin):
                     break
 
         duration = (timezone.utcnow() - start_dttm).total_seconds() * 1000
-        Stats.timing(
-            "dagrun.dependency-check.{}".format(self.dag_id), duration)
+        Stats.timing("dagrun.dependency-check.{}".format(self.dag_id), duration)
 
         # future: remove the check on adhoc tasks (=active_tasks)
         if len(tis) == len(dag.active_tasks):
@@ -5332,8 +5330,7 @@ class DagRun(Base, LoggingMixin):
                                               for r in roots):
                 self.log.info('Marking run %s successful', self)
                 self.state = State.SUCCESS
-                dag.handle_callback(self, success=True,
-                                    reason='success', session=session)
+                dag.handle_callback(self, success=True, reason='success', session=session)
 
             # 如果任务实例没有完成，且任务实例依赖不满足，则dagrun标记为失败，是一种死锁的情况
             # if *all tasks* are deadlocked, the run failed
