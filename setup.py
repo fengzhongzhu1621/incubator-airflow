@@ -116,7 +116,7 @@ azure_data_lake = [
 ]
 cassandra = ['cassandra-driver>=3.13.0']
 celery = [
-    'celery>=4.0.2',
+    'celery>=4.1.1',
     'flower>=0.7.3'
 ]
 cgroups = [
@@ -136,7 +136,7 @@ doc = [
     'sphinx-rtd-theme>=0.1.6',
     'Sphinx-PyPI-upload>=0.2.1'
 ]
-docker = ['docker-py>=1.6.0']
+docker = ['docker>=2.0.0']
 druid = ['pydruid>=0.4.1']
 elasticsearch = [
     'elasticsearch>=5.0.0,<6.0.0',
@@ -156,6 +156,7 @@ hive = [
     'hmsclient>=0.1.0',
     'pyhive>=0.1.3',
     'impyla>=0.13.3',
+    'thrift_sasl==0.2.1',
     'unicodecsv>=0.14.1'
 ]
 jdbc = ['jaydebeapi>=1.1.1']

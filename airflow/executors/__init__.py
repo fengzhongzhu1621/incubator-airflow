@@ -64,7 +64,8 @@ class Executors:
 
 def _get_executor(executor_name):
     """
-    Creates a new instance of the named executor. In case the executor name is not know in airflow,
+    Creates a new instance of the named executor.
+    In case the executor name is not know in airflow,
     look for it in the plugins
     """
     if executor_name == Executors.LocalExecutor:
@@ -90,7 +91,8 @@ def _get_executor(executor_name):
         executor_path = executor_name.split('.')
         if len(executor_path) != 2:
             raise AirflowException(
-                "Executor {0} not supported: please specify in format plugin_module.executor".format(executor_name))
+                "Executor {0} not supported: "
+                "please specify in format plugin_module.executor".format(executor_name))
 
         # executor_path[0]：表示插件名
         # executor_path[1]：表示插件中的类名
@@ -98,5 +100,4 @@ def _get_executor(executor_name):
             # 根据插件中的类名创建对象
             return globals()[executor_path[0]].__dict__[executor_path[1]]()
         else:
-            raise AirflowException(
-                "Executor {0} not supported.".format(executor_name))
+            raise AirflowException("Executor {0} not supported.".format(executor_name))

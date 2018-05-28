@@ -17,7 +17,9 @@
 # specific language governing permissions and limitations
 # under the License.
 
+import re
 import unittest
+
 
 def skipUnlessImported(module, obj):
     """如果对象不在导入的模块中，跳过被装饰的测试 .
@@ -33,3 +35,9 @@ def skipUnlessImported(module, obj):
         obj in dir(m),
         "Skipping test because {} could not be imported from {}".format(
             obj, module))
+
+
+def assertEqualIgnoreMultipleSpaces(case, first, second, msg=None):
+    def _trim(s):
+        re.sub("\s+", " ", s.strip())
+    return case.assertEqual(_trim(first), _trim(second), msg)

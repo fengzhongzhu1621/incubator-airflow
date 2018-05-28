@@ -19,9 +19,9 @@
 #
 
 import datetime
+import itertools
 import pandas as pd
 import random
-import re
 
 import mock
 import unittest
@@ -30,9 +30,11 @@ from collections import OrderedDict
 from hmsclient import HMSClient
 
 from airflow.exceptions import AirflowException
-from airflow.hooks.hive_hooks import HiveCliHook, HiveMetastoreHook
-from airflow import DAG, configuration, operators
+from airflow.hooks.hive_hooks import HiveCliHook, HiveMetastoreHook, HiveServer2Hook
+from airflow import DAG, configuration
+from airflow.operators.hive_operator import HiveOperator
 from airflow.utils import timezone
+from airflow.utils.tests import assertEqualIgnoreMultipleSpaces
 
 
 configuration.load_test_config()
@@ -69,7 +71,7 @@ class HiveEnvironmentTest(unittest.TestCase):
         ADD PARTITION({{ params.partition_by }}='{{ ds }}');
         """
         self.hook = HiveMetastoreHook()
-        t = operators.hive_operator.HiveOperator(
+        t = HiveOperator(
             task_id='HiveHook_' + str(random.randint(1, 10000)),
             params={
                 'database': self.database,
@@ -135,6 +137,23 @@ class TestHiveCliHook(unittest.TestCase):
         self.assertTrue(isinstance(kwargs["field_dict"], OrderedDict))
         self.assertEqual(kwargs["table"], table)
 
+    @mock.patch('airflow.hooks.hive_hooks.HiveCliHook.load_file')
+    @mock.patch('pandas.DataFrame.to_csv')
+    def test_load_df_with_optional_parameters(self, mock_to_csv, mock_load_file):
+        hook = HiveCliHook()
+        b = (True, False)
+        for create, recreate in itertools.product(b, b):
+            mock_load_file.reset_mock()
+            hook.load_df(df=pd.DataFrame({"c": range(0, 10)}),
+                         table="t",
+                         create=create,
+                         recreate=recreate)
+
+            mock_load_file.assert_called_once()
+            kwargs = mock_load_file.call_args[1]
+            self.assertEqual(kwargs["create"], create)
+            self.assertEqual(kwargs["recreate"], recreate)
+
     @mock.patch('airflow.hooks.hive_hooks.HiveCliHook.run_cli')
     def test_load_df_with_data_types(self, mock_run_cli):
         d = OrderedDict()
@@ -170,12 +189,7 @@ class TestHiveCliHook(unittest.TestCase):
             STORED AS textfile
             ;
         """
-
-        def _trim(s):
-            return re.sub("\s+", " ", s.strip())
-
-        self.assertEqual(_trim(mock_run_cli.call_args_list[0][0][0]),
-                         _trim(query))
+        assertEqualIgnoreMultipleSpaces(self, mock_run_cli.call_args_list[0][0][0], query)
 
 
 class TestHiveMetastoreHook(HiveEnvironmentTest):
@@ -303,3 +317,9 @@ class TestHiveMetastoreHook(HiveEnvironmentTest):
         self.assertFalse(
             self.hook.table_exists(str(random.randint(1, 10000)))
         )
+
+
+class TestHiveServer2Hook(unittest.TestCase):
+    def test_get_conn(self):
+        hook = HiveServer2Hook()
+        hook.get_conn()

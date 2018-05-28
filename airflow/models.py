@@ -41,6 +41,7 @@ import zipfile
 import jinja2
 import json
 import logging
+import numbers
 import os
 import pickle
 import re
@@ -1341,29 +1342,29 @@ class TaskInstance(Base, LoggingMixin):
         :type dep_context: DepContext
         :param session: database session
         :type session: Session
-        :param verbose: whether or not to print details on failed dependencies
+        :param verbose: whether log details on failed dependencies on
+            info or debug log level
         :type verbose: boolean
         """
         # 获得DAG上下文
         dep_context = dep_context or DepContext()
         failed = False
         # 根据DAG/TASK上下文中的依赖，返回失败的依赖
+        verbose_aware_logger = self.log.info if verbose else self.log.debug		
         for dep_status in self.get_failed_dep_statuses(
                 dep_context=dep_context,
                 session=session):
             failed = True
-            if verbose:
-                self.log.info(
-                    "Dependencies not met for %s, dependency '%s' FAILED: %s",
-                    self, dep_status.dep_name, dep_status.reason
-                )
+
+            verbose_aware_logger(
+                "Dependencies not met for %s, dependency '%s' FAILED: %s",
+                self, dep_status.dep_name, dep_status.reason
+            )
 
         if failed:
             return False
 
-        if verbose:
-            self.log.info("Dependencies all met for %s", self)
-
+        verbose_aware_logger("Dependencies all met for %s", self)
         return True
 
     @provide_session
@@ -1875,14 +1876,22 @@ class TaskInstance(Base, LoggingMixin):
             tables = task.params['tables']
 
         # 获得调度时间相关变量
-        ds = self.execution_date.isoformat()[:10]
+        ds = self.execution_date.strftime('%Y-%m-%d')
         ts = self.execution_date.isoformat()
-        yesterday_ds = (self.execution_date - timedelta(1)).isoformat()[:10]
-        tomorrow_ds = (self.execution_date + timedelta(1)).isoformat()[:10]
+        yesterday_ds = (self.execution_date - timedelta(1)).strftime('%Y-%m-%d')
+        tomorrow_ds = (self.execution_date + timedelta(1)).strftime('%Y-%m-%d')
 
         # 获得上一个调度和下一个调度时间
         prev_execution_date = task.dag.previous_schedule(self.execution_date)
         next_execution_date = task.dag.following_schedule(self.execution_date)
+
+        next_ds = None
+        if next_execution_date:
+            next_ds = next_execution_date.strftime('%Y-%m-%d')
+
+        prev_ds = None
+        if prev_execution_date:
+            prev_ds = prev_execution_date.strftime('%Y-%m-%d')
 
         ds_nodash = ds.replace('-', '')
         ts_nodash = ts.replace('-', '').replace(':', '')
@@ -1948,6 +1957,8 @@ class TaskInstance(Base, LoggingMixin):
         return {
             'dag': task.dag,
             'ds': ds,
+            'next_ds': next_ds,
+            'prev_ds': prev_ds,
             'ds_nodash': ds_nodash,
             'ts': ts,
             'ts_nodash': ts_nodash,
@@ -2824,6 +2835,8 @@ class BaseOperator(LoggingMixin):
             result = jinja_env.from_string(content).render(**context)
         elif isinstance(content, (list, tuple)):
             result = [rt(attr, e, context) for e in content]
+        elif isinstance(content, numbers.Number):
+            result = content
         elif isinstance(content, dict):
             result = {
                 k: rt("{}[{}]".format(attr, k), v, context)
@@ -4243,7 +4256,9 @@ class DAG(BaseDag, LoggingMixin):
             ignore_task_deps=False,
             ignore_first_depends_on_past=False,
             pool=None,
-            delay_on_limit_secs=1.0):
+            delay_on_limit_secs=1.0,
+            verbose=False,
+    ):
         """
         Runs the DAG.
 
@@ -4269,6 +4284,8 @@ class DAG(BaseDag, LoggingMixin):
         :param delay_on_limit_secs: Time in seconds to wait before next attempt to run
             dag run when max_active_runs limit has been reached
         :type delay_on_limit_secs: float
+        :param verbose: Make logging output more verbose
+        :type verbose: boolean
         """
         # 获得执行器
         from airflow.jobs import BackfillJob
@@ -4297,7 +4314,9 @@ class DAG(BaseDag, LoggingMixin):
             # 任务实例插槽的数量，用于对任务实例的数量进行限制
             pool=pool,
             # 如果dag_run实例超过了阈值，job执行时需要循环等待其他的dag_run运行完成，设置循环的间隔
-            delay_on_limit_secs=delay_on_limit_secs)
+            delay_on_limit_secs=delay_on_limit_secs,
+            verbose=verbose,
+        )
         # 运行job
         job.run()
 
@@ -4705,9 +4724,26 @@ class XCom(Base, LoggingMixin):
     dag_id = Column(String(ID_LEN), nullable=False)
 
     __table_args__ = (
-        Index('idx_xcom_dag_task_date', dag_id,
-              task_id, execution_date, unique=False),
+        Index('idx_xcom_dag_task_date', dag_id, task_id, execution_date, unique=False),
     )
+
+    """
+    TODO: "pickling" has been deprecated and JSON is preferred.
+          "pickling" will be removed in Airflow 2.0.
+    """
+    @reconstructor
+    def init_on_load(self):
+        enable_pickling = configuration.getboolean('core', 'enable_xcom_pickling')
+        if enable_pickling:
+            self.value = pickle.loads(self.value)
+        else:
+            try:
+                self.value = json.loads(self.value.decode('UTF-8'))
+            except (UnicodeEncodeError, ValueError):
+                # For backward-compatibility.
+                # Preventing errors in webserver
+                # due to XComs mixed with pickled and unpickled.
+                self.value = pickle.loads(self.value)
 
     def __repr__(self):
         return '<XCom "{key}" ({task_id} @ {execution_date})>'.format(
@@ -4724,22 +4760,16 @@ class XCom(Base, LoggingMixin):
             execution_date,
             task_id,
             dag_id,
-            enable_pickling=None,
             session=None):
         """保存中间结果
         Store an XCom value.
-        TODO: "pickling" has been deprecated and JSON is preferred. "pickling" will be
-        removed in Airflow 2.0. :param enable_pickling: If pickling is not enabled, the
-        XCOM value will be parsed as JSON instead.
-
+        TODO: "pickling" has been deprecated and JSON is preferred.
+              "pickling" will be removed in Airflow 2.0.
         :return: None
         """
         session.expunge_all()
 
-        if enable_pickling is None:
-            enable_pickling = configuration.conf.getboolean(
-                'core', 'enable_xcom_pickling'
-            )
+        enable_pickling = configuration.getboolean('core', 'enable_xcom_pickling')
         # 序列化中间结果
         if enable_pickling:
             value = pickle.dumps(value)
@@ -4782,15 +4812,11 @@ class XCom(Base, LoggingMixin):
                 task_id=None,
                 dag_id=None,
                 include_prior_dates=False,
-                enable_pickling=None,
                 session=None):
         """获得一条中间结果
         Retrieve an XCom value, optionally meeting certain criteria.
         TODO: "pickling" has been deprecated and JSON is preferred.
               "pickling" will be removed in Airflow 2.0.
-
-        :param enable_pickling: If pickling is not enabled,
-                                the XCOM value will be parsed to JSON instead.
         :return: XCom value
         """
         filters = []
@@ -4812,11 +4838,7 @@ class XCom(Base, LoggingMixin):
         # 获得最近的一条记录
         result = query.first()
         if result:
-            if enable_pickling is None:
-                enable_pickling = configuration.conf.getboolean(
-                    'core', 'enable_xcom_pickling'
-                )
-
+            enable_pickling = configuration.getboolean('core', 'enable_xcom_pickling')
             if enable_pickling:
                 return pickle.loads(result.value)
             else:
@@ -4824,7 +4846,7 @@ class XCom(Base, LoggingMixin):
                     return json.loads(result.value.decode('UTF-8'))
                 except ValueError:
                     log = LoggingMixin().log
-                    log.error("Could not serialize the XCOM value into JSON. "
+                    log.error("Could not deserialize the XCOM value from JSON. "
                               "If you are using pickles instead of JSON "
                               "for XCOM, then you need to enable pickle "
                               "support for XCOM in your airflow config.")
@@ -4839,7 +4861,6 @@ class XCom(Base, LoggingMixin):
                  dag_ids=None,
                  include_prior_dates=False,
                  limit=100,
-                 enable_pickling=None,
                  session=None):
         """
         Retrieve an XCom value, optionally meeting certain criteria
@@ -4863,23 +4884,6 @@ class XCom(Base, LoggingMixin):
                               .order_by(cls.execution_date.desc(), cls.timestamp.desc())
                               .limit(limit))
         results = query.all()
-        if enable_pickling is None:
-            enable_pickling = configuration.conf.getboolean(
-                'core', 'enable_xcom_pickling'
-            )
-        for result in results:
-            if enable_pickling:
-                result.value = pickle.loads(result.value)
-            else:
-                try:
-                    result.value = json.loads(result.value.decode('UTF-8'))
-                except ValueError:
-                    log = LoggingMixin().log
-                    log.error("Could not serialize the XCOM value into JSON. "
-                              "If you are using pickles instead of JSON "
-                              "for XCOM, then you need to enable pickle "
-                              "support for XCOM in your airflow config.")
-                    raise
         # 注意和get()方法的返回格式不一样
         return results
 
@@ -5559,8 +5563,7 @@ class KubeResourceVersion(Base):
     @staticmethod
     @provide_session
     def get_current_resource_version(session=None):
-        (resource_version,) = session.query(
-            KubeResourceVersion.resource_version).one()
+        (resource_version,) = session.query(KubeResourceVersion.resource_version).one()
         return resource_version
 
     @staticmethod
@@ -5593,8 +5596,7 @@ class KubeWorkerIdentifier(Base):
         (worker_uuid,) = session.query(KubeWorkerIdentifier.worker_uuid).one()
         if worker_uuid == '':
             worker_uuid = str(uuid.uuid4())
-            KubeWorkerIdentifier.checkpoint_kube_worker_uuid(
-                worker_uuid, session)
+            KubeWorkerIdentifier.checkpoint_kube_worker_uuid(worker_uuid, session)
         return worker_uuid
 
     @staticmethod
