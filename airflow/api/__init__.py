@@ -31,14 +31,15 @@ log = LoggingMixin().log
 
 
 def load_auth():
-    # 获得认证方式模块
+    # 获得默认认证模块
     auth_backend = 'airflow.api.auth.backend.default'
     try:
         auth_backend = conf.get("api", "auth_backend")
     except conf.AirflowConfigException:
+        # 没有配置api/auth_backend
         pass
 
-    # 加载认证模块
+    # 加载认证模块，加载失败抛出异常
     try:
         global api_auth
         api_auth = import_module(auth_backend)

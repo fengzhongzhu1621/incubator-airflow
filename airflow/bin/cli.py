@@ -73,10 +73,11 @@ from airflow.www_rbac.app import cached_appbuilder
 from sqlalchemy import func
 from sqlalchemy.orm import exc
 
-# 加载认证模块
+# 加载认证模块， 设置 api.api_auth.client_auth 全局变量
 api.load_auth()
 # 加载api连接类
 api_module = import_module(conf.get('cli', 'api_client'))
+# 创建连接客户端
 api_client = api_module.Client(api_base_url=conf.get('cli', 'endpoint_url'),
                                auth=api.api_auth.client_auth)
 
