@@ -42,6 +42,7 @@ def delete_dag(dag_id):
     if dag is None:
         raise DagNotFound("Dag id {} not found".format(dag_id))
 
+    # dag文件从配置 DAGS_FOLDER 中加载
     # 如果dag已经被加载，说明dag文件还存在，抛出异常，不能删除
     dagbag = models.DagBag()
     if dag_id in dagbag.dags:
@@ -63,6 +64,8 @@ def delete_dag(dag_id):
     # 删除dag的子集
     # TODO 不明白对rsplit的处理逻辑
     if dag.is_subdag:
+        # p为dag_id
+        # c为task_id
         p, c = dag_id.rsplit(".", 1)
         for m in models.DagRun, models.TaskFail, models.TaskInstance:
             count += session.query(m).filter(m.dag_id ==
