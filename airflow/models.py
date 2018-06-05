@@ -130,13 +130,24 @@ def get_fernet():
 _CONTEXT_MANAGER_DAG = None
 
 
-def clear_task_instances(tis, session, activate_dag_runs=True, dag=None):
+def clear_task_instances(tis,
+                         session,
+                         activate_dag_runs=True,
+                         dag=None,
+                         only_backfill_dagruns=False,
+                         ):
     """重置任务实例
     - 正在运行的任务改为关闭状态
     - 非正在运行的任务改为 None 状态，并修改任务实例的最大重试次数 max_tries
 
     Clears a set of task instances, but makes sure the running ones
-    get killed.
+    get killed. Reset backfill dag run state to removed if only_backfill_dagruns is set
+
+    :param tis: a list of task instances
+    :param session: current session
+    :param activate_dag_runs: flag to check for active dag run
+    :param dag: DAG object
+    :param only_backfill_dagruns: flag for setting backfill state
     """
     job_ids = []
     for ti in tis:
@@ -179,8 +190,13 @@ def clear_task_instances(tis, session, activate_dag_runs=True, dag=None):
         ).all()
         for dr in drs:
             # 设置为运行态，并重置开始时间
-            dr.state = State.RUNNING
-            dr.start_date = timezone.utcnow()
+            if only_backfill_dagruns and dr.is_backfill:
+                # If the flag is set, we reset backfill dag run for retry.
+                # dont reset start date
+                dr.state = State.REMOVED
+            else:
+                dr.state = State.RUNNING
+                dr.start_date = timezone.utcnow()
 
 
 class DagBag(BaseDagBag, LoggingMixin):
@@ -1922,6 +1938,9 @@ class TaskInstance(Base, LoggingMixin):
         if task.params:
             params.update(task.params)
 
+        if configuration.getboolean('core', 'dag_run_conf_overrides_params'):
+            self.overwrite_params_with_dag_run_conf(params=params, dag_run=dag_run)
+
         class VariableAccessor:
             """
             Wrapper around Variable. This way you can get variables in templates by using
@@ -1990,6 +2009,10 @@ class TaskInstance(Base, LoggingMixin):
             'inlets': task.inlets,
             'outlets': task.outlets,
         }
+
+    def overwrite_params_with_dag_run_conf(self, params, dag_run):
+        if dag_run and dag_run.conf:
+            params.update(dag_run.conf)
 
     def render_templates(self):
         task = self.task
@@ -3934,13 +3957,22 @@ class DAG(BaseDag, LoggingMixin):
 
     @provide_session
     def set_dag_runs_state(
-            self, state=State.RUNNING, session=None):
+            self,
+            state=State.RUNNING,
+            session=None,
+            only_backfill_dagruns=False):
         # TODO 更新dag每个状态的dag_run的数量，并设置dirty为False
-        drs = session.query(DagModel).filter_by(dag_id=self.dag_id).all()
+        drs = session.query(DagRun).filter_by(dag_id=self.dag_id).all()
         dirty_ids = []
         for dr in drs:
-            dr.state = state
-            dirty_ids.append(dr.dag_id)
+            if only_backfill_dagruns:
+                if dr.is_backfill:
+                    dr.state = state
+                    dirty_ids.append(dr.dag_id)
+            else:
+                if not dr.is_backfill:
+                    dr.state = state
+                    dirty_ids.append(dr.dag_id)
         DagStat.update(dirty_ids, session=session)
 
     @provide_session
@@ -3952,7 +3984,9 @@ class DAG(BaseDag, LoggingMixin):
             include_subdags=True,
             reset_dag_runs=True,
             dry_run=False,
-            session=None):
+            session=None,
+            only_backfill_dagruns=False,
+    ):
         """清除正在运行的任务实例和job，将dag_run设置为运行态
         Clears a set of task instances associated with the current dag for
         a specified date range.
@@ -4002,10 +4036,15 @@ class DAG(BaseDag, LoggingMixin):
 
         if do_it:
             # 将任务实例和job关闭，将dag_run设置为运行态
-            clear_task_instances(tis.all(), session, dag=self)
+            clear_task_instances(tis.all(),
+                                 session,
+                                 dag=self,
+                                 only_backfill_dagruns=only_backfill_dagruns,
+                                 )
             if reset_dag_runs:
                 # 在dag统计表中，更新dag每个状态的dag_run的数量，并设置dirty为False
-                self.set_dag_runs_state(session=session)
+                self.set_dag_runs_state(session=session,
+                                        only_backfill_dagruns=only_backfill_dagruns)
         else:
             count = 0
             print("Bail. Nothing was cleared.")
@@ -4023,7 +4062,9 @@ class DAG(BaseDag, LoggingMixin):
             confirm_prompt=False,
             include_subdags=True,
             reset_dag_runs=True,
-            dry_run=False):
+            dry_run=False,
+            only_backfill_dagruns=False,
+    ):
         all_tis = []
         for dag in dags:
             # 获得待清除的任务实例
@@ -4065,7 +4106,9 @@ class DAG(BaseDag, LoggingMixin):
                           confirm_prompt=False,
                           include_subdags=include_subdags,
                           reset_dag_runs=reset_dag_runs,
-                          dry_run=False)
+                          dry_run=False,
+                          only_backfill_dagruns=only_backfill_dagruns,
+                          )
         else:
             count = 0
             print("Bail. Nothing was cleared.")
@@ -4258,6 +4301,7 @@ class DAG(BaseDag, LoggingMixin):
             pool=None,
             delay_on_limit_secs=1.0,
             verbose=False,
+            conf=None,
     ):
         """
         Runs the DAG.
@@ -4286,6 +4330,8 @@ class DAG(BaseDag, LoggingMixin):
         :type delay_on_limit_secs: float
         :param verbose: Make logging output more verbose
         :type verbose: boolean
+        :param conf: user defined dictionary passed from CLI
+        :type conf: dict
         """
         # 获得执行器
         from airflow.jobs import BackfillJob
@@ -4316,6 +4362,7 @@ class DAG(BaseDag, LoggingMixin):
             # 如果dag_run实例超过了阈值，job执行时需要循环等待其他的dag_run运行完成，设置循环的间隔
             delay_on_limit_secs=delay_on_limit_secs,
             verbose=verbose,
+            conf=conf,
         )
         # 运行job
         job.run()
@@ -4422,8 +4469,7 @@ class DAG(BaseDag, LoggingMixin):
 
         # 同步子dag到DB中
         for subdag in self.subdags:
-            subdag.sync_to_db(
-                owner=owner, sync_time=sync_time, session=session)
+            subdag.sync_to_db(owner=owner, sync_time=sync_time, session=session)
 
     @staticmethod
     @provide_session
@@ -4991,8 +5037,7 @@ class DagStat(Base):
                     count = counts[(dag_id, state)]
 
                 session.merge(
-                    DagStat(dag_id=dag_id, state=state,
-                            count=count, dirty=False)
+                    DagStat(dag_id=dag_id, state=state, count=count, dirty=False)
                 )
 
             session.commit()

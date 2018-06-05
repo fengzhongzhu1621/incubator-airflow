@@ -23,14 +23,21 @@ from airflow import configuration
 from airflow.exceptions import AirflowConfigException, AirflowException
 from airflow.utils.log.logging_mixin import LoggingMixin
 
+
+def _broker_supports_visibility_timeout(url):
+    return url.startswith("redis://") or url.startswith("sqs://")
+
+
 log = LoggingMixin().log
 
+broker_url = configuration.conf.get('celery', 'BROKER_URL')
 # 任务发出后，经过一段时间还未收到acknowledge , 就将任务重新交给其他worker执行
 broker_transport_options = configuration.conf.getsection(
     'celery_broker_transport_options'
 )
-if broker_transport_options is None:
-    broker_transport_options = {'visibility_timeout': 21600}
+if 'visibility_timeout' not in broker_transport_options:
+    if _broker_supports_visibility_timeout(broker_url):
+        broker_transport_options = {'visibility_timeout': 21600}
 
 DEFAULT_CELERY_CONFIG = {
     'accept_content': ['json', 'pickle'],   # 指定接受的内容类型
@@ -39,7 +46,7 @@ DEFAULT_CELERY_CONFIG = {
     'task_acks_late': True,             # 只有当worker执行完任务后,才会告诉MQ,消息被消费。
     'task_default_queue': configuration.conf.get('celery', 'DEFAULT_QUEUE'),
     'task_default_exchange': configuration.conf.get('celery', 'DEFAULT_QUEUE'),
-    'broker_url': configuration.conf.get('celery', 'BROKER_URL'),
+    'broker_url': broker_url,
     'broker_transport_options': broker_transport_options,
     # worker执行结果输出的存储介质
     'result_backend': configuration.conf.get('celery', 'RESULT_BACKEND'),

@@ -192,6 +192,9 @@ def backfill(args, dag=None):
             task_regex=args.task_regex,
             include_upstream=not args.ignore_dependencies)
 
+    run_conf = None
+    if args.conf:
+        run_conf = json.loads(args.conf)
     # 模拟运行，仅仅渲染模板参数
     if args.dry_run:
         print("Dry run of DAG {0} on {1}".format(args.dag_id,
@@ -202,6 +205,15 @@ def backfill(args, dag=None):
             # 渲染任务模板参数，并打印渲染后的模板参数内容，不会运行任务实例
             ti.dry_run()
     else:
+        if args.reset_dagruns:
+            DAG.clear_dags(
+                [dag],
+                start_date=args.start_date,
+                end_date=args.end_date,
+                confirm_prompt=True,
+                include_subdags=False,
+                only_backfill_dagruns=True,
+            )
         # 调用 BackfillJob.run()
         dag.run(
             # 开始调度时间 (>=)
@@ -225,6 +237,7 @@ def backfill(args, dag=None):
             # 如果dag_run实例超过了阈值，job执行时需要循环等待其他的dag_run运行完成，设置循环的间隔
             delay_on_limit_secs=args.delay_on_limit,
             verbose=args.verbose,
+            conf=run_conf,
         )
 
 
@@ -554,7 +567,8 @@ def task_failed_deps(args):
     >>> airflow task_failed_deps tutorial sleep 2015-01-01
     Task instance dependencies not met:
     Dagrun Running: Task instance's dagrun did not exist: Unknown reason
-    Trigger Rule: Task's trigger rule 'all_success' requires all upstream tasks to have succeeded, but found 1 non-success(es).
+    Trigger Rule: Task's trigger rule 'all_success' requires all upstream tasks
+    to have succeeded, but found 1 non-success(es).
     """
     dag = get_dag(args)
     task = dag.get_task(task_id=args.task_id)
@@ -1503,6 +1517,12 @@ class CLIFactory(object):
                   "again."),
             type=float,
             default=1.0),
+        'reset_dag_run': Arg(
+            ("--reset_dagruns",),
+            ("if set, the backfill will delete existing "
+             "backfill-related DAG runs and start "
+             "anew with fresh, running DAG runs"),
+            "store_true"),
         # list_tasks
         'tree': Arg(("-t", "--tree"), "Tree view", "store_true"),
         # list_dags
@@ -1822,7 +1842,8 @@ class CLIFactory(object):
                 'dag_id', 'task_regex', 'start_date', 'end_date',
                 'mark_success', 'local', 'donot_pickle',
                 'bf_ignore_dependencies', 'bf_ignore_first_depends_on_past',
-                'subdir', 'pool', 'delay_on_limit', 'dry_run', 'verbose',
+                'subdir', 'pool', 'delay_on_limit', 'dry_run', 'verbose', 'conf',
+                'reset_dag_run'
             )
         }, {
             'func': list_tasks,

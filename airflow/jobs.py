@@ -1120,6 +1120,7 @@ class SchedulerJob(BaseJob):
                 .query(models.TaskInstance) \
                 .filter(and_(
                     models.TaskInstance.dag_id == subq.c.dag_id,
+                    models.TaskInstance.task_id == subq.c.task_id,
                     models.TaskInstance.execution_date ==
                     subq.c.execution_date)) \
                 .update({models.TaskInstance.state: new_state},
@@ -2118,6 +2119,7 @@ class BackfillJob(BaseJob):
             pool=None,
             delay_on_limit_secs=1.0,
             verbose=False,
+            conf=None,
             *args, **kwargs):
         self.dag = dag
         self.dag_id = dag.dag_id
@@ -2138,6 +2140,7 @@ class BackfillJob(BaseJob):
         # 每次补录的时间间隔，默认1s
         self.delay_on_limit_secs = delay_on_limit_secs
         self.verbose = verbose
+        self.conf = conf
         super(BackfillJob, self).__init__(*args, **kwargs)
 
     def _update_counters(self, ti_status):
@@ -2269,7 +2272,8 @@ class BackfillJob(BaseJob):
             start_date=timezone.utcnow(),
             state=State.RUNNING,
             external_trigger=False,
-            session=session
+            session=session,
+            conf=self.conf,
         )
 
         # set required transient field
