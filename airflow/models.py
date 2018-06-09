@@ -134,20 +134,18 @@ def clear_task_instances(tis,
                          session,
                          activate_dag_runs=True,
                          dag=None,
-                         only_backfill_dagruns=False,
                          ):
     """重置任务实例
     - 正在运行的任务改为关闭状态
     - 非正在运行的任务改为 None 状态，并修改任务实例的最大重试次数 max_tries
 
     Clears a set of task instances, but makes sure the running ones
-    get killed. Reset backfill dag run state to removed if only_backfill_dagruns is set
+    get killed.
 
     :param tis: a list of task instances
     :param session: current session
     :param activate_dag_runs: flag to check for active dag run
     :param dag: DAG object
-    :param only_backfill_dagruns: flag for setting backfill state
     """
     job_ids = []
     for ti in tis:
@@ -190,17 +188,12 @@ def clear_task_instances(tis,
         ).all()
         for dr in drs:
             # 设置为运行态，并重置开始时间
-            if only_backfill_dagruns and dr.is_backfill:
-                # If the flag is set, we reset backfill dag run for retry.
-                # dont reset start date
-                dr.state = State.REMOVED
-            else:
-                dr.state = State.RUNNING
-                dr.start_date = timezone.utcnow()
+            dr.state = State.RUNNING
+            dr.start_date = timezone.utcnow()
 
 
 class DagBag(BaseDagBag, LoggingMixin):
-    """ dag容器
+    """
     A dagbag is a collection of dags, parsed out of a folder tree and has high
     level configuration settings, like what database to use as a backend and
     what executor to use to fire off tasks. This makes it easier to run
@@ -306,8 +299,7 @@ class DagBag(BaseDagBag, LoggingMixin):
             # This failed before in what may have been a git sync
             # race condition
             # 获得文件的修改时间
-            file_last_changed_on_disk = datetime.fromtimestamp(
-                os.path.getmtime(filepath))
+            file_last_changed_on_disk = datetime.fromtimestamp(os.path.getmtime(filepath))
             # 判断文件最近是否被修改
             if only_if_updated \
                     and filepath in self.file_last_changed \
@@ -354,12 +346,10 @@ class DagBag(BaseDagBag, LoggingMixin):
                 mod_name, ext = os.path.splitext(mod.filename)
                 if not head and (ext == '.py' or ext == '.pyc'):
                     if mod_name == '__init__':
-                        self.log.warning(
-                            "Found __init__.%s at root of %s", ext, filepath)
+                        self.log.warning("Found __init__.%s at root of %s", ext, filepath)
                     if safe_mode:
                         with zip_file.open(mod.filename) as zf:
-                            self.log.debug("Reading %s from %s",
-                                           mod.filename, filepath)
+                            self.log.debug("Reading %s from %s", mod.filename, filepath)
                             content = zf.read()
                             if not all([s in content for s in (b'DAG', b'airflow')]):
                                 self.file_last_changed[filepath] = (
@@ -394,10 +384,8 @@ class DagBag(BaseDagBag, LoggingMixin):
                         found_dags.append(dag)
                         found_dags += dag.subdags
                     except AirflowDagCycleException as cycle_exception:
-                        self.log.exception(
-                            "Failed to bag_dag: %s", dag.full_filepath)
-                        self.import_errors[dag.full_filepath] = str(
-                            cycle_exception)
+                        self.log.exception("Failed to bag_dag: %s", dag.full_filepath)
+                        self.import_errors[dag.full_filepath] = str(cycle_exception)
                         self.file_last_changed[dag.full_filepath] = \
                             file_last_changed_on_disk
         # 记录所 加载文件的最近修改时间
@@ -412,8 +400,7 @@ class DagBag(BaseDagBag, LoggingMixin):
         from airflow.jobs import LocalTaskJob as LJ
         self.log.info("Finding 'running' jobs without a recent heartbeat")
         TI = TaskInstance
-        secs = configuration.conf.getint(
-            'scheduler', 'scheduler_zombie_task_threshold')
+        secs = configuration.conf.getint('scheduler', 'scheduler_zombie_task_threshold')
         limit_dttm = timezone.utcnow() - timedelta(seconds=secs)
         self.log.info("Failing jobs without heartbeat after %s", limit_dttm)
 
@@ -438,10 +425,14 @@ class DagBag(BaseDagBag, LoggingMixin):
                 if ti.task_id in dag.task_ids:
                     # 获得任务模型
                     task = dag.get_task(ti.task_id)
+
                     ti.task = task
+                    ti.test_mode = configuration.getboolean('core', 'unit_test_mode')
                     # 任务执行失败，发送通知，并执行失败回调函数
-                    ti.handle_failure("{} killed as zombie".format(str(ti)))
-                    self.log.info('Marked zombie job %s as failed', ti)
+                    ti.handle_failure("{} detected as zombie".format(ti),
+                                      ti.test_mode, ti.get_template_context())
+                    self.log.info(
+                        'Marked zombie job %s as %s', ti, ti.state)
                     Stats.incr('zombies_killed')
         session.commit()
 
@@ -473,10 +464,8 @@ class DagBag(BaseDagBag, LoggingMixin):
             self.dags[dag.dag_id] = dag
             self.log.debug('Loaded DAG {dag}'.format(**locals()))
         except AirflowDagCycleException as cycle_exception:
-            # There was an error in bagging the dag. Remove it from the list of
-            # dags
-            self.log.exception(
-                'Exception bagging dag: {dag.dag_id}'.format(**locals()))
+            # There was an error in bagging the dag. Remove it from the list of dags
+            self.log.exception('Exception bagging dag: {dag.dag_id}'.format(**locals()))
             # Only necessary at the root level since DAG.subdags automatically
             # performs DFS to search through all subdags
             if dag == root_dag:
@@ -830,8 +819,7 @@ class Connection(Base, LoggingMixin):
                 obj = json.loads(self.extra)
             except Exception as e:
                 self.log.exception(e)
-                self.log.error(
-                    "Failed parsing the json for conn_id %s", self.conn_id)
+                self.log.error("Failed parsing the json for conn_id %s", self.conn_id)
 
         return obj
 
@@ -1125,8 +1113,7 @@ class TaskInstance(Base, LoggingMixin):
     def log_filepath(self):
         """获得任务实例日志文件路径 ."""
         iso = self.execution_date.isoformat()
-        log = os.path.expanduser(
-            configuration.conf.get('core', 'BASE_LOG_FOLDER'))
+        log = os.path.expanduser(configuration.conf.get('core', 'BASE_LOG_FOLDER'))
         return (
             "{log}/{self.dag_id}/{self.task_id}/{iso}.log".format(**locals()))
 
@@ -1318,8 +1305,7 @@ class TaskInstance(Base, LoggingMixin):
             if not dr:
                 # Means that this TI is NOT being run from a DR, but from a
                 # catchup
-                previous_scheduled_date = dag.previous_schedule(
-                    self.execution_date)
+                previous_scheduled_date = dag.previous_schedule(self.execution_date)
                 if not previous_scheduled_date:
                     return None
 
@@ -1420,8 +1406,7 @@ class TaskInstance(Base, LoggingMixin):
         delay = self.task.retry_delay
         if self.task.retry_exponential_backoff:
             # 每次间隔的时间递增
-            min_backoff = int(delay.total_seconds() *
-                              (2 ** (self.try_number - 2)))
+            min_backoff = int(delay.total_seconds() * (2 ** (self.try_number - 2)))
             # deterministic per task instance
             # between 0.5 * delay * (2^retry_number) and 1.0 * delay *
             # (2^retry_number)			
@@ -1635,8 +1620,7 @@ class TaskInstance(Base, LoggingMixin):
                                                             self.execution_date)
                 self.log.info(msg)
             else:
-                msg = "Executing {} on {}".format(
-                    self.task, self.execution_date)
+                msg = "Executing {} on {}".format(self.task, self.execution_date)
                 self.log.info(msg)
         return True
 
@@ -1680,8 +1664,7 @@ class TaskInstance(Base, LoggingMixin):
 
                 # 任务实例收到终止信号后，执行on_kill()，停止子进程
                 def signal_handler(signum, frame):
-                    self.log.error(
-                        "Received SIGTERM. Terminating subprocesses.")
+                    self.log.error("Received SIGTERM. Terminating subprocesses.")
                     task_copy.on_kill()
                     raise AirflowException("Task received SIGTERM signal")
                 signal.signal(signal.SIGTERM, signal_handler)
@@ -1829,16 +1812,14 @@ class TaskInstance(Base, LoggingMixin):
         task = self.task
         self.end_date = timezone.utcnow()
         self.set_duration()
-        Stats.incr('operator_failures_{}'.format(
-            task.__class__.__name__), 1, 1)
+        Stats.incr('operator_failures_{}'.format(task.__class__.__name__), 1, 1)
         Stats.incr('ti_failures')
         if not test_mode:
             session.add(Log(State.FAILED, self))
 
         # Log failure duration
         # 记录失败的任务实例
-        session.add(TaskFail(task, self.execution_date,
-                             self.start_date, self.end_date))
+        session.add(TaskFail(task, self.execution_date, self.start_date, self.end_date))
 
         # Let's go deeper
         try:
@@ -1880,7 +1861,6 @@ class TaskInstance(Base, LoggingMixin):
         if not test_mode:
             session.merge(self)
         session.commit()
-        self.log.error(str(error))
 
     @provide_session
     def get_template_context(self, session=None):
@@ -3092,8 +3072,7 @@ class BaseOperator(LoggingMixin):
         # relationships can only be set if the tasks share a single DAG. Tasks
         # without a DAG are assigned to that DAG.
         # 所有依赖的任务必须属于同一个dag
-        dags = {t._dag.dag_id: t._dag for t in [
-            self] + task_list if t.has_dag()}
+        dags = {t._dag.dag_id: t._dag for t in [self] + task_list if t.has_dag()}
 
         if len(dags) > 1:
             raise AirflowException(
@@ -3308,11 +3287,9 @@ class DAG(BaseDag, LoggingMixin):
                 'core', 'max_active_runs_per_dag'),
             dagrun_timeout=None,
             sla_miss_callback=None,
-            default_view=configuration.conf.get(
-                'webserver', 'dag_default_view').lower(),
+            default_view=configuration.conf.get('webserver', 'dag_default_view').lower(),
             orientation=configuration.conf.get('webserver', 'dag_orientation'),
-            catchup=configuration.conf.getboolean(
-                'scheduler', 'catchup_by_default'),
+            catchup=configuration.conf.getboolean('scheduler', 'catchup_by_default'),
             on_success_callback=None, on_failure_callback=None,
             params=None):
 
@@ -3504,8 +3481,7 @@ class DAG(BaseDag, LoggingMixin):
             # 创建cron
             cron = croniter(self._schedule_interval, dttm)
             # 获得下一次调度时间，添加时区信息
-            following = timezone.make_aware(
-                cron.get_next(datetime), self.timezone)
+            following = timezone.make_aware(cron.get_next(datetime), self.timezone)
             # 将下一次调度的本地时间转换为UTC时间
             return timezone.convert_to_utc(following)
         elif isinstance(self._schedule_interval, timedelta):
@@ -3549,8 +3525,7 @@ class DAG(BaseDag, LoggingMixin):
 
         # dates for dag runs
         # 如果开始时间为空，则取所有任务的最小开始时间
-        using_start_date = using_start_date or min(
-            [t.start_date for t in self.tasks])
+        using_start_date = using_start_date or min([t.start_date for t in self.tasks])
         # 结束时间为空，则去当前时间
         using_end_date = using_end_date or timezone.utcnow()
 
@@ -3742,8 +3717,7 @@ class DAG(BaseDag, LoggingMixin):
         # 获得回调函数
         callback = self.on_success_callback if success else self.on_failure_callback
         if callback:
-            self.log.info(
-                'Executing dag callback function: {}'.format(callback))
+            self.log.info('Executing dag callback function: {}'.format(callback))
             # 获得dagrun的所有任务实例
             tis = dagrun.get_task_instances(session=session)
             # 取最近的一条任务实例
@@ -3960,19 +3934,20 @@ class DAG(BaseDag, LoggingMixin):
             self,
             state=State.RUNNING,
             session=None,
-            only_backfill_dagruns=False):
+            start_date=None,
+            end_date=None,
+    ):
         # TODO 更新dag每个状态的dag_run的数量，并设置dirty为False
-        drs = session.query(DagRun).filter_by(dag_id=self.dag_id).all()
+        query = session.query(DagRun).filter_by(dag_id=self.dag_id)
+        if start_date:
+            query = query.filter(DagRun.execution_date >= start_date)
+        if end_date:
+            query = query.filter(DagRun.execution_date <= end_date)
+        drs = query.all()
         dirty_ids = []
         for dr in drs:
-            if only_backfill_dagruns:
-                if dr.is_backfill:
-                    dr.state = state
-                    dirty_ids.append(dr.dag_id)
-            else:
-                if not dr.is_backfill:
-                    dr.state = state
-                    dirty_ids.append(dr.dag_id)
+            dr.state = state
+            dirty_ids.append(dr.dag_id)
         DagStat.update(dirty_ids, session=session)
 
     @provide_session
@@ -3985,7 +3960,6 @@ class DAG(BaseDag, LoggingMixin):
             reset_dag_runs=True,
             dry_run=False,
             session=None,
-            only_backfill_dagruns=False,
     ):
         """清除正在运行的任务实例和job，将dag_run设置为运行态
         Clears a set of task instances associated with the current dag for
@@ -4039,12 +4013,13 @@ class DAG(BaseDag, LoggingMixin):
             clear_task_instances(tis.all(),
                                  session,
                                  dag=self,
-                                 only_backfill_dagruns=only_backfill_dagruns,
                                  )
             if reset_dag_runs:
                 # 在dag统计表中，更新dag每个状态的dag_run的数量，并设置dirty为False
                 self.set_dag_runs_state(session=session,
-                                        only_backfill_dagruns=only_backfill_dagruns)
+                                        start_date=start_date,
+                                        end_date=end_date,
+                                        )
         else:
             count = 0
             print("Bail. Nothing was cleared.")
@@ -4063,7 +4038,6 @@ class DAG(BaseDag, LoggingMixin):
             include_subdags=True,
             reset_dag_runs=True,
             dry_run=False,
-            only_backfill_dagruns=False,
     ):
         all_tis = []
         for dag in dags:
@@ -4107,7 +4081,6 @@ class DAG(BaseDag, LoggingMixin):
                           include_subdags=include_subdags,
                           reset_dag_runs=reset_dag_runs,
                           dry_run=False,
-                          only_backfill_dagruns=only_backfill_dagruns,
                           )
         else:
             count = 0
@@ -4158,8 +4131,7 @@ class DAG(BaseDag, LoggingMixin):
             # Removing upstream/downstream references to tasks that did not
             # made the cut
             # 通过交集，去掉原有任务的上下游关联任务
-            t._upstream_task_ids = t._upstream_task_ids.intersection(
-                dag.task_dict.keys())
+            t._upstream_task_ids = t._upstream_task_ids.intersection(dag.task_dict.keys())
             t._downstream_task_ids = t._downstream_task_ids.intersection(
                 dag.task_dict.keys())
 
@@ -4302,6 +4274,7 @@ class DAG(BaseDag, LoggingMixin):
             delay_on_limit_secs=1.0,
             verbose=False,
             conf=None,
+            rerun_failed_tasks=False,
     ):
         """
         Runs the DAG.
@@ -4363,6 +4336,7 @@ class DAG(BaseDag, LoggingMixin):
             delay_on_limit_secs=delay_on_limit_secs,
             verbose=verbose,
             conf=conf,
+            rerun_failed_tasks=rerun_failed_tasks,
         )
         # 运行job
         job.run()
@@ -5307,8 +5281,7 @@ class DagRun(Base, LoggingMixin):
         # 获得所有任务实例
         tis = self.get_task_instances(session=session)
 
-        self.log.info(
-            "Updating state for %s considering %s task(s)", self, len(tis))
+        self.log.debug("Updating state for %s considering %s task(s)", self, len(tis))
 
         # 根据任务实例获得任务，去掉已删除的任务实例
         for ti in list(tis):

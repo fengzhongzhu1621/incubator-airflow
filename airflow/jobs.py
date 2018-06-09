@@ -425,8 +425,7 @@ class DagFileProcessor(AbstractDagFileProcessor, LoggingMixin):
                 log.info("Started process (PID=%s) to work on %s",
                          os.getpid(), file_path)
                 # 创建一个调度job
-                scheduler_job = SchedulerJob(
-                    dag_ids=dag_id_white_list, log=log)
+                scheduler_job = SchedulerJob(dag_ids=dag_id_white_list, log=log)
                 # 执行DAG
                 result = scheduler_job.process_file(file_path,
                                                     pickle_dags)
@@ -506,8 +505,7 @@ class DagFileProcessor(AbstractDagFileProcessor, LoggingMixin):
         :rtype: int
         """
         if not self._done:
-            raise AirflowException(
-                "Tried to call retcode before process was finished!")
+            raise AirflowException("Tried to call retcode before process was finished!")
         return self._process.exitcode
 
     @property
@@ -518,8 +516,7 @@ class DagFileProcessor(AbstractDagFileProcessor, LoggingMixin):
         :rtype: bool
         """
         if self._process is None:
-            raise AirflowException(
-                "Tried to see if it's done before starting!")
+            raise AirflowException("Tried to see if it's done before starting!")
 
         if self._done:
             return True
@@ -568,8 +565,7 @@ class DagFileProcessor(AbstractDagFileProcessor, LoggingMixin):
         :rtype: datetime
         """
         if self._start_time is None:
-            raise AirflowException(
-                "Tried to get start time before it started!")
+            raise AirflowException("Tried to get start time before it started!")
         return self._start_time
 
 
@@ -645,8 +641,7 @@ class SchedulerJob(BaseJob):
         self.using_sqlite = False
         if 'sqlite' in conf.get('core', 'sql_alchemy_conn'):
             if self.max_threads > 1:
-                self.log.error(
-                    "Cannot use more than 1 thread when using sqlite. Setting max_threads to 1")
+                self.log.error("Cannot use more than 1 thread when using sqlite. Setting max_threads to 1")
             self.max_threads = 1
             self.using_sqlite = True
 
@@ -1776,8 +1771,7 @@ class SchedulerJob(BaseJob):
                 self.log.info("Searching for files in %s", self.subdir)
                 known_file_paths = list_py_file_paths(self.subdir)
                 last_dag_dir_refresh_time = timezone.utcnow()
-                self.log.info("There are %s files in %s",
-                              len(known_file_paths), self.subdir)
+                self.log.info("There are %s files in %s", len(known_file_paths), self.subdir)
                 # 设置DAG目录下最新的DAG文件路径数组
                 processor_manager.set_file_paths(known_file_paths)
 
@@ -2120,7 +2114,36 @@ class BackfillJob(BaseJob):
             delay_on_limit_secs=1.0,
             verbose=False,
             conf=None,
+            rerun_failed_tasks=False,
             *args, **kwargs):
+        """
+        :param dag: DAG object.
+        :type dag: `class DAG`.
+        :param start_date: start date for the backfill date range.
+        :type start_date: datetime.
+        :param end_date: end date for the backfill date range.
+        :type end_date: datetime
+        :param mark_success: flag whether to mark the task auto success.
+        :type mark_success: bool
+        :param donot_pickle: whether pickle
+        :type donot_pickle: bool
+        :param ignore_first_depends_on_past: whether to ignore depend on past
+        :type ignore_first_depends_on_past: bool
+        :param ignore_task_deps: whether to ignore the task dependency
+        :type ignore_task_deps: bool
+        :param pool:
+        :type pool: list
+        :param delay_on_limit_secs:
+        :param verbose:
+        :type verbose: flag to whether display verbose message to backfill console
+        :param conf: a dictionary which user could pass k-v pairs for backfill
+        :type conf: dictionary
+        :param rerun_failed_tasks: flag to whether to
+                                   auto rerun the failed task in backfill
+        :type rerun_failed_tasks: bool
+        :param args:
+        :param kwargs:
+        """
         self.dag = dag
         self.dag_id = dag.dag_id
         # 开始调度时间 (>=)
@@ -2141,6 +2164,7 @@ class BackfillJob(BaseJob):
         self.delay_on_limit_secs = delay_on_limit_secs
         self.verbose = verbose
         self.conf = conf
+        self.rerun_failed_tasks = rerun_failed_tasks
         super(BackfillJob, self).__init__(*args, **kwargs)
 
     def _update_counters(self, ti_status):
@@ -2403,16 +2427,6 @@ class BackfillJob(BaseJob):
                     self.log.debug(
                         "Task instance to run %s state %s", ti, ti.state)
 
-                    # TODO 理论上不可能发生
-                    # guard against externally modified tasks instances or
-                    # in case max concurrency has been reached at task runtime
-                    if ti.state == State.NONE:
-                        self.log.warning(
-                            "FIXME: task instance {} state was set to None "
-                            "externally. This should not happen"
-                        )
-                        ti.set_state(State.SCHEDULED, session=session)
-
                     # 已经执行完成的任务实例不会被补录
                     # The task was already marked successful or skipped by a
                     # different Job. Don't rerun it.
@@ -2430,20 +2444,36 @@ class BackfillJob(BaseJob):
                         if key in ti_status.running:
                             ti_status.running.pop(key)
                         continue
-                    elif ti.state == State.FAILED:
-                        self.log.error("Task instance %s failed", ti)
-                        ti_status.failed.add(key)
-                        ti_status.to_run.pop(key)
-                        if key in ti_status.running:
-                            ti_status.running.pop(key)
-                        continue
-                    elif ti.state == State.UPSTREAM_FAILED:
-                        self.log.error("Task instance %s upstream failed", ti)
-                        ti_status.failed.add(key)
-                        ti_status.to_run.pop(key)
-                        if key in ti_status.running:
-                            ti_status.running.pop(key)
-                        continue
+
+                    # guard against externally modified tasks instances or
+                    # in case max concurrency has been reached at task runtime
+                    elif ti.state == State.NONE:
+                        self.log.warning(
+                            "FIXME: task instance {} state was set to None "
+                            "externally. This should not happen"
+                        )
+                        ti.set_state(State.SCHEDULED, session=session)
+                    if self.rerun_failed_tasks:
+                        # Rerun failed tasks or upstreamed failed tasks
+                        if ti.state in (State.FAILED, State.UPSTREAM_FAILED):
+                            self.log.error("Task instance {ti} "
+                                           "with state {state}".format(ti=ti,
+                                                                       state=ti.state))
+                            if key in ti_status.running:
+                                ti_status.running.pop(key)
+                            # Reset the failed task in backfill to scheduled state
+                            ti.set_state(State.SCHEDULED, session=session)
+                    else:
+                        # Default behaviour which works for subdag.
+                        if ti.state in (State.FAILED, State.UPSTREAM_FAILED):
+                            self.log.error("Task instance {ti} "
+                                           "with {state} state".format(ti=ti,
+                                                                       state=ti.state))
+                            ti_status.failed.add(key)
+                            ti_status.to_run.pop(key)
+                            if key in ti_status.running:
+                                ti_status.running.pop(key)
+                            continue
 
                     # 创建任务实例补录依赖
                     backfill_context = DepContext(
@@ -2698,8 +2728,7 @@ class BackfillJob(BaseJob):
                 )
 
                 # 获得补录错误信息
-                err = self._collect_errors(
-                    ti_status=ti_status, session=session)
+                err = self._collect_errors(ti_status=ti_status, session=session)
                 if err:
                     raise AirflowException(err)
                 
@@ -2821,13 +2850,11 @@ class LocalTaskJob(BaseJob):
                 # TODO 心跳长时间未上报成功
                 # 唯一失败的原因是DB连接失败导致的
                 # If it's been too long since we've heartbeat, then it's possible that
-                # the scheduler rescheduled this task, so kill launched
-                # processes.
+                # the scheduler rescheduled this task, so kill launched processes.
                 time_since_last_heartbeat = time.time() - last_heartbeat_time
                 if time_since_last_heartbeat > heartbeat_time_limit:
                     # 只有上报心跳异常才可能执行
-                    Stats.incr(
-                        'local_task_job_prolonged_heartbeat_failure', 1, 1)
+                    Stats.incr('local_task_job_prolonged_heartbeat_failure', 1, 1)
                     self.log.error("Heartbeat time limited exceeded!")
                     raise AirflowException("Time since last heartbeat({:.2f}s) "
                                            "exceeded limit ({}s)."
@@ -2843,9 +2870,9 @@ class LocalTaskJob(BaseJob):
 
     @provide_session
     def heartbeat_callback(self, session=None):
-        """每次心跳时执行此函数
-        Self destruct task if state has been moved away from running externally"""
-        # 每次心跳是否终止任务执行器
+        """Self destruct task if state has been moved away from running externally
+		每次心跳时执行此函数
+		"""
         if self.terminating:
             # ensure termination if processes are created later
             self.task_runner.terminate()

@@ -44,6 +44,7 @@ from airflow.models import DagModel, DagRun, DagStat
 from airflow.models import clear_task_instances
 from airflow.models import XCom
 from airflow.models import Connection
+from airflow.jobs import LocalTaskJob
 from airflow.operators.dummy_operator import DummyOperator
 from airflow.operators.bash_operator import BashOperator
 from airflow.operators.python_operator import PythonOperator
@@ -53,7 +54,7 @@ from airflow.utils import timezone
 from airflow.utils.weight_rule import WeightRule
 from airflow.utils.state import State
 from airflow.utils.trigger_rule import TriggerRule
-from mock import patch
+from mock import patch, ANY
 from parameterized import parameterized
 from tempfile import NamedTemporaryFile
 
@@ -639,14 +640,14 @@ class DagRunTest(unittest.TestCase):
 
         qry = session.query(TI).filter(
             TI.dag_id == dag.dag_id).all()
-        clear_task_instances(qry, session, only_backfill_dagruns=True)
+        clear_task_instances(qry, session)
         session.commit()
         ti0.refresh_from_db()
         dr0 = session.query(DagRun).filter(
             DagRun.dag_id == dag_id,
             DagRun.execution_date == now
         ).first()
-        self.assertEquals(dr0.state, State.REMOVED)
+        self.assertEquals(dr0.state, State.RUNNING)
 
     def test_id_for_date(self):
         run_id = models.DagRun.id_for_date(
@@ -1392,6 +1393,32 @@ class DagBagTest(unittest.TestCase):
 
         self.assertEqual([], dagbag.process_file(None))
 
+    @patch.object(TI, 'handle_failure')
+    def test_kill_zombies(self, mock_ti):
+        """
+        Test that kill zombies call TIs failure handler with proper context
+        """
+        dagbag = models.DagBag()
+        session = settings.Session
+        dag = dagbag.get_dag('example_branch_operator')
+        task = dag.get_task(task_id='run_this_first')
+
+        ti = TI(task, datetime.datetime.now() - datetime.timedelta(1), 'running')
+        lj = LocalTaskJob(ti)
+        lj.state = State.SHUTDOWN
+
+        session.add(lj)
+        session.commit()
+
+        ti.job_id = lj.id
+
+        session.add(ti)
+        session.commit()
+
+        dagbag.kill_zombies()
+        mock_ti.assert_called_with(ANY,
+                                   configuration.getboolean('core', 'unit_test_mode'),
+                                   ANY)
 
 class TaskInstanceTest(unittest.TestCase):
 
