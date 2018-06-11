@@ -37,6 +37,7 @@ import sys
 import warnings
 
 from jinja2 import Template
+from six import iteritems
 
 from airflow import configuration
 from airflow.exceptions import AirflowException
@@ -64,7 +65,8 @@ def validate_key(k, max_length=250):
 
 
 def alchemy_to_dict(obj):
-    """ 将SQLAlchemy model instance转化为字典
+    """ 将SQLAlchemy model instance转化为字典，
+    并将时间格式化为iso格式的字符串
     Transforms a SQLAlchemy model instance into a dictionary
     """
     if not obj:
@@ -96,7 +98,7 @@ def ask_yesno(question):
 
 
 def is_in(obj, l):
-    """
+    """判断obj对象是否在l中，判断相等的逻辑是is，而不是=
     Checks whether an object is one of the item in the list.
     This is different from ``in`` because ``in`` uses __cmp__ when
     present. Here we change based on the object itself
@@ -108,14 +110,14 @@ def is_in(obj, l):
 
 
 def is_container(obj):
-    """
+    """判断对象是否可以遍历，但不是字符串
     Test if an object is a container (iterable) but not a string
     """
     return hasattr(obj, '__iter__') and not isinstance(obj, basestring)
 
 
 def as_tuple(obj):
-    """ 将对象转化为元组
+    """将可遍历对象转换为元组，将无法遍历的元素转换为只有一个的元组
     If obj is a container, returns obj as a tuple.
     Otherwise, returns a tuple containing obj.
     """
@@ -126,17 +128,17 @@ def as_tuple(obj):
 
 
 def chunks(items, chunk_size):
-    """
+    """将数组按指定大小分割
     Yield successive chunks of a given size from a list of items
     """
-    if (chunk_size <= 0):
+    if chunk_size <= 0:
         raise ValueError('Chunk size must be a positive integer')
     for i in range(0, len(items), chunk_size):
         yield items[i:i + chunk_size]
 
 
 def reduce_in_chunks(fn, iterable, initializer, chunk_size=0):
-    """
+    """将数组分组后，并对分片进行fn计算
     Reduce the given list of items by splitting it into chunks
     of the given size and passing each chunk through the reducer
     """
@@ -153,12 +155,15 @@ def as_flattened_list(iterable):
 
     >>> as_flattened_list((('blue', 'red'), ('green', 'yellow', 'pink')))
     ['blue', 'red', 'green', 'yellow', 'pink']
+
+    等价于
+    list(itertools.chain.from_iterable((('blue', 'red'), ('green', 'yellow', 'pink'))))
     """
     return [e for i in iterable for e in i]
 
 
 def chain(*tasks):
-    """
+    """将任务连成线
     Given a number of tasks, builds a dependency chain.
 
     chain(task_1, task_2, task_3, task_4)
@@ -174,7 +179,8 @@ def chain(*tasks):
 
 
 def pprinttable(rows):
-    """Returns a pretty ascii table from tuples
+    """打印一个漂亮的ascii表格
+	Returns a pretty ascii table from tuples
 
     If namedtuple are used, the table will have headers
     """
@@ -187,13 +193,16 @@ def pprinttable(rows):
     else:
         headers = ["col{}".format(i) for i in range(len(rows[0]))]
 
+    # 获得表头每一列的长度
     lens = [len(s) for s in headers]
-
+    # 计算所有行中每一列的最大长度
     for row in rows:
         for i in range(len(rows[0])):
             slenght = len("{}".format(row[i]))
             if slenght > lens[i]:
                 lens[i] = slenght
+
+    # 获得行列格式
     formats = []
     hformats = []
     for i in range(len(rows[0])):
@@ -204,6 +213,7 @@ def pprinttable(rows):
         hformats.append("%%-%ds" % lens[i])
     pattern = " | ".join(formats)
     hpattern = " | ".join(hformats)
+    # 获得每一行的分隔符
     separator = "-+-".join(['-' * n for n in lens])
     s = ""
     s += separator + '\n'
@@ -228,30 +238,39 @@ def reap_process_group(pid, log, sig=signal.SIGTERM,
 
     :param log: log handler
     :param pid: pid to kill
-    :param sig: signal type
-    :param timeout: how much time a process has to terminate
+    :param sig: signal type 软件终止信号
+    :param timeout: how much time a process has to terminate 杀死进程后的等待超时时间
     """
     def on_terminate(p):
+        """进程被关闭时的回调，打印进程ID和返回码 ."""
         log.info("Process %s (%s) terminated with exit code %s", p, p.pid, p.returncode)
 
+    # 不允许杀死自己
     if pid == os.getpid():
         raise RuntimeError("I refuse to kill myself")
 
+    # 创建进程对象
     parent = psutil.Process(pid)
 
-    # 根据进程ID，获得所有子进程和当前进程
+    # 根据进程ID，递归获得所有子进程和当前进程
     children = parent.children(recursive=True)
     children.append(parent)
 
     # 杀掉进程组
+    # 程序结束(terminate)信号, 与SIGKILL不同的是该信号可以被阻塞和处理。
+    # 通常用来要求程序自己正常退出，shell命令kill缺省产生这个信号。
+    # 如果进程终止不了，我们才会尝试SIGKILL。
     log.info("Sending %s to GPID %s", sig, os.getpgid(pid))
+    # getpgid 返回pid进程的group id.
+    # 如果pid为0,返回当前进程的group id。在unix中有效
     os.killpg(os.getpgid(pid), sig)
 
-    # 等待子进程结束
+    # 等待正在被杀死的进程结束
     gone, alive = psutil.wait_procs(children, timeout=timeout, callback=on_terminate)
 
-    # 判断子进程是否存活
+    # 如果仍然有进程存活
     if alive:
+        # 打印存活的进程
         for p in alive:
             log.warn("process %s (%s) did not respond to SIGTERM. Trying SIGKILL", p, pid)
 
@@ -288,6 +307,10 @@ class AirflowImporter(object):
 
         from airflow import operators
         operators.BashOperator(...)
+        _operators = {
+            'bash_operator': ['BashOperator'],
+        }
+        importer = AirflowImporter(sys.modules[__name__], _operators)
     """
 
     def __init__(self, parent_module, module_attributes):
@@ -308,7 +331,7 @@ class AirflowImporter(object):
 
     @staticmethod
     def _build_attribute_modules(module_attributes):
-        """
+        """遍历模块的属性，返回属性和模块名称的映射关系
         Flips and flattens the module_attributes dictionary from:
 
             module => [Attribute, ...]
@@ -322,7 +345,7 @@ class AirflowImporter(object):
         """
         attribute_modules = {}
 
-        for module, attributes in list(module_attributes.items()):
+        for module, attributes in iteritems(module_attributes):
             for attribute in attributes:
                 attribute_modules[attribute] = module
 
@@ -332,20 +355,24 @@ class AirflowImporter(object):
         """
         Load the class attribute if it hasn't been loaded yet, and return it.
         """
+        # 根据属性获得模块名称
         module = self._attribute_modules.get(attribute, False)
 
+        # 如果模块不存在，则抛出导入错误
         if not module:
             # This shouldn't happen. The check happens in find_modules, too.
             raise ImportError(attribute)
         elif module not in self._loaded_modules:
+            # 保证模块只加载一次
             # Note that it's very important to only load a given modules once.
             # If they are loaded more than once, the memory reference to the
             # class objects changes, and Python thinks that an object of type
             # Foo that was declared before Foo's module was reloaded is no
             # longer the same type as Foo after it's reloaded.
+            # 获得父模块所在的目录
             path = os.path.realpath(self._parent_module.__file__)
             folder = os.path.dirname(path)
-            # 从模块下的所有文件中查找指定的module
+            # 在父模块的目录下所有的文件中查找指定的module
             f, filename, description = imp.find_module(module, [folder])
             self._loaded_modules[module] = imp.load_module(module, f, filename, description)
 
@@ -379,9 +406,11 @@ class AirflowImporter(object):
 
             from airflow.operators.bash_operator import BashOperator
         """
+        # 如果模块包含指定的属性
         if hasattr(self._parent_module, attribute):
             # Always default to the parent module if the attribute exists.
             return getattr(self._parent_module, attribute)
+        # 如果模块不包含指定的属性
         elif attribute in self._attribute_modules:
             # 动态加载模块，并获取属性
             # Try and import the attribute if it's got a module defined.

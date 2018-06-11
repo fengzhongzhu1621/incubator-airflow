@@ -23,7 +23,7 @@ from airflow.configuration import (conf, AirflowConfigException)
 
 
 def get_hostname():
-    """
+    """获得主机名
     Fetch the hostname using the callable from the config or using
     `socket.getfqdn` as a fallback.
     """
@@ -44,4 +44,5 @@ def get_hostname():
     module_path, attr_name = callable_path.split(':')
     module = importlib.import_module(module_path)
     callable = getattr(module, attr_name)
+	# 执行属性方法返回结果
     return callable()

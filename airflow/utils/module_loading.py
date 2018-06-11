@@ -24,7 +24,7 @@ from importlib import import_module
 
 
 def prepare_classpath():
-    """
+    """将路径加入python系统路径
     Ensures that the Airflow home directory is on the classpath
     """
     config_path = os.path.join(conf.get('core', 'airflow_home'), 'config')
@@ -35,9 +35,14 @@ def prepare_classpath():
 
 
 def import_string(dotted_path):
-    """
+    """根据点分割的字符串，加载类
     Import a dotted module path and return the attribute/class designated by the
     last name in the path. Raise ImportError if the import failed.
+
+    Args:
+        dotted_path: 字符串表示的模块类，module.class
+    Returns:
+        返回加载的模块中的对象
     """
     try:
         module_path, class_name = dotted_path.rsplit('.', 1)
