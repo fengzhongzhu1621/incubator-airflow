@@ -30,7 +30,7 @@ from contextlib import contextmanager
 
 @contextmanager
 def TemporaryDirectory(suffix='', prefix=None, dir=None):
-    # 创建临时目录
+    """创建临时目录 ."""
     name = mkdtemp(suffix=suffix, prefix=prefix, dir=dir)
     try:
         yield name
@@ -44,7 +44,7 @@ def TemporaryDirectory(suffix='', prefix=None, dir=None):
 
 
 def mkdirs(path, mode):
-    """
+    """创建目录
     Creates the directory specified by path, creating intermediate directories
     as necessary. If directory already exists, this is a no-op.
 
