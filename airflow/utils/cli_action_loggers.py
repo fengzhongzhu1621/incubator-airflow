@@ -94,6 +94,7 @@ def default_action_log(log, **_):
     :param **_: other keyword arguments that is not being used by this function
     :return: None
     """
+    # 将日志记录到数据库中
     session = airflow.settings.Session()
     session.add(log)
     session.commit()

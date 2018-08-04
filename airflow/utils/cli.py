@@ -64,6 +64,7 @@ def action_logging(f):
         at 1st positional argument
         :param kwargs: A passthrough keyword argument
         """
+        # 第一个参数必须是argparse命名空间实例
         assert args
         assert isinstance(args[0], Namespace), \
             "1st positional argument should be argparse.Namespace instance, " \

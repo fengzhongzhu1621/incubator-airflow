@@ -38,6 +38,8 @@ def skipUnlessImported(module, obj):
 
 
 def assertEqualIgnoreMultipleSpaces(case, first, second, msg=None):
+    """判断两个字符串相等时，忽略多个空白字符 ."""
     def _trim(s):
-        re.sub("\s+", " ", s.strip())
+        """将空白字符替换为单个空格 ."""
+        return re.sub("\s+", " ", s.strip())
     return case.assertEqual(_trim(first), _trim(second), msg)

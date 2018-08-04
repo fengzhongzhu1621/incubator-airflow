@@ -3499,9 +3499,9 @@ class DAG(BaseDag, LoggingMixin):
             dttm = timezone.make_naive(dttm, self.timezone)
             # 创建cron
             cron = croniter(self._schedule_interval, dttm)
-            # 获得下一次调度时间，添加时区信息
+            # 获得上一次调度时间，添加时区信息
             prev = timezone.make_aware(cron.get_prev(datetime), self.timezone)
-            # 将下一次调度的本地时间转换为UTC时间
+            # 将上一次调度的本地时间转换为UTC时间
             return timezone.convert_to_utc(prev)
         elif isinstance(self._schedule_interval, timedelta):
             return dttm - self._schedule_interval

@@ -39,6 +39,7 @@ from flask_admin import BaseView
 from importlib import import_module
 from airflow.exceptions import AirflowException
 
+# 将dag目录添加到系统路径
 if settings.DAGS_FOLDER not in sys.path:
     sys.path.append(settings.DAGS_FOLDER)
 

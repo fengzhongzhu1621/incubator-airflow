@@ -112,11 +112,12 @@ class BaseJob(Base, LoggingMixin):
         # 设置开始时间和心跳开始时间
         self.start_date = timezone.utcnow()
         self.latest_heartbeat = self.start_date
-        # 心跳频率
+        # job的心跳间隔时间，用于判断job是否存活
         self.heartrate = heartrate
         # 调度器进程所在机器的执行用户
         self.unixname = getpass.getuser()
-        # 因为需要批量更新TI的状态，为了防止SQL过长，需要设置每批更新的TI的数量
+        # 因为需要批量更新任务实例的状态，为了防止SQL过长
+        # 需要设置每批更新的任务实例的数量
         self.max_tis_per_query = conf.getint('scheduler', 'max_tis_per_query')
         super(BaseJob, self).__init__(*args, **kwargs)
 
@@ -130,7 +131,7 @@ class BaseJob(Base, LoggingMixin):
 
     @provide_session
     def kill(self, session=None):
-        """关闭job ."""
+        """关闭job，设置关闭时间 ."""
         job = session.query(BaseJob).filter(BaseJob.id == self.id).first()
         job.end_date = timezone.utcnow()
         # 杀死job
@@ -138,7 +139,7 @@ class BaseJob(Base, LoggingMixin):
             self.on_kill()
         except Exception as e:
             self.log.error('on_kill() method failed: {}'.format(e))
-        # 保持job的关闭时间
+        # 保存job的关闭时间
         session.merge(job)
         session.commit()
         # 抛出异常
@@ -174,6 +175,9 @@ class BaseJob(Base, LoggingMixin):
         """
         # 每次心跳获得最新的job状态
         with create_session() as session:
+            # 如果只能查询到一个结果，返回它，否则抛出异常。 
+            # 没有结果时抛sqlalchemy.orm.exc.NoResultFound，
+            # 有超过一个结果时抛sqlalchemy.orm.exc.MultipleResultsFound。
             job = session.query(BaseJob).filter_by(id=self.id).one()
             # 将job复制，并去掉与sesion的关联
             # remove the association with any session
@@ -181,12 +185,12 @@ class BaseJob(Base, LoggingMixin):
             make_transient(job)
             session.commit()
 
+        # 如果job是关闭状态，则执行kill操作
         if job.state == State.SHUTDOWN:
             # 关闭job，抛出 AirflowException
             self.kill()
 
-        # 获得到下一次心跳需要睡眠的时间间隔
-        # Figure out how long to sleep for
+        # 获得到下一次心跳需要睡眠的时间间隔，并等待
         sleep_for = 0
         if job.latest_heartbeat:
             sleep_for = max(
@@ -196,9 +200,8 @@ class BaseJob(Base, LoggingMixin):
         sleep(sleep_for)
 
         # 睡眠之后会重新连接DB
-        # Update last heartbeat time
         with create_session() as session:
-            # 更新心跳时间
+            # 更新最新的心跳时间
             job = session.query(BaseJob).filter(BaseJob.id == self.id).first()
             job.latest_heartbeat = timezone.utcnow()
             session.merge(job)
@@ -208,6 +211,7 @@ class BaseJob(Base, LoggingMixin):
             self.log.debug('[heartbeat]')
 
     def run(self):
+        """新增一个job，并执行job，状态从运行态->完成态 ."""
         Stats.incr(self.__class__.__name__.lower() + '_start', 1, 1)
         # Adding an entry in the DB
         with create_session() as session:
@@ -219,11 +223,10 @@ class BaseJob(Base, LoggingMixin):
             make_transient(self)
             self.id = id_
 
-            # Run
+            # 运行job
             self._execute()
 
             # job执行完成后，记录完成时间和状态
-            # Marking the success in the DB
             self.end_date = timezone.utcnow()
             self.state = State.SUCCESS
             session.merge(self)
@@ -263,6 +266,7 @@ class BaseJob(Base, LoggingMixin):
         TI = models.TaskInstance
         DR = models.DagRun
         if filter_by_dag_run is None:
+            # 获得所有正在运行的流程实例中，任务状态为 [State.SCHEDULED, State.QUEUED] 的任务实例
             resettable_tis = (
                 session
                 .query(TI)
@@ -273,10 +277,10 @@ class BaseJob(Base, LoggingMixin):
                         TI.execution_date == DR.execution_date))
                 .filter(
                     DR.state == State.RUNNING,
-                    DR.run_id.notlike(BackfillJob.ID_PREFIX + '%'),
+                    DR.run_id.notlike(BackfillJob.ID_PREFIX + '%'),  # 不是补录的流程实例
                     TI.state.in_(resettable_states))).all()
         else:
-            # 获得指定dag_run中正在调度的任务实例
+            # 获得指定dag_run中正在调度（任务状态为 [State.SCHEDULED, State.QUEUED]）的任务实例
             resettable_tis = filter_by_dag_run.get_task_instances(state=resettable_states,
                                                                   session=session)
         # 获得不在执行器队列（待执行队列和运行队列）中的任务实例
@@ -361,9 +365,11 @@ class DagFileProcessor(AbstractDagFileProcessor, LoggingMixin):
         # When the process started.
         # 记录DAG文件进程的启动时间
         self._start_time = None
+        # 使用实例的次数作为实例ID		
         # This ID is use to uniquely name the process / thread that's launched
         # by this processor instance
         self._instance_id = DagFileProcessor.class_creation_counter
+        # 实例创建次数自增
         DagFileProcessor.class_creation_counter += 1
 
     @property
