@@ -7,9 +7,9 @@
 # to you under the Apache License, Version 2.0 (the
 # "License"); you may not use this file except in compliance
 # with the License.  You may obtain a copy of the License at
-# 
+#
 #   http://www.apache.org/licenses/LICENSE-2.0
-# 
+#
 # Unless required by applicable law or agreed to in writing,
 # software distributed under the License is distributed on an
 # "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
@@ -153,7 +153,7 @@ class S3ToHiveTransfer(BaseOperator):
 
         root, file_ext = os.path.splitext(s3_key_object.key)
         if (self.select_expression and self.input_compressed and
-                file_ext != '.gz'):
+                file_ext.lower() != '.gz'):
             raise AirflowException("GZIP is the only compression " +
                                    "format Amazon S3 Select supports")
 
@@ -246,23 +246,23 @@ class S3ToHiveTransfer(BaseOperator):
         field_names = self.field_dict.keys()
         if len(field_names) != len(header_list):
             self.log.warning("Headers count mismatch"
-                              "File headers:\n {header_list}\n"
-                              "Field names: \n {field_names}\n"
-                              "".format(**locals()))
+                             "File headers:\n {header_list}\n"
+                             "Field names: \n {field_names}\n"
+                             .format(**locals()))
             return False
         test_field_match = [h1.lower() == h2.lower()
                             for h1, h2 in zip(header_list, field_names)]
         if not all(test_field_match):
             self.log.warning("Headers do not match field names"
-                              "File headers:\n {header_list}\n"
-                              "Field names: \n {field_names}\n"
-                              "".format(**locals()))
+                             "File headers:\n {header_list}\n"
+                             "Field names: \n {field_names}\n"
+                             .format(**locals()))
             return False
         else:
             return True
 
+    @staticmethod
     def _delete_top_row_and_compress(
-            self,
             input_file_name,
             output_file_ext,
             dest_dir):
@@ -275,7 +275,7 @@ class S3ToHiveTransfer(BaseOperator):
 
         os_fh_output, fn_output = \
             tempfile.mkstemp(suffix=output_file_ext, dir=dest_dir)
-        with open(input_file_name, 'rb') as f_in,\
+        with open(input_file_name, 'rb') as f_in, \
                 open_fn(fn_output, 'wb') as f_out:
             f_in.seek(0)
             next(f_in)

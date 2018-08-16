@@ -21,18 +21,17 @@
 import unittest
 import warnings
 
+from google.auth.exceptions import GoogleAuthError
 import mock
 
 from airflow.contrib.hooks import bigquery_hook as hook
-from oauth2client.contrib.gce import HttpAccessTokenRefreshError
-
 from airflow.contrib.hooks.bigquery_hook import _cleanse_time_partitioning
 
 bq_available = True
 
 try:
     hook.BigQueryHook().get_service()
-except HttpAccessTokenRefreshError:
+except GoogleAuthError:
     bq_available = False
 
 
@@ -50,25 +49,25 @@ class TestBigQueryDataframeResults(unittest.TestCase):
     def test_throws_exception_with_invalid_query(self):
         with self.assertRaises(Exception) as context:
             self.instance.get_pandas_df('from `1`')
-        self.assertIn('pandas_gbq.gbq.GenericGBQException: Reason: invalidQuery',
-                      str(context.exception), "")
+        self.assertIn('Reason: ', str(context.exception), "")
 
     @unittest.skipIf(not bq_available, 'BQ is not available to run tests')
-    def test_suceeds_with_explicit_legacy_query(self):
+    def test_succeeds_with_explicit_legacy_query(self):
         df = self.instance.get_pandas_df('select 1', dialect='legacy')
         self.assertEqual(df.iloc(0)[0][0], 1)
 
     @unittest.skipIf(not bq_available, 'BQ is not available to run tests')
-    def test_suceeds_with_explicit_std_query(self):
-        df = self.instance.get_pandas_df('select * except(b) from (select 1 a, 2 b)', dialect='standard')
+    def test_succeeds_with_explicit_std_query(self):
+        df = self.instance.get_pandas_df(
+            'select * except(b) from (select 1 a, 2 b)', dialect='standard')
         self.assertEqual(df.iloc(0)[0][0], 1)
 
     @unittest.skipIf(not bq_available, 'BQ is not available to run tests')
     def test_throws_exception_with_incompatible_syntax(self):
         with self.assertRaises(Exception) as context:
-            self.instance.get_pandas_df('select * except(b) from (select 1 a, 2 b)', dialect='legacy')
-        self.assertIn('pandas_gbq.gbq.GenericGBQException: Reason: invalidQuery',
-                      str(context.exception), "")
+            self.instance.get_pandas_df(
+                'select * except(b) from (select 1 a, 2 b)', dialect='legacy')
+        self.assertIn('Reason: ', str(context.exception), "")
 
 
 class TestBigQueryTableSplitter(unittest.TestCase):
@@ -283,6 +282,27 @@ class TestBigQueryBaseCursor(unittest.TestCase):
             self.assertIs(args[0]['query']['useLegacySql'], bool_val)
 
 
+class TestLabelsInRunJob(unittest.TestCase):
+    @mock.patch.object(hook.BigQueryBaseCursor, 'run_with_configuration')
+    def test_run_query_with_arg(self, mocked_rwc):
+        project_id = 12345
+
+        def run_with_config(config):
+            self.assertEqual(
+                config['labels'], {'label1': 'test1', 'label2': 'test2'}
+            )
+        mocked_rwc.side_effect = run_with_config
+
+        bq_hook = hook.BigQueryBaseCursor(mock.Mock(), project_id)
+        bq_hook.run_query(
+            sql='select 1',
+            destination_dataset_table='my_dataset.my_table',
+            labels={'label1': 'test1', 'label2': 'test2'}
+        )
+
+        mocked_rwc.assert_called_once()
+
+
 class TestTimePartitioningInRunJob(unittest.TestCase):
 
     @mock.patch("airflow.contrib.hooks.bigquery_hook.LoggingMixin")
@@ -367,7 +387,8 @@ class TestTimePartitioningInRunJob(unittest.TestCase):
         bq_hook.run_query(
             sql='select 1',
             destination_dataset_table='my_dataset.my_table',
-            time_partitioning={'type': 'DAY', 'field': 'test_field', 'expirationMs': 1000}
+            time_partitioning={'type': 'DAY',
+                               'field': 'test_field', 'expirationMs': 1000}
         )
 
         mocked_rwc.assert_called_once()
@@ -393,7 +414,7 @@ class TestTimePartitioningInRunJob(unittest.TestCase):
         self.assertEqual(tp_out, expect)
 
     def test_cant_add_dollar_and_field_name(self):
-        with self.assertRaises(AssertionError):
+        with self.assertRaises(ValueError):
             _cleanse_time_partitioning(
                 'test.teast$20170101',
                 {'type': 'DAY', 'field': 'test_field', 'expirationMs': 1000}

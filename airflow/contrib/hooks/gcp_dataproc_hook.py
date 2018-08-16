@@ -21,6 +21,7 @@ import time
 import uuid
 
 from apiclient.discovery import build
+from zope.deprecation import deprecation
 
 from airflow.contrib.hooks.gcp_api_base_hook import GoogleCloudBaseHook
 from airflow.utils.log.logging_mixin import LoggingMixin
@@ -204,7 +205,9 @@ class DataProcHook(GoogleCloudBaseHook):
     def get_conn(self):
         """Returns a Google Cloud Dataproc service object."""
         http_authorized = self._authorize()
-        return build('dataproc', self.api_version, http=http_authorized)
+        return build(
+            'dataproc', self.api_version, http=http_authorized,
+            cache_discovery=False)
 
     def get_cluster(self, project_id, region, cluster_name):
         return self.get_conn().projects().regions().clusters().get(
@@ -222,7 +225,16 @@ class DataProcHook(GoogleCloudBaseHook):
         return _DataProcJobBuilder(self.project_id, task_id, cluster_name,
                                    job_type, properties)
 
-    def await(self, operation):
+    def wait(self, operation):
         """Awaits for Google Cloud Dataproc Operation to complete."""
         submitted = _DataProcOperation(self.get_conn(), operation)
         submitted.wait_for_done()
+
+
+setattr(
+    DataProcHook,
+    "await",
+    deprecation.deprecated(
+        DataProcHook.wait, "renamed to 'wait' for Python3.7 compatibility"
+    ),
+)

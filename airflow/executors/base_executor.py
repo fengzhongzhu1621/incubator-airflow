@@ -80,7 +80,7 @@ class BaseExecutor(LoggingMixin):
         # (run_as_user), given that there are different code paths running tasks.
         # For a long term solution we need to address AIRFLOW-1986
         # 构造任务实例命令
-        command = task_instance.command(
+        command = task_instance.command_as_list(
             local=True,
             mark_success=mark_success,
             ignore_all_deps=ignore_all_deps,
@@ -165,7 +165,7 @@ class BaseExecutor(LoggingMixin):
         self.sync()
 
     def change_state(self, key, state):
-        print("popping: {}".format(key))
+        self.log.debug("Changing state: {}".format(key))
         self.running.pop(key)
         self.event_buffer[key] = state
 

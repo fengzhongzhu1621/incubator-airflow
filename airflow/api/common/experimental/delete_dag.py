@@ -17,17 +17,10 @@
 # specific language governing permissions and limitations
 # under the License.
 
-from airflow import models, settings
-from airflow.exceptions import AirflowException
 from sqlalchemy import or_
 
-
-class DagFileExists(AirflowException):
-    status = 400
-
-
-class DagNotFound(AirflowException):
-    status = 404
+from airflow import models, settings
+from airflow.exceptions import DagNotFound, DagFileExists
 
 
 def delete_dag(dag_id):
@@ -58,8 +51,7 @@ def delete_dag(dag_id):
             # 注意：dag子集中的dag_id = dag_id + .
             cond = or_(m.dag_id == dag_id, m.dag_id.like(dag_id + ".%"))
             # TODO 为什么使用fetch模式
-            count += session.query(m).filter(
-                cond).delete(synchronize_session='fetch')
+            count += session.query(m).filter(cond).delete(synchronize_session='fetch')
 
     # 删除dag的子集
     # TODO 不明白对rsplit的处理逻辑
@@ -68,8 +60,7 @@ def delete_dag(dag_id):
         # c为task_id
         p, c = dag_id.rsplit(".", 1)
         for m in models.DagRun, models.TaskFail, models.TaskInstance:
-            count += session.query(m).filter(m.dag_id ==
-                                             p, m.task_id == c).delete()
+            count += session.query(m).filter(m.dag_id == p, m.task_id == c).delete()
 
     session.commit()
 

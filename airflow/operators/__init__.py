@@ -7,16 +7,15 @@
 # to you under the Apache License, Version 2.0 (the
 # "License"); you may not use this file except in compliance
 # with the License.  You may obtain a copy of the License at
-# 
+#
 #   http://www.apache.org/licenses/LICENSE-2.0
-# 
+#
 # Unless required by applicable law or agreed to in writing,
 # software distributed under the License is distributed on an
 # "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-#
 
 import sys
 import os
@@ -111,11 +110,11 @@ def _integrate_plugins():
         # TODO FIXME Remove in Airflow 2.0
 
         if not os.environ.get('AIRFLOW_USE_NEW_IMPORTS', False):
-            from zope.deprecation import deprecated as _deprecated
+            from zope.deprecation import deprecated
             for _operator in operators_module._objects:
                 operator_name = _operator.__name__
                 globals()[operator_name] = _operator
-                _deprecated(
+                deprecated(
                     operator_name,
                     "Importing plugin operator '{i}' directly from "
                     "'airflow.operators' has been deprecated. Please "

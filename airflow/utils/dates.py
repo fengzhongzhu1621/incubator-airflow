@@ -7,9 +7,9 @@
 # to you under the Apache License, Version 2.0 (the
 # "License"); you may not use this file except in compliance
 # with the License.  You may obtain a copy of the License at
-# 
+#
 #   http://www.apache.org/licenses/LICENSE-2.0
-# 
+#
 # Unless required by applicable law or agreed to in writing,
 # software distributed under the License is distributed on an
 # "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
@@ -85,14 +85,15 @@ def date_range(
         cron = croniter(delta, start_date)
     elif isinstance(delta, timedelta):
         delta = abs(delta)
-
-    l = []
+    dates = []
     if end_date:
+        if timezone.is_naive(start_date):
+            end_date = timezone.make_naive(end_date, tz)
         while start_date <= end_date:
             if timezone.is_naive(start_date):
-                l.append(timezone.make_aware(start_date, tz))
+                dates.append(timezone.make_aware(start_date, tz))
             else:
-                l.append(start_date)
+                dates.append(start_date)
 
             if delta_iscron:
                 start_date = cron.get_next(datetime)
@@ -101,9 +102,9 @@ def date_range(
     else:
         for _ in range(abs(num)):
             if timezone.is_naive(start_date):
-                l.append(timezone.make_aware(start_date, tz))
+                dates.append(timezone.make_aware(start_date, tz))
             else:
-                l.append(start_date)
+                dates.append(start_date)
 
             if delta_iscron:
                 if num > 0:
@@ -115,7 +116,7 @@ def date_range(
                     start_date += delta
                 else:
                     start_date -= delta
-    return sorted(l)
+    return sorted(dates)
 
 
 def round_time(dt, delta, start_date=timezone.make_aware(datetime.min)):
@@ -206,7 +207,6 @@ def infer_time_unit(time_seconds_arr):
     """
     Determine the most appropriate time unit for an array of time durations
     specified in seconds.
-
     e.g. 5400 seconds => 'minutes', 36000 seconds => 'hours'
     """
     if len(time_seconds_arr) == 0:

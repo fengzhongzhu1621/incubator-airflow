@@ -49,7 +49,7 @@ def create_session():
         # 清除session实例
         session.expunge_all()
         session.commit()
-    except:
+    except Exception:
         session.rollback()
         raise
     finally:

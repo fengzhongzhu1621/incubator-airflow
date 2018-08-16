@@ -7,9 +7,9 @@
 # to you under the Apache License, Version 2.0 (the
 # "License"); you may not use this file except in compliance
 # with the License.  You may obtain a copy of the License at
-# 
+#
 #   http://www.apache.org/licenses/LICENSE-2.0
-# 
+#
 # Unless required by applicable law or agreed to in writing,
 # software distributed under the License is distributed on an
 # "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
@@ -58,7 +58,7 @@ def execute_command(command):
     log.info("Executing command in Celery: %s", command)
     env = os.environ.copy()
     try:
-        subprocess.check_call(command, shell=True, stderr=subprocess.STDOUT,
+        subprocess.check_call(command, stderr=subprocess.STDOUT,
                               close_fds=True, env=env)
     except subprocess.CalledProcessError as e:
         log.exception('execute_command encountered a CalledProcessError')
@@ -76,7 +76,6 @@ class CeleryExecutor(BaseExecutor):
     vast amounts of messages, while providing operations with the tools
     required to maintain such a system.
     """
-
     def start(self):
         self.tasks = {}
         self.last_state = {}
@@ -84,21 +83,21 @@ class CeleryExecutor(BaseExecutor):
     def execute_async(self, key, command,
                       queue=DEFAULT_CELERY_CONFIG['task_default_queue'],
                       executor_config=None):
-        self.log.info( "[celery] queuing {key} through celery, "
-                       "queue={queue}".format(**locals()))
+        self.log.info("[celery] queuing {key} through celery, "
+                      "queue={queue}".format(**locals()))
         # 向celery发送任务
         self.tasks[key] = execute_command.apply_async(
-            args=[command], queue=queue)
+            args=command, queue=queue)
         # 记录当前任务的状态
         self.last_state[key] = celery_states.PENDING
 
     def sync(self):
         """非阻塞操作，获取任务执行结果 ."""
         self.log.debug("Inquiring about %s celery task(s)", len(self.tasks))
-        for key, async in list(self.tasks.items()):
+        for key, task in list(self.tasks.items()):
             try:
                 # 获得异步任务的执行状态
-                state = async.state
+                state = task.state
                 if self.last_state[key] != state:
                     if state == celery_states.SUCCESS:
                         self.success(key)
@@ -113,8 +112,8 @@ class CeleryExecutor(BaseExecutor):
                         del self.tasks[key]
                         del self.last_state[key]
                     else:
-                        self.log.info("Unexpected state: %s", async.state)
-                    self.last_state[key] = async.state
+                        self.log.info("Unexpected state: %s", task.state)
+                    self.last_state[key] = task.state
             except Exception as e:
                 self.log.error("Error syncing the celery executor, ignoring it:")
                 self.log.exception(e)
@@ -123,7 +122,7 @@ class CeleryExecutor(BaseExecutor):
         if synchronous:
             # 等待所有的任务完成
             while any([
-                    async.state not in celery_states.READY_STATES
-                    for async in self.tasks.values()]):
+                    task.state not in celery_states.READY_STATES
+                    for task in self.tasks.values()]):
                 time.sleep(5)
         self.sync()
