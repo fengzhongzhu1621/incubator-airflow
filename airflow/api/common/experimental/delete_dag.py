@@ -44,6 +44,7 @@ def delete_dag(dag_id):
 
     count = 0
 
+    # noinspection PyUnresolvedReferences,PyProtectedMember
     # 获得注册的所有模型
     for m in models.Base._decl_class_registry.values():
         # 如果模型中包含dag_id属性，则根据dag_id从指定的模型中删除记录

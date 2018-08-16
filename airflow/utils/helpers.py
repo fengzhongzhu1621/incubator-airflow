@@ -345,7 +345,7 @@ class AirflowImporter(object):
         """
         attribute_modules = {}
 
-        for module, attributes in iteritems(module_attributes):
+        for module, attributes in list(module_attributes.items()):
             for attribute in attributes:
                 attribute_modules[attribute] = module
 

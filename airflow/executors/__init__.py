@@ -7,20 +7,21 @@
 # to you under the Apache License, Version 2.0 (the
 # "License"); you may not use this file except in compliance
 # with the License.  You may obtain a copy of the License at
-# 
+#
 #   http://www.apache.org/licenses/LICENSE-2.0
-# 
+#
 # Unless required by applicable law or agreed to in writing,
 # software distributed under the License is distributed on an
 # "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+
 import sys
 from airflow.utils.log.logging_mixin import LoggingMixin
 from airflow import configuration
 from airflow.exceptions import AirflowException
-from airflow.executors.base_executor import BaseExecutor
+from airflow.executors.base_executor import BaseExecutor # noqa
 from airflow.executors.local_executor import LocalExecutor
 from airflow.executors.sequential_executor import SequentialExecutor
 
@@ -61,7 +62,6 @@ class Executors:
     KubernetesExecutor = "KubernetesExecutor"
 
 
-
 def _get_executor(executor_name):
     """
     Creates a new instance of the named executor.
@@ -87,7 +87,6 @@ def _get_executor(executor_name):
     else:
         # Loading plugins
         _integrate_plugins()
-
         executor_path = executor_name.split('.')
         if len(executor_path) != 2:
             raise AirflowException(

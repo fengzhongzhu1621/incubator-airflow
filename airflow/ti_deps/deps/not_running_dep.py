@@ -28,8 +28,7 @@ class NotRunningDep(BaseTIDep):
 
     # Task instances must not already be running, as running two copies of the same
     # task instance at the same time (AKA double-trigger) should be avoided at all
-    # costs, even if the context specifies that all dependencies should be
-    # ignored.
+    # costs, even if the context specifies that all dependencies should be ignored.
     IGNOREABLE = False
 
     @provide_session

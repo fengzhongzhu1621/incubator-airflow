@@ -124,17 +124,17 @@ def setup_logging(filename):
 def setup_locations(process, pid=None, stdout=None, stderr=None, log=None):
     """获得pid文件路径 ."""
     if not stderr:
-        stderr = os.path.join(os.path.expanduser(
-            settings.AIRFLOW_HOME), "airflow-{}.err".format(process))
+        stderr = os.path.join(os.path.expanduser(settings.AIRFLOW_HOME),
+                              'airflow-{}.err'.format(process))
     if not stdout:
-        stdout = os.path.join(os.path.expanduser(
-            settings.AIRFLOW_HOME), "airflow-{}.out".format(process))
+        stdout = os.path.join(os.path.expanduser(settings.AIRFLOW_HOME),
+                              'airflow-{}.out'.format(process))
     if not log:
-        log = os.path.join(os.path.expanduser(
-            settings.AIRFLOW_HOME), "airflow-{}.log".format(process))
+        log = os.path.join(os.path.expanduser(settings.AIRFLOW_HOME),
+                           'airflow-{}.log'.format(process))
     if not pid:
-        pid = os.path.join(os.path.expanduser(
-            settings.AIRFLOW_HOME), "airflow-{}.pid".format(process))
+        pid = os.path.join(os.path.expanduser(settings.AIRFLOW_HOME),
+                           'airflow-{}.pid'.format(process))
 
     return pid, stdout, stderr, log
 
@@ -211,7 +211,7 @@ def backfill(args, dag=None):
                 start_date=args.start_date,
                 end_date=args.end_date,
                 confirm_prompt=True,
-                include_subdags=False,
+                include_subdags=True,
             )
         # 调用 BackfillJob.run()
         dag.run(
@@ -383,8 +383,7 @@ def export_helper(filepath):
 
     with open(filepath, 'w') as varfile:
         varfile.write(json.dumps(var_dict, sort_keys=True, indent=4))
-    print("{} variables successfully exported to {}".format(
-        len(var_dict), filepath))
+    print("{} variables successfully exported to {}".format(len(var_dict), filepath))
 
 
 @cli_utils.action_logging
@@ -793,18 +792,15 @@ def restart_workers(gunicorn_master_proc, num_workers_expected, master_timeout):
             num_ready_workers_running = \
                 get_num_ready_workers_running(gunicorn_master_proc)
 
-            state = '[{0} / {1}]'.format(num_ready_workers_running,
-                                         num_workers_running)
+            state = '[{0} / {1}]'.format(num_ready_workers_running, num_workers_running)
 
-            # Whenever some workers are not ready, wait until all workers are
-            # ready
+            # Whenever some workers are not ready, wait until all workers are ready
             if num_ready_workers_running < num_workers_running:
                 log.debug('%s some workers are starting up, waiting...', state)
                 sys.stdout.flush()
                 time.sleep(1)
 
-            # Kill a worker gracefully by asking gunicorn to reduce number of
-            # workers
+            # Kill a worker gracefully by asking gunicorn to reduce number of workers
             # 删除多余的子进程
             elif num_workers_running > num_workers_expected:
                 excess = num_workers_running - num_workers_expected
@@ -815,15 +811,12 @@ def restart_workers(gunicorn_master_proc, num_workers_expected, master_timeout):
                     excess -= 1
                     # 验证需要删除的子进程在规定时间内是否被关闭，如果没有关闭则抛出异常 AirflowWebServerTimeout
                     wait_until_true(lambda: num_workers_expected + excess ==
-                                    get_num_workers_running(
-                                        gunicorn_master_proc),
+                                    get_num_workers_running(gunicorn_master_proc),
                                     master_timeout)
 
-            # Start a new worker by asking gunicorn to increase number of
-            # workers
+            # Start a new worker by asking gunicorn to increase number of workers
             elif num_workers_running == num_workers_expected:
-                refresh_interval = conf.getint(
-                    'webserver', 'worker_refresh_interval')
+                refresh_interval = conf.getint('webserver', 'worker_refresh_interval')
                 log.debug(
                     '%s sleeping for %ss starting doing a refresh...',
                     state, refresh_interval
@@ -857,10 +850,8 @@ def webserver(args):
     print(settings.HEADER)
 
     # 获得日志配置
-    access_logfile = args.access_logfile or conf.get(
-        'webserver', 'access_logfile')
-    error_logfile = args.error_logfile or conf.get(
-        'webserver', 'error_logfile')
+    access_logfile = args.access_logfile or conf.get('webserver', 'access_logfile')
+    error_logfile = args.error_logfile or conf.get('webserver', 'error_logfile')
     # 获得webserver worker数量
     num_workers = args.workers or conf.get('webserver', 'workers')
     # 获得worker超时时间
@@ -884,9 +875,11 @@ def webserver(args):
         app.run(debug=True, port=args.port, host=args.hostname,
                 ssl_context=(ssl_cert, ssl_key) if ssl_cert and ssl_key else None)
     else:
+        os.environ['SKIP_DAGS_PARSING'] = 'True'
         app = cached_app_rbac(conf) if settings.RBAC else cached_app(conf)
         pid, stdout, stderr, log_file = setup_locations(
             "webserver", args.pid, args.stdout, args.stderr, args.log_file)
+        os.environ.pop('SKIP_DAGS_PARSING')
         if args.daemon:
             handle = setup_logging(log_file)
             stdout = open(stdout, 'w+')
@@ -973,10 +966,8 @@ def webserver(args):
         def monitor_gunicorn(gunicorn_master_proc):
             # These run forever until SIG{INT, TERM, KILL, ...} signal is sent
             if conf.getint('webserver', 'worker_refresh_interval') > 0:
-                master_timeout = conf.getint(
-                    'webserver', 'web_server_master_timeout')
-                restart_workers(gunicorn_master_proc,
-                                num_workers, master_timeout)
+                master_timeout = conf.getint('webserver', 'web_server_master_timeout')
+                restart_workers(gunicorn_master_proc, num_workers, master_timeout)
             else:
                 while gunicorn_master_proc.poll() is None:
                     time.sleep(1)
@@ -1007,8 +998,7 @@ def webserver(args):
                             gunicorn_master_proc_pid = int(f.read())
                             break
                     except IOError:
-                        log.debug(
-                            "Waiting for gunicorn's pid file to be created.")
+                        log.debug("Waiting for gunicorn's pid file to be created.")
                         time.sleep(0.1)
 
                 # 启动gunicorn进程
@@ -1129,8 +1119,7 @@ def worker(args):
             stderr=stderr,
         )
         with ctx:
-            sp = subprocess.Popen(
-                ['airflow', 'serve_logs'], env=env, close_fds=True)
+            sp = subprocess.Popen(['airflow', 'serve_logs'], env=env, close_fds=True)
             worker.run(**options)
             sp.kill()
 
@@ -1140,8 +1129,7 @@ def worker(args):
         signal.signal(signal.SIGINT, sigint_handler)
         signal.signal(signal.SIGTERM, sigint_handler)
 
-        sp = subprocess.Popen(['airflow', 'serve_logs'],
-                              env=env, close_fds=True)
+        sp = subprocess.Popen(['airflow', 'serve_logs'], env=env, close_fds=True)
 
         worker.run(**options)
         sp.kill()

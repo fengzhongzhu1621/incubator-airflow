@@ -268,8 +268,7 @@ class DagBag(BaseDagBag, LoggingMixin):
             executor=None,
             include_examples=configuration.conf.getboolean('core', 'LOAD_EXAMPLES')):
 
-        # do not use default arg in signature, to fix import cycle on plugin
-        # load
+        # do not use default arg in signature, to fix import cycle on plugin load
         if executor is None:
             executor = GetDefaultExecutor()
         dag_folder = dag_folder or settings.DAGS_FOLDER
@@ -493,6 +492,7 @@ class DagBag(BaseDagBag, LoggingMixin):
                     # 获得任务模型
                     task = dag.get_task(ti.task_id)
 
+                    # now set non db backed vars on ti
                     ti.task = task
                     ti.test_mode = configuration.getboolean('core', 'unit_test_mode')
                     # 任务执行失败，发送通知，并执行失败回调函数
@@ -4793,7 +4793,7 @@ class XCom(Base, LoggingMixin):
     key = Column(String(512))
     value = Column(LargeBinary)
     timestamp = Column(
-        DateTime, default=timezone.utcnow, nullable=False)
+        UtcDateTime, default=timezone.utcnow, nullable=False)
     execution_date = Column(UtcDateTime, nullable=False)
 
     # source information
