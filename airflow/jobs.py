@@ -1010,6 +1010,7 @@ class SchedulerJob(BaseJob):
         """
 
         # update the state of the previously active dag runs
+        # 性能瓶颈：如果外部dag_run触发太快，会导致一个scheduler中的一个dag processor处理很长时间
         dag_runs = DagRun.find(dag_id=dag.dag_id, state=State.RUNNING, session=session)
         active_dag_runs = []
         for run in dag_runs:

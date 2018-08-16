@@ -90,12 +90,14 @@ class BashOperator(BaseOperator):
                         'export {}={}; '.format(PYTHONPATH_VAR, pythonpath_value) +
                         self.bash_command)
         self.lineage_data = bash_command
-
+        # 创建临时目录
         with TemporaryDirectory(prefix='airflowtmp') as tmp_dir:
+            # 创建临时文件
             with NamedTemporaryFile(dir=tmp_dir, prefix=self.task_id) as f:
-
+                # 将bash命令写入到临时文件中
                 f.write(bytes(bash_command, 'utf_8'))
                 f.flush()
+                # 获得临时文件的名称
                 fname = f.name
                 script_location = os.path.abspath(fname)
                 self.log.info(
@@ -111,6 +113,7 @@ class BashOperator(BaseOperator):
                     os.setsid()
 
                 self.log.info("Running command: %s", bash_command)
+                # 执行临时bash脚本
                 sp = Popen(
                     ['bash', fname],
                     stdout=PIPE, stderr=STDOUT,
@@ -129,7 +132,7 @@ class BashOperator(BaseOperator):
                     "Command exited with return code %s",
                     sp.returncode
                 )
-
+                # 脚本执行失败抛出异常
                 if sp.returncode:
                     raise AirflowException("Bash command failed")
 

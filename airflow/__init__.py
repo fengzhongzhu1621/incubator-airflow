@@ -50,6 +50,7 @@ def load_login():
 
     auth_backend = 'airflow.default_login'
     try:
+        # 获得默认web认证
         if conf.getboolean('webserver', 'AUTHENTICATE'):
             auth_backend = conf.get('webserver', 'auth_backend')
     except conf.AirflowConfigException:
@@ -59,6 +60,7 @@ def load_login():
                 "*deprecated*  behavior of importing airflow_login")
             auth_backend = "airflow_login"
 
+    # 导入认证模块
     try:
         global login
         login = import_module(auth_backend)

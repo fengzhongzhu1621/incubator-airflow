@@ -36,20 +36,25 @@ dag = DAG(
     dagrun_timeout=timedelta(minutes=60))
 
 cmd = 'ls -l'
+
+# 空任务
 run_this_last = DummyOperator(task_id='run_this_last', dag=dag)
 
+# shell命令任务
 run_this = BashOperator(
     task_id='run_after_loop', bash_command='echo 1', dag=dag)
 run_this.set_downstream(run_this_last)
 
+# shell命令字任务：打印任务实例唯一标示 {task.dag_id}__{task.task_id}__{ds_nodash}
 for i in range(3):
     i = str(i)
     task = BashOperator(
-        task_id='runme_' + i,
+        task_id='runme_'+i,
         bash_command='echo "{{ task_instance_key_str }}" && sleep 1',
         dag=dag)
     task.set_downstream(run_this)
 
+# shell命令字任务：打印DAG（流程模板）运行实例ID
 task = BashOperator(
     task_id='also_run_this',
     bash_command='echo "run_id={{ run_id }} | dag_run={{ dag_run }}"',

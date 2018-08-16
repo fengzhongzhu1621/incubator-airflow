@@ -2888,8 +2888,10 @@ class BaseOperator(LoggingMixin):
             if content is not None and \
                     isinstance(content, six.string_types) and \
                     any([content.endswith(ext) for ext in self.template_ext]):
+                # 获得指定后缀的模版文件, 此时content是模板文件的名称
                 env = self.dag.get_template_env()
                 try:
+                    # 设置属性值为模板文件的内容
                     setattr(self, attr, env.loader.get_source(env, content)[0])
                 except Exception as e:
                     self.log.exception(e)

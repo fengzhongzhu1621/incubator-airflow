@@ -91,7 +91,7 @@ class HttpHook(BaseHook):
         :type extra_options: dict
         """
         extra_options = extra_options or {}
-
+        # 会话保持
         session = self.get_conn(headers)
 
         url = self.base_url + endpoint
