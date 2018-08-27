@@ -32,7 +32,6 @@ import imp
 import os
 import re
 import signal
-import subprocess
 import sys
 import warnings
 
@@ -241,6 +240,7 @@ def reap_process_group(pid, log, sig=signal.SIGTERM,
     :param sig: signal type 软件终止信号
     :param timeout: how much time a process has to terminate 杀死进程后的等待超时时间
     """
+
     def on_terminate(p):
         """进程被关闭时的回调，打印进程ID和返回码 ."""
         log.info("Process %s (%s) terminated with exit code %s", p, p.pid, p.returncode)
