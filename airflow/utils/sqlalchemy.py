@@ -34,7 +34,6 @@ from sqlalchemy.types import DateTime, TypeDecorator
 from airflow.utils.log.logging_mixin import LoggingMixin
 
 log = LoggingMixin().log
-utc = pendulum.timezone('UTC')
 
 
 def setup_event_handlers(
@@ -128,7 +127,7 @@ def setup_event_handlers(
         @event.listens_for(engine, "connect")
         def set_mysql_timezone(dbapi_connection, connection_record):
             cursor = dbapi_connection.cursor()
-            cursor.execute("SET time_zone = '+00:00'")
+            # cursor.execute("SET time_zone = '+00:00'")
             cursor.close()
 
     @event.listens_for(engine, "checkout")

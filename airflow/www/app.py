@@ -56,7 +56,9 @@ def create_app(config=None, testing=False):
 
     app.config['TESTING'] = testing
 
+    # 导入登录模块
     airflow.load_login()
+    # 初始化登录管理器
     airflow.login.login_manager.init_app(app)
 
     from airflow import api

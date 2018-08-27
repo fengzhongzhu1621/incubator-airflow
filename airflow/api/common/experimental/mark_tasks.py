@@ -17,13 +17,14 @@
 # specific language governing permissions and limitations
 # under the License.
 
+import datetime
+
 from sqlalchemy import or_
 
 from airflow.jobs import BackfillJob
 from airflow.models import DagRun, TaskInstance
 from airflow.operators.subdag_operator import SubDagOperator
 from airflow.settings import Session
-from airflow.utils import timezone
 from airflow.utils.db import provide_session
 from airflow.utils.state import State
 
@@ -45,7 +46,7 @@ def _create_dagruns(dag, execution_dates, state, run_id_template):
         dr = dag.create_dagrun(
             run_id=run_id_template.format(date.isoformat()),
             execution_date=date,
-            start_date=timezone.utcnow(),
+            start_date=datetime.datetime.now(),
             external_trigger=False,
             state=state,
         )
@@ -73,7 +74,7 @@ def set_state(task, execution_date, upstream=False, downstream=False,
     :param commit: Commit tasks to be altered to the database
     :return: list of tasks that have been created and updated
     """
-    assert timezone.is_localized(execution_date)
+    assert isinstance(execution_date, datetime.datetime)
 
     # microseconds are supported by the database, but is not handled
     # correctly by airflow on e.g. the filesystem and in other places
@@ -207,9 +208,9 @@ def _set_dag_run_state(dag_id, execution_date, state, session=None):
     ).one()
     dr.state = state
     if state == State.RUNNING:
-        dr.start_date = timezone.utcnow()
+        dr.start_date = datetime.datetime.now()
     else:
-        dr.end_date = timezone.utcnow()
+        dr.end_date = datetime.datetime.now()
     session.commit()
 
 

@@ -79,7 +79,6 @@ from airflow.ti_deps.deps.prev_dagrun_dep import PrevDagrunDep
 from airflow.ti_deps.deps.trigger_rule_dep import TriggerRuleDep
 
 from airflow.ti_deps.dep_context import DepContext, QUEUE_DEPS, RUN_DEPS
-from airflow.utils import timezone
 from airflow.utils.dag_processing import list_py_file_paths
 from airflow.utils.dates import cron_presets, date_range as utils_date_range
 from airflow.utils.db import provide_session
@@ -89,7 +88,6 @@ from airflow.utils.helpers import (
     as_tuple, is_container, validate_key, pprinttable)
 from airflow.utils.operator_resources import Resources
 from airflow.utils.state import State
-from airflow.utils.sqlalchemy import UtcDateTime
 from airflow.utils.timeout import timeout
 from airflow.utils.trigger_rule import TriggerRule
 from airflow.utils.weight_rule import WeightRule
@@ -230,7 +228,7 @@ def clear_task_instances(tis,
         for dr in drs:
             # 设置为运行态，并重置开始时间
             dr.state = State.RUNNING
-            dr.start_date = timezone.utcnow()
+            dr.start_date = datetime.now()
 
 
 class DagBag(BaseDagBag, LoggingMixin):
@@ -467,7 +465,7 @@ class DagBag(BaseDagBag, LoggingMixin):
         self.log.info("Finding 'running' jobs without a recent heartbeat")
         TI = TaskInstance
         secs = configuration.conf.getint('scheduler', 'scheduler_zombie_task_threshold')
-        limit_dttm = timezone.utcnow() - timedelta(seconds=secs)
+        limit_dttm = datetime.now() - timedelta(seconds=secs)
         self.log.info("Failing jobs without heartbeat after %s", limit_dttm)
 
         # 获得正在运行的job，或心跳僵死的job
@@ -512,7 +510,7 @@ class DagBag(BaseDagBag, LoggingMixin):
         dag.test_cycle()  # throws if a task cycle is found
         # 从指定的属性中获取设置的模板文件名，渲染模板并将此属性的值设置为渲染后的模板的内容
         dag.resolve_template_files()
-        dag.last_loaded = timezone.utcnow()
+        dag.last_loaded = datetime.now()
 
         # 通用预处理
         for task in dag.tasks:
@@ -555,7 +553,7 @@ class DagBag(BaseDagBag, LoggingMixin):
         in the file. **Note**: The patterns in .airflowignore are treated as
         un-anchored regexes, not shell-like glob patterns.
         """
-        start_dttm = timezone.utcnow()
+        start_dttm = datetime.now()
         dag_folder = dag_folder or self.dag_folder
 
         # Used to store stats around DagBag processing
@@ -564,11 +562,11 @@ class DagBag(BaseDagBag, LoggingMixin):
             'FileLoadStat', "file duration dag_num task_num dags")
         for filepath in list_py_file_paths(dag_folder):
             try:
-                ts = timezone.utcnow()
+                ts = datetime.now()
                 found_dags = self.process_file(
                     filepath, only_if_updated=only_if_updated)
 
-                td = timezone.utcnow() - ts
+                td = datetime.now() - ts
                 td = td.total_seconds() + (
                     float(td.microseconds) / 1000000)
                 stats.append(FileLoadStat(
@@ -581,7 +579,7 @@ class DagBag(BaseDagBag, LoggingMixin):
             except Exception as e:
                 self.log.exception(e)
         Stats.gauge(
-            'collect_dags', (timezone.utcnow() - start_dttm).total_seconds(), 1)
+            'collect_dags', (datetime.now() - start_dttm).total_seconds(), 1)
         Stats.gauge(
             'dagbag_size', len(self.dags), 1)
         Stats.gauge(
@@ -872,7 +870,7 @@ class DagPickle(Base):
     """
     id = Column(Integer, primary_key=True)
     pickle = Column(PickleType(pickler=dill))
-    created_dttm = Column(UtcDateTime, default=timezone.utcnow)
+    created_dttm = Column(DateTime, default=func.now())
     pickle_hash = Column(Text)
 
     __tablename__ = "dag_pickle"
@@ -903,9 +901,9 @@ class TaskInstance(Base, LoggingMixin):
 
     task_id = Column(String(ID_LEN), primary_key=True)
     dag_id = Column(String(ID_LEN), primary_key=True)
-    execution_date = Column(UtcDateTime, primary_key=True)
-    start_date = Column(UtcDateTime)
-    end_date = Column(UtcDateTime)
+    execution_date = Column(DateTime, primary_key=True)
+    start_date = Column(DateTime)
+    end_date = Column(DateTime)
     duration = Column(Float)
     state = Column(String(20))
     _try_number = Column('try_number', Integer, default=0)
@@ -917,7 +915,7 @@ class TaskInstance(Base, LoggingMixin):
     queue = Column(String(50))
     priority_weight = Column(Integer)
     operator = Column(String(1000))
-    queued_dttm = Column(UtcDateTime)
+    queued_dttm = Column(DateTime)
     pid = Column(Integer)
     executor_config = Column(PickleType(pickler=dill))
 
@@ -934,20 +932,6 @@ class TaskInstance(Base, LoggingMixin):
         self.task_id = task.task_id
         self.task = task
         self._log = logging.getLogger("airflow.task")
-
-        # make sure we have a localized execution_date stored in UTC
-        # 将无时区的datetime对象，添加时区信息
-        if execution_date and not timezone.is_localized(execution_date):
-            self.log.warning("execution date %s has no timezone information. Using "
-                             "default from dag or system", execution_date)
-            if self.task.has_dag():
-                execution_date = timezone.make_aware(execution_date,
-                                                     self.task.dag.timezone)
-            else:
-                execution_date = timezone.make_aware(execution_date)
-
-            execution_date = timezone.convert_to_utc(execution_date)
-
         self.execution_date = execution_date
 
         self.queue = task.queue
@@ -1287,8 +1271,8 @@ class TaskInstance(Base, LoggingMixin):
     def set_state(self, state, session=None):
         """变更任务实例的状态 ."""
         self.state = state
-        self.start_date = timezone.utcnow()
-        self.end_date = timezone.utcnow()
+        self.start_date = datetime.now()
+        self.end_date = datetime.now()
         session.merge(self)
         session.commit()
 
@@ -1472,7 +1456,7 @@ class TaskInstance(Base, LoggingMixin):
         to be retried.
         """
         return (self.state == State.UP_FOR_RETRY and
-                self.next_retry_datetime() < timezone.utcnow())
+                self.next_retry_datetime() < datetime.now())
 
     @provide_session
     def pool_full(self, session):
@@ -1585,7 +1569,7 @@ class TaskInstance(Base, LoggingMixin):
         msg = "Starting attempt {attempt} of {total}".format(
             attempt=self.try_number,
             total=self.max_tries + 1)
-        self.start_date = timezone.utcnow()
+        self.start_date = datetime.now()
 
         # 验证任务实例是否满足并发限制
         dep_context = DepContext(
@@ -1611,7 +1595,7 @@ class TaskInstance(Base, LoggingMixin):
                 total=self.max_tries + 1)
             self.log.warning(hr + msg + hr)
 
-            self.queued_dttm = timezone.utcnow()
+            self.queued_dttm = datetime.now()
             self.log.info("Queuing into pool %s", self.pool)
             session.merge(self)
             session.commit()
@@ -1780,7 +1764,7 @@ class TaskInstance(Base, LoggingMixin):
 
         # Recording SUCCESS
         # 记录任务执行完成后的时间
-        self.end_date = timezone.utcnow()
+        self.end_date = datetime.now()
         self.set_duration()
         if not test_mode:
             session.add(Log(self.state, self))
@@ -1845,7 +1829,7 @@ class TaskInstance(Base, LoggingMixin):
     def handle_failure(self, error, test_mode=False, context=None, session=None):
         self.log.exception(error)
         task = self.task
-        self.end_date = timezone.utcnow()
+        self.end_date = datetime.now()
         self.set_duration()
         Stats.incr('operator_failures_{}'.format(task.__class__.__name__), 1, 1)
         Stats.incr('ti_failures')
@@ -2183,9 +2167,9 @@ class TaskFail(Base):
     id = Column(Integer, primary_key=True)
     task_id = Column(String(ID_LEN), nullable=False)
     dag_id = Column(String(ID_LEN), nullable=False)
-    execution_date = Column(UtcDateTime, nullable=False)
-    start_date = Column(UtcDateTime)
-    end_date = Column(UtcDateTime)
+    execution_date = Column(DateTime, nullable=False)
+    start_date = Column(DateTime)
+    end_date = Column(DateTime)
     duration = Column(Integer)
 
     __table_args__ = (
@@ -2214,11 +2198,11 @@ class Log(Base):
     __tablename__ = "log"
 
     id = Column(Integer, primary_key=True)
-    dttm = Column(UtcDateTime)
+    dttm = Column(DateTime)
     dag_id = Column(String(ID_LEN))
     task_id = Column(String(ID_LEN))
     event = Column(String(30))
-    execution_date = Column(UtcDateTime)
+    execution_date = Column(DateTime)
     owner = Column(String(500))
     extra = Column(Text)
 
@@ -2227,7 +2211,7 @@ class Log(Base):
     )
 
     def __init__(self, event, task_instance, owner=None, extra=None, **kwargs):
-        self.dttm = timezone.utcnow()
+        self.dttm = datetime.now()
         self.event = event
         self.extra = extra
 
@@ -2265,7 +2249,7 @@ class SkipMixin(LoggingMixin):
             return
 
         task_ids = [d.task_id for d in tasks]
-        now = timezone.utcnow()
+        now = datetime.now()
 
         if dag_run:
             session.query(TaskInstance).filter(
@@ -3015,7 +2999,7 @@ class BaseOperator(LoggingMixin):
         range.
         """
         TI = TaskInstance
-        end_date = end_date or timezone.utcnow()
+        end_date = end_date or datetime.now()
         return session.query(TI).filter(
             TI.dag_id == self.dag_id,
             TI.task_id == self.task_id,
@@ -3061,7 +3045,7 @@ class BaseOperator(LoggingMixin):
         Run a set of task instances for a date range.
         """
         start_date = start_date or self.start_date
-        end_date = end_date or self.end_date or timezone.utcnow()
+        end_date = end_date or self.end_date or datetime.now()
         # 根据DAG调度配置，开始时间、结束时间获得所有的计划调度时间
         for dt in self.dag.date_range(start_date, end_date=end_date):
             TaskInstance(self, dt).run(
@@ -3219,12 +3203,12 @@ class DagModel(Base):
     # Whether that DAG was seen on the last DagBag load
     is_active = Column(Boolean, default=False)
     # Last time the scheduler started
-    last_scheduler_run = Column(UtcDateTime)
+    last_scheduler_run = Column(DateTime)
     # Last time this DAG was pickled
-    last_pickled = Column(UtcDateTime)
+    last_pickled = Column(DateTime)
     # Time when the DAG last received a refresh signal
     # (e.g. the DAG's "refresh" button was clicked in the web UI)
-    last_expired = Column(UtcDateTime)
+    last_expired = Column(DateTime)
     # Whether (one  of) the scheduler is scheduling this DAG at the moment
     scheduler_lock = Column(Boolean)
     # Foreign key to the latest pickle_id
@@ -3385,35 +3369,10 @@ class DAG(BaseDag, LoggingMixin):
         self.task_dict = dict()
 
         # 获得指定时区
-        # 将开始时间、结束时间转换为UTC时间
         # 如果开始时间为空，则开始时间取所有任务的最小开始时间
         # set timezone
-        if start_date and start_date.tzinfo:
-            self.timezone = start_date.tzinfo
-        elif 'start_date' in self.default_args and self.default_args['start_date']:
-            if isinstance(self.default_args['start_date'], six.string_types):
-                self.default_args['start_date'] = (
-                    # 将字符串日期转换为默认时区的时间对象
-                    timezone.parse(self.default_args['start_date'])
-                )
-            self.timezone = self.default_args['start_date'].tzinfo
-        else:
-            self.timezone = settings.TIMEZONE
-
-        # 将开始时间和结束时间转换为UTC时间
-        self.start_date = timezone.convert_to_utc(start_date)
-        self.end_date = timezone.convert_to_utc(end_date)
-
-        # also convert tasks
-        if 'start_date' in self.default_args:
-            self.default_args['start_date'] = (
-                timezone.convert_to_utc(self.default_args['start_date'])
-            )
-        if 'end_date' in self.default_args:
-            self.default_args['end_date'] = (
-                timezone.convert_to_utc(self.default_args['end_date'])
-            )
-
+        self.start_date = start_date
+        self.end_date = end_date
         # crontab标准格式
         self.schedule_interval = schedule_interval
         # 将调度缩写转换为crontab标准格式
@@ -3434,7 +3393,7 @@ class DAG(BaseDag, LoggingMixin):
         # 是否存在父dag
         self.parent_dag = None  # Gets set when DAGs are loaded
         # 最新加载时间
-        self.last_loaded = timezone.utcnow()
+        self.last_loaded = datetime.now()
         # dag id格式化
         self.safe_dag_id = dag_id.replace('.', '__dot__')
         # 每个dag最多运行的dag_run数量
@@ -3517,7 +3476,7 @@ class DAG(BaseDag, LoggingMixin):
 
     # /Context Manager ----------------------------------------------
 
-    def date_range(self, start_date, num=None, end_date=timezone.utcnow()):
+    def date_range(self, start_date, num=None, end_date=datetime.now()):
         """根据调度配置获取dag实例运行的时间范围."""
         if num:
             end_date = None
@@ -3529,18 +3488,14 @@ class DAG(BaseDag, LoggingMixin):
         """获得下一次调度时间，如果是单次调度，则返回None
         Calculates the following schedule for this dag in local time
 
-        :param dttm: utc datetime
-        :return: utc datetime
+        :param dttm:  datetime
+        :return:  datetime
         """
         if isinstance(self._schedule_interval, six.string_types):
-            # 将dttm转换为指定的时区self.timezone，并去掉时区信息
-            dttm = timezone.make_naive(dttm, self.timezone)
             # 创建cron
             cron = croniter(self._schedule_interval, dttm)
             # 获得下一次调度时间，添加时区信息
-            following = timezone.make_aware(cron.get_next(datetime), self.timezone)
-            # 将下一次调度的本地时间转换为UTC时间
-            return timezone.convert_to_utc(following)
+            return cron.get_next(datetime)
         elif self._schedule_interval is not None:
             return dttm + self._schedule_interval
 
@@ -3548,18 +3503,13 @@ class DAG(BaseDag, LoggingMixin):
         """获得上一次调度时间，如果是单次调度，则返回None
         Calculates the previous schedule for this dag in local time
 
-        :param dttm: utc datetime
-        :return: utc datetime
+        :param dttm: datetime
+        :return: datetime
         """
         if isinstance(self._schedule_interval, six.string_types):
-            # 将dttm转换为指定的时区self.timezone，并去掉时区信息
-            dttm = timezone.make_naive(dttm, self.timezone)
             # 创建cron
             cron = croniter(self._schedule_interval, dttm)
-            # 获得下一次调度时间，添加时区信息
-            prev = timezone.make_aware(cron.get_prev(datetime), self.timezone)
-            # 将下一次调度的本地时间转换为UTC时间
-            return timezone.convert_to_utc(prev)
+            return cron.get_prev(datetime)
         elif self._schedule_interval is not None:
             return dttm - self._schedule_interval
 
@@ -3570,7 +3520,7 @@ class DAG(BaseDag, LoggingMixin):
 
         :param start_date: the start date of the interval
         :type start_date: datetime
-        :param end_date: the end date of the interval, defaults to timezone.utcnow()
+        :param end_date: the end date of the interval, defaults to datetime.now()
         :type end_date: datetime
         :return: a list of dates within the interval following the dag's schedule
         :rtype: list
@@ -3584,7 +3534,7 @@ class DAG(BaseDag, LoggingMixin):
         # 如果开始时间为空，则取所有任务的最小开始时间
         using_start_date = using_start_date or min([t.start_date for t in self.tasks])
         # 结束时间为空，则去当前时间
-        using_end_date = using_end_date or timezone.utcnow()
+        using_end_date = using_end_date or datetime.now()
 
         # next run date for a subdag isn't relevant (schedule_interval for subdags
         # is ignored) so we use the dag run's start date in the case of a subdag
@@ -3913,10 +3863,9 @@ class DAG(BaseDag, LoggingMixin):
         TI = TaskInstance
         # 获得默认开始时间和结束时间
         if not start_date:
-            start_date = (timezone.utcnow() - timedelta(30)).date()
-            start_date = timezone.make_aware(
-                datetime.combine(start_date, datetime.min.time()))
-        end_date = end_date or timezone.utcnow()
+            start_date = (datetime.today() - timedelta(30)).date()
+            start_date = datetime.combine(start_date, datetime.min.time())
+        end_date = end_date or datetime.now()
         # 获得指定时间范围内的所有任务实例
         tis = session.query(TI).filter(
             TI.dag_id == self.dag_id,
@@ -4188,7 +4137,6 @@ class DAG(BaseDag, LoggingMixin):
                 also_include += t.get_flat_relatives(upstream=True)
 
         # Compiling the unique list of tasks that made the cut
-        # Compiling the unique list of tasks that made the cut
         # Make sure to not recursively deepcopy the dag while copying the task
         dag.task_dict = {t.task_id: copy.deepcopy(t, {id(t.dag): t.dag})
                          for t in regex_match + also_include}
@@ -4220,10 +4168,10 @@ class DAG(BaseDag, LoggingMixin):
         d = {}
         d['is_picklable'] = True
         try:
-            dttm = timezone.utcnow()
+            dttm = datetime.now()
             pickled = pickle.dumps(self)
             d['pickle_len'] = len(pickled)
-            d['pickling_duration'] = "{}".format(timezone.utcnow() - dttm)
+            d['pickling_duration'] = "{}".format(datetime.now() - dttm)
         except Exception as e:
             self.log.debug(e)
             d['is_picklable'] = False
@@ -4242,7 +4190,7 @@ class DAG(BaseDag, LoggingMixin):
         if not dp or dp.pickle != self:
             dp = DagPickle(dag=self)
             session.add(dp)
-            self.last_pickled = timezone.utcnow()
+            self.last_pickled = datetime.now()
             session.commit()
             self.pickle_id = dp.id
 
@@ -4491,7 +4439,7 @@ class DAG(BaseDag, LoggingMixin):
         if owner is None:
             owner = self.owner
         if sync_time is None:
-            sync_time = timezone.utcnow()
+            sync_time = datetime.now()
 
         orm_dag = session.query(
             DagModel).filter(DagModel.dag_id == self.dag_id).first()
@@ -4638,7 +4586,7 @@ class Chart(Base):
         "User", cascade=False, cascade_backrefs=False, backref='charts')
     x_is_date = Column(Boolean, default=True)
     iteration_no = Column(Integer, default=0)
-    last_modified = Column(UtcDateTime, default=timezone.utcnow)
+    last_modified = Column(DateTime, default=func.now())
 
     def __repr__(self):
         return self.label
@@ -4663,9 +4611,9 @@ class KnownEvent(Base):
     # 公告标题
     label = Column(String(200))
     # 公告开始时间
-    start_date = Column(UtcDateTime)
+    start_date = Column(DateTime)
     # 公告结束时间
-    end_date = Column(UtcDateTime)
+    end_date = Column(DateTime)
     # 公告的用户
     user_id = Column(Integer(), ForeignKey('users.id'),)
     # 公告事件类型
@@ -4793,8 +4741,8 @@ class XCom(Base, LoggingMixin):
     key = Column(String(512))
     value = Column(LargeBinary)
     timestamp = Column(
-        UtcDateTime, default=timezone.utcnow, nullable=False)
-    execution_date = Column(UtcDateTime, nullable=False)
+        DateTime, default=func.now(), nullable=False)
+    execution_date = Column(DateTime, nullable=False)
 
     # source information
     task_id = Column(String(ID_LEN), nullable=False)
@@ -5117,9 +5065,9 @@ class DagRun(Base, LoggingMixin):
 
     id = Column(Integer, primary_key=True)
     dag_id = Column(String(ID_LEN))
-    execution_date = Column(UtcDateTime, default=timezone.utcnow)
-    start_date = Column(UtcDateTime, default=timezone.utcnow)
-    end_date = Column(UtcDateTime)
+    execution_date = Column(DateTime, default=func.now())
+    start_date = Column(DateTime, default=func.now())
+    end_date = Column(DateTime)
     _state = Column('state', String(50), default=State.RUNNING)
     run_id = Column(String(ID_LEN))
     # 是否是由外部接口触发，而不是调度器触发
@@ -5353,7 +5301,7 @@ class DagRun(Base, LoggingMixin):
         # 获得未完成的任务实例
         # pre-calculate
         # db is faster
-        start_dttm = timezone.utcnow()
+        start_dttm = datetime.now()
         unfinished_tasks = self.get_task_instances(
             state=State.unfinished(),
             session=session
@@ -5383,7 +5331,7 @@ class DagRun(Base, LoggingMixin):
                     no_dependencies_met = False
                     break
 
-        duration = (timezone.utcnow() - start_dttm).total_seconds() * 1000
+        duration = (datetime.now() - start_dttm).total_seconds() * 1000
         Stats.timing("dagrun.dependency-check.{}".format(self.dag_id), duration)
 
         # future: remove the check on adhoc tasks (=active_tasks)
@@ -5611,9 +5559,9 @@ class SlaMiss(Base):
 
     task_id = Column(String(ID_LEN), primary_key=True)
     dag_id = Column(String(ID_LEN), primary_key=True)
-    execution_date = Column(UtcDateTime, primary_key=True)
+    execution_date = Column(DateTime, primary_key=True)
     email_sent = Column(Boolean, default=False)
-    timestamp = Column(UtcDateTime)
+    timestamp = Column(DateTime)
     description = Column(Text)
     notification_sent = Column(Boolean, default=False)
 
@@ -5625,7 +5573,7 @@ class SlaMiss(Base):
 class ImportError(Base):
     __tablename__ = "import_error"
     id = Column(Integer, primary_key=True)
-    timestamp = Column(UtcDateTime)
+    timestamp = Column(DateTime)
     filename = Column(String(1024))
     stacktrace = Column(Text)
 

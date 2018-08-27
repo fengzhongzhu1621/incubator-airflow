@@ -24,7 +24,8 @@ from __future__ import unicode_literals
 
 from airflow.utils import timezone
 from datetime import datetime, timedelta
-from dateutil.relativedelta import relativedelta  # flake8: noqa: F401 for doctest
+import datetime as dt
+from dateutil.relativedelta import relativedelta  # for doctest
 import six
 
 from croniter import croniter
@@ -40,7 +41,11 @@ cron_presets = {
 }
 
 
-def date_range(start_date, end_date=None, num=None, delta=None):
+def date_range(
+        start_date,
+        end_date=None,
+        num=None,
+        delta=None):
     """
     Get a set of dates as a list based on a start, end and delta, delta
     can be something that can be added to ``datetime.datetime``
@@ -68,38 +73,27 @@ def date_range(start_date, end_date=None, num=None, delta=None):
         raise Exception("Wait. Either specify end_date OR num")
     # 结束时间默认为当前UTC时间
     if not end_date and not num:
-        end_date = timezone.utcnow()
+        end_date = datetime.now()
 
     delta_iscron = False
-    tz = start_date.tzinfo
     if isinstance(delta, six.string_types):
         delta_iscron = True
         # 去掉开始时间的时区
-        start_date = timezone.make_naive(start_date, tz)
         cron = croniter(delta, start_date)
     elif isinstance(delta, timedelta):
         delta = abs(delta)
+
     dates = []
     if end_date:
-        if timezone.is_naive(start_date):
-            end_date = timezone.make_naive(end_date, tz)
         while start_date <= end_date:
-            if timezone.is_naive(start_date):
-                dates.append(timezone.make_aware(start_date, tz))
-            else:
-                dates.append(start_date)
-
+            dates.append(start_date)
             if delta_iscron:
                 start_date = cron.get_next(datetime)
             else:
                 start_date += delta
     else:
         for _ in range(abs(num)):
-            if timezone.is_naive(start_date):
-                dates.append(timezone.make_aware(start_date, tz))
-            else:
-                dates.append(start_date)
-
+            dates.append(start_date)
             if delta_iscron:
                 if num > 0:
                     start_date = cron.get_next(datetime)
@@ -113,7 +107,7 @@ def date_range(start_date, end_date=None, num=None, delta=None):
     return sorted(dates)
 
 
-def round_time(dt, delta, start_date=timezone.make_aware(datetime.min)):
+def round_time(dt, delta, start_date=datetime.min):
     """日期四舍五入，范围[start_date, start_date + delta]
     Returns the datetime of the form start_date + i * delta
     which is closest to dt for any non-negative integer i.
@@ -131,17 +125,14 @@ def round_time(dt, delta, start_date=timezone.make_aware(datetime.min)):
     >>> round_time(datetime(2015, 9, 13, 0, 0), timedelta(1), datetime(2015, 9, 14, 0, 0))
     datetime.datetime(2015, 9, 14, 0, 0)
     """
-
     if isinstance(delta, six.string_types):
         # It's cron based, so it's easy
-        tz = start_date.tzinfo
-        start_date = timezone.make_naive(start_date, tz)
         cron = croniter(delta, start_date)
         prev = cron.get_prev(datetime)
         if prev == start_date:
-            return timezone.make_aware(start_date, tz)
+            return start_date
         else:
-            return timezone.make_aware(prev, tz)
+            return prev
 
     # Ignore the microseconds of dt
     dt -= timedelta(microseconds=dt.microsecond)
@@ -233,7 +224,7 @@ def days_ago(n, hour=0, minute=0, second=0, microsecond=0):
     Get a datetime object representing `n` days ago. By default the time is
     set to midnight.
     """
-    today = timezone.utcnow().replace(
+    today = datetime.today().replace(
         hour=hour,
         minute=minute,
         second=second,
@@ -245,4 +236,14 @@ def parse_execution_date(execution_date_str):
     """
     Parse execution date string to datetime object.
     """
-    return timezone.parse(execution_date_str)
+    o = timezone.parse(execution_date_str)
+    # 去掉时区信息
+    # cross library compatibility
+    naive = dt.datetime(o.year,
+                        o.month,
+                        o.day,
+                        o.hour,
+                        o.minute,
+                        o.second,
+                        o.microsecond)
+    return naive

@@ -103,7 +103,7 @@ class FileProcessorHandler(logging.Handler):
 
     def _get_log_directory(self):
         """获得带有日期的日志目录 ."""
-        now = datetime.utcnow()
+        now = datetime.now()
         return os.path.join(self.base_log_folder, now.strftime("%Y-%m-%d"))
 
     def _symlink_latest_log_directory(self):

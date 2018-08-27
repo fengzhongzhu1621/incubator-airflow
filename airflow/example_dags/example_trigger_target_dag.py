@@ -43,7 +43,7 @@ pp = pprint.PrettyPrinter(indent=4)
 # 2. A Target DAG : c.f. example_trigger_target_dag.py
 
 args = {
-    'start_date': datetime.utcnow(),
+    'start_date': datetime.now(),
     'owner': 'airflow',
 }
 

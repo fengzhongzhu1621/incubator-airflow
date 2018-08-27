@@ -31,7 +31,7 @@ from collections import defaultdict
 
 from airflow.dag.base_dag import BaseDag, BaseDagBag
 from airflow.exceptions import AirflowException
-from airflow.utils import timezone
+from datetime import datetime
 from airflow.utils.log.logging_mixin import LoggingMixin
 
 
@@ -417,7 +417,7 @@ class DagFileProcessorManager(LoggingMixin):
         being processed
         """
         if file_path in self._processors:
-            return (timezone.utcnow() - self._processors[file_path].start_time)\
+            return (datetime.now() - self._processors[file_path].start_time)\
                 .total_seconds()
         return None
 
@@ -512,7 +512,7 @@ class DagFileProcessorManager(LoggingMixin):
         for file_path, processor in self._processors.items():
             if processor.done:
                 self.log.info("Processor for %s finished", file_path)
-                now = timezone.utcnow()
+                now = datetime.now()
                 finished_processors[file_path] = processor
                 # 处理器运行时间
                 self._last_runtime[file_path] = (now -
@@ -555,7 +555,7 @@ class DagFileProcessorManager(LoggingMixin):
             file_paths_in_progress = self._processors.keys()
 
             # 获得已经运行process的文件，且还未到下一次执行时间
-            now = timezone.utcnow()
+            now = datetime.now()
             file_paths_recently_processed = []
 
             longest_parse_duration = 0

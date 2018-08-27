@@ -34,7 +34,6 @@ import reprlib
 import argparse
 from builtins import input
 from collections import namedtuple
-from airflow.utils.timezone import parse as parsedate
 import json
 from tabulate import tabulate
 
@@ -62,6 +61,7 @@ from airflow.models import (DagModel, DagBag, TaskInstance,
 from airflow.ti_deps.dep_context import (DepContext, SCHEDULER_DEPS)
 from airflow.utils import cli as cli_utils
 from airflow.utils import db as db_utils
+from airflow.utils.dates import parse_execution_date
 from airflow.utils.net import get_hostname
 from airflow.utils.log.logging_mixin import (LoggingMixin, redirect_stderr,
                                              redirect_stdout)
@@ -936,7 +936,7 @@ def webserver(args):
             '-b', args.hostname + ':' + str(args.port),
             '-n', 'airflow-webserver',
             '-p', str(pid),
-            '-c', 'python:airflow.www.gunicorn_config',
+            '-c', 'airflow.www.gunicorn_config'
         ]
 
         if args.access_logfile:
@@ -1074,8 +1074,9 @@ def serve_logs(args):
 
     WORKER_LOG_SERVER_PORT = \
         int(conf.get('celery', 'WORKER_LOG_SERVER_PORT'))
+    worker_log_server_host = conf.get('celery', 'worker_log_server_host')
     flask_app.run(
-        host='0.0.0.0', port=WORKER_LOG_SERVER_PORT)
+        host=worker_log_server_host, port=WORKER_LOG_SERVER_PORT)
 
 
 @cli_utils.action_logging
@@ -1533,7 +1534,7 @@ class CLIFactory(object):
         'task_id': Arg(("task_id",), "The id of the task"),
         'execution_date': Arg(
             ("execution_date",), help="The execution date of the DAG",
-            type=parsedate),
+            type=parse_execution_date),
         'task_regex': Arg(
             ("-t", "--task_regex"),
             "The regex to filter specific task_ids to backfill (optional)"),
@@ -1543,10 +1544,10 @@ class CLIFactory(object):
             default=settings.DAGS_FOLDER),
         'start_date': Arg(
             ("-s", "--start_date"), "Override start_date YYYY-MM-DD",
-            type=parsedate),
+            type=parse_execution_date),
         'end_date': Arg(
             ("-e", "--end_date"), "Override end_date YYYY-MM-DD",
-            type=parsedate),
+            type=parse_execution_date),
         'dry_run': Arg(
             ("-dr", "--dry_run"), "Perform a dry run", "store_true"),
         'pid': Arg(
@@ -1665,7 +1666,7 @@ class CLIFactory(object):
             "JSON string that gets pickled into the DagRun's conf attribute"),
         'exec_date': Arg(
             ("-e", "--exec_date"), help="The execution date of the DAG",
-            type=parsedate),
+            type=parse_execution_date),
         # pool
         'pool_set': Arg(
             ("-s", "--set"),

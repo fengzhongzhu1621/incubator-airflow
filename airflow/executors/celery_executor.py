@@ -85,7 +85,7 @@ class CeleryExecutor(BaseExecutor):
                       "queue={queue}".format(**locals()))
         # 向celery发送任务
         self.tasks[key] = execute_command.apply_async(
-            args=command, queue=queue)
+            args=[command], queue=queue)
         # 记录当前任务的状态
         self.last_state[key] = celery_states.PENDING
 

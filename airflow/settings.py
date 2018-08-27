@@ -180,6 +180,8 @@ def configure_orm(disable_connection_pool=False):
         engine_args['pool_size'] = pool_size
         engine_args['pool_recycle'] = pool_recycle
 
+    engine_args['echo'] = conf.getboolean('core', 'SQL_ALCHEMY_ECHO')
+
     # 连接数据库
     engine = create_engine(SQL_ALCHEMY_CONN, **engine_args)
     # 设置数据库事件处理函数
@@ -208,6 +210,7 @@ def dispose_orm():
 
 
 def configure_adapters():
+    return
     from pendulum import Pendulum
     try:
         from sqlite3 import register_adapter

@@ -244,9 +244,6 @@ class GoogleCloudStorageHook(GoogleCloudBaseHook):
                 import dateutil.parser
                 import dateutil.tz
 
-                if not ts.tzinfo:
-                    ts = ts.replace(tzinfo=dateutil.tz.tzutc())
-
                 updated = dateutil.parser.parse(response['updated'])
                 self.log.info("Verify object date: %s > %s", updated, ts)
 

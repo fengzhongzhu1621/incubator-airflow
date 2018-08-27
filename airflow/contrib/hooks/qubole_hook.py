@@ -147,7 +147,7 @@ class QuboleHook(BaseHook, LoggingMixin):
         :return: file location containing actual results or s3 locations of results
         """
         if fp is None:
-            iso = datetime.datetime.utcnow().isoformat()
+            iso = datetime.datetime.now().isoformat()
             logpath = os.path.expanduser(
                 configuration.conf.get('core', 'BASE_LOG_FOLDER')
             )

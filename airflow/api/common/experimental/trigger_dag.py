@@ -17,11 +17,11 @@
 # specific language governing permissions and limitations
 # under the License.
 
+import datetime
 import json
 
 from airflow.exceptions import DagRunAlreadyExists, DagNotFound
 from airflow.models import DagRun, DagBag, DagModel
-from airflow.utils import timezone
 from airflow.utils.state import State
 
 
@@ -42,10 +42,10 @@ def _trigger_dag(
 
     # 获得调度时间
     if not execution_date:
-        execution_date = timezone.utcnow()
+        execution_date = datetime.datetime.now()
 
     # 验证调度时间必须存在时区信息
-    assert timezone.is_localized(execution_date)
+    assert isinstance(execution_date, datetime.datetime)
 
     if replace_microseconds:
         execution_date = execution_date.replace(microsecond=0)

@@ -26,7 +26,7 @@ from airflow.api.common.experimental.get_task_instance import get_task_instance
 from airflow.api.common.experimental.get_dag_run_state import get_dag_run_state
 from airflow.exceptions import AirflowException
 from airflow.utils.log.logging_mixin import LoggingMixin
-from airflow.utils import timezone
+from airflow.utils.dates import parse_execution_date
 from airflow.www_rbac.app import csrf
 from airflow import models
 from airflow.utils.db import create_session
@@ -64,7 +64,7 @@ def trigger_dag(dag_id):
 
         # Convert string datetime into actual datetime
         try:
-            execution_date = timezone.parse(execution_date)
+            execution_date = parse_execution_date(execution_date)
         except ValueError:
             error_message = (
                 'Given execution date, {}, could not be identified '
@@ -174,7 +174,7 @@ def task_instance_info(dag_id, execution_date, task_id):
 
     # Convert string datetime into actual datetime
     try:
-        execution_date = timezone.parse(execution_date)
+        execution_date = parse_execution_date(execution_date)
     except ValueError:
         error_message = (
             'Given execution date, {}, could not be identified '
@@ -215,7 +215,7 @@ def dag_run_status(dag_id, execution_date):
 
     # Convert string datetime into actual datetime
     try:
-        execution_date = timezone.parse(execution_date)
+        execution_date = parse_execution_date(execution_date)
     except ValueError:
         error_message = (
             'Given execution date, {}, could not be identified '

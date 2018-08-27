@@ -32,7 +32,6 @@ from airflow.models import BaseOperator
 from airflow.utils.decorators import apply_defaults
 from airflow.version import version
 from googleapiclient.errors import HttpError
-from airflow.utils import timezone
 
 
 class DataprocClusterCreateOperator(BaseOperator):
@@ -327,7 +326,7 @@ class DataprocClusterCreateOperator(BaseOperator):
             cluster_data['config']['lifecycleConfig']['idleDeleteTtl'] = \
                 "{}s".format(self.idle_delete_ttl)
         if self.auto_delete_time:
-            utc_auto_delete_time = timezone.convert_to_utc(self.auto_delete_time)
+            utc_auto_delete_time = self.auto_delete_time
             cluster_data['config']['lifecycleConfig']['autoDeleteTime'] = \
                 utc_auto_delete_time.format('%Y-%m-%dT%H:%M:%S.%fZ', formatter='classic')
         elif self.auto_delete_ttl:

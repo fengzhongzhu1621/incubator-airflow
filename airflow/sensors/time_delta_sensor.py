@@ -17,8 +17,9 @@
 # specific language governing permissions and limitations
 # under the License.
 
+from datetime import datetime
+
 from airflow.sensors.base_sensor_operator import BaseSensorOperator
-from airflow.utils import timezone
 from airflow.utils.decorators import apply_defaults
 
 
@@ -43,4 +44,4 @@ class TimeDeltaSensor(BaseSensorOperator):
         target_dttm = dag.following_schedule(context['execution_date'])
         target_dttm += self.delta
         self.log.info('Checking if the time (%s) has come', target_dttm)
-        return timezone.utcnow() > target_dttm
+        return datetime.now() > target_dttm

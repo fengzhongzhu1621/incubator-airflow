@@ -76,7 +76,7 @@ def action_logging(f):
             metrics['error'] = e
             raise
         finally:
-            metrics['end_datetime'] = datetime.utcnow()
+            metrics['end_datetime'] = datetime.now()
             cli_action_loggers.on_post_execution(**metrics)
 
     return wrapper
@@ -94,7 +94,7 @@ def _build_metrics(func_name, namespace):
     :return: dict with metrics
     """
 
-    metrics = {'sub_command': func_name, 'start_datetime': datetime.utcnow(),
+    metrics = {'sub_command': func_name, 'start_datetime': datetime.now(),
                'full_command': '{}'.format(list(sys.argv)), 'user': getpass.getuser()}
 
     assert isinstance(namespace, Namespace)

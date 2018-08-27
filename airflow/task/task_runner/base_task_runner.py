@@ -102,7 +102,8 @@ class BaseTaskRunner(LoggingMixin):
                 line = line.decode('utf-8')
             if len(line) == 0:
                 break
-            self.log.info('Job %s: Subtask %s %s',
+            # fixup: 修复进程返回结果中存在中文导致打印日志抛出UnicodeEncodeError
+            self.log.info(u'Job %s: Subtask %s %s',
                           self._task_instance.job_id, self._task_instance.task_id,
                           line.rstrip('\n'))
 

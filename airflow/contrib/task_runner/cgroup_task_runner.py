@@ -121,7 +121,7 @@ class CgroupTaskRunner(BaseTaskRunner):
             return
 
         # Create a unique cgroup name
-        cgroup_name = "airflow/{}/{}".format(datetime.datetime.utcnow().
+        cgroup_name = "airflow/{}/{}".format(datetime.datetime.now().
                                              strftime("%Y-%m-%d"),
                                              str(uuid.uuid1()))
 

@@ -26,6 +26,7 @@ import time
 import wtforms
 import bleach
 import markdown
+import datetime as dt
 
 from builtins import str
 from past.builtins import basestring
@@ -36,7 +37,6 @@ from flask import request, Response, Markup, url_for
 from airflow import configuration
 from airflow.models import BaseOperator
 from airflow.operators.subdag_operator import SubDagOperator
-from airflow.utils import timezone
 from airflow.utils.json import AirflowJsonEncoder
 from airflow.utils.state import State
 
@@ -260,7 +260,7 @@ def datetime_f(attr_name):
     def dt(attr):
         f = attr.get(attr_name)
         f = f.isoformat() if f else ''
-        if timezone.utcnow().isoformat()[:4] == f[:4]:
+        if dt.datetime.now().isoformat()[:4] == f[:4]:
             f = f[5:]
         return Markup("<nobr>{}</nobr>".format(f))
     return dt

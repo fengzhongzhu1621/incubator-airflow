@@ -39,7 +39,7 @@ from flask_login import current_user
 
 from airflow import configuration, models, settings
 from airflow.utils.db import create_session
-from airflow.utils import timezone
+from airflow.utils.dates import parse_execution_date
 from airflow.utils.json import AirflowJsonEncoder
 
 AUTHENTICATE = configuration.conf.getboolean('webserver', 'AUTHENTICATE')
@@ -267,7 +267,7 @@ def action_logging(f):
             dag_id=request.args.get('dag_id'))
 
         if request.args.get('execution_date'):
-            log.execution_date = timezone.parse(request.args.get('execution_date'))
+            log.execution_date = parse_execution_date(request.args.get('execution_date'))
 
         with create_session() as session:
             session.add(log)

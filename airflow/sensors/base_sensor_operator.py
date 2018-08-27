@@ -19,11 +19,10 @@
 
 
 from time import sleep
-
+from datetime import datetime
 from airflow.exceptions import AirflowException, AirflowSensorTimeout, \
     AirflowSkipException
 from airflow.models import BaseOperator, SkipMixin
-from airflow.utils import timezone
 from airflow.utils.decorators import apply_defaults
 
 
@@ -64,9 +63,9 @@ class BaseSensorOperator(BaseOperator, SkipMixin):
         raise AirflowException('Override me.')
 
     def execute(self, context):
-        started_at = timezone.utcnow()
+        started_at = datetime.now()
         while not self.poke(context):
-            if (timezone.utcnow() - started_at).total_seconds() > self.timeout:
+            if (datetime.now() - started_at).total_seconds() > self.timeout:
                 # If sensor is in soft fail mode but will be retried then
                 # give it a chance and fail with timeout.
                 # This gives the ability to set up non-blocking AND soft-fail sensors.

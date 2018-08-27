@@ -17,8 +17,9 @@
 # specific language governing permissions and limitations
 # under the License.
 
+from datetime import datetime
+
 from airflow.sensors.base_sensor_operator import BaseSensorOperator
-from airflow.utils import timezone
 from airflow.utils.decorators import apply_defaults
 
 
@@ -37,4 +38,4 @@ class TimeSensor(BaseSensorOperator):
 
     def poke(self, context):
         self.log.info('Checking if the time (%s) has come', self.target_time)
-        return timezone.utcnow().time() > self.target_time
+        return datetime.now().time() > self.target_time
