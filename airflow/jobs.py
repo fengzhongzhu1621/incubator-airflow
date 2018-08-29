@@ -595,8 +595,7 @@ class SchedulerJob(BaseJob):
             num_runs=-1,
             file_process_interval=conf.getint('scheduler',
                                               'min_file_process_interval'),
-            min_file_parsing_loop_time=conf.getint('scheduler',
-                                                   'min_file_parsing_loop_time'),
+            processor_poll_interval=1.0,
             run_duration=None,
             do_pickle=False,
             log=None,
@@ -611,6 +610,8 @@ class SchedulerJob(BaseJob):
         :type subdir: unicode
         :param num_runs: The number of times to try to schedule each DAG file.
         -1 for unlimited within the run_duration.
+        :param processor_poll_interval: The number of seconds to wait between
+        polls of running processors
         :param run_duration: how long to run (in seconds) before exiting
         :type run_duration: int
         :param do_pickle: once a DAG object is obtained by executing the Python
@@ -629,7 +630,7 @@ class SchedulerJob(BaseJob):
         self.num_runs = num_runs
         # 运行的时长
         self.run_duration = run_duration
-
+        self._processor_poll_interval = processor_poll_interval
         # 是否将DAG实例化到DB中
         self.do_pickle = do_pickle
         super(SchedulerJob, self).__init__(*args, **kwargs)
@@ -662,10 +663,7 @@ class SchedulerJob(BaseJob):
         # 一个新的DAG从文件系统序列化到DB的需要的最小时间
         self.file_process_interval = file_process_interval
 
-        # Wait until at least this many seconds have passed before parsing files once all
-        # files have finished parsing.
-        self.min_file_parsing_loop_time = min_file_parsing_loop_time
-
+        self.max_tis_per_query = conf.getint('scheduler', 'max_tis_per_query')
         if run_duration is None:
             # 从配置文件中获得默认配置
             self.run_duration = conf.getint('scheduler',
@@ -736,7 +734,7 @@ class SchedulerJob(BaseJob):
         slas = (
             session
             .query(SlaMiss)
-            .filter(SlaMiss.notification_sent == False)
+            .filter(SlaMiss.notification_sent == False)  # noqa: E712
             .filter(SlaMiss.dag_id == dag.dag_id)
             .all()
         )
@@ -788,16 +786,13 @@ class SchedulerJob(BaseJob):
             Blocking tasks:
             <pre><code>{blocking_task_list}\n{bug}<code></pre>
             """.format(bug=asciiart.bug, **locals())
-            emails = []
-            for t in dag.tasks:
-                if t.email:
-                    if isinstance(t.email, basestring):
-                        l = [t.email]
-                    elif isinstance(t.email, (list, tuple)):
-                        l = t.email
-                    for email in l:
-                        if email not in emails:
-                            emails.append(email)
+            emails = set()
+            for task in dag.tasks:
+                if task.email:
+                    if isinstance(task.email, basestring):
+                        emails.add(task.email)
+                    elif isinstance(task.email, (list, tuple)):
+                        emails |= set(task.email)
             # 发送邮件通知失效任务实例，所在的dag所有的任务负责人
             if emails and len(slas):
                 try:
@@ -905,7 +900,7 @@ class SchedulerJob(BaseJob):
                 session.query(func.max(DagRun.execution_date))
                 .filter_by(dag_id=dag.dag_id)
                 .filter(or_(
-                    DagRun.external_trigger == False,
+                    DagRun.external_trigger == False,  # noqa: E712
                     # add % as a wildcard for the like query
                     DagRun.run_id.like(DagRun.ID_PREFIX + '%')
                 ))
@@ -1183,14 +1178,16 @@ class SchedulerJob(BaseJob):
                 DR,
                 and_(DR.dag_id == TI.dag_id, DR.execution_date == TI.execution_date)
             )
-            .filter(or_(DR.run_id == None,  # noqa E711
+            .filter(or_(DR.run_id == None,  # noqa: E711
                     not_(DR.run_id.like(BackfillJob.ID_PREFIX + '%'))))
             .outerjoin(DM, DM.dag_id == TI.dag_id)
-            .filter(or_(DM.dag_id == None,  # noqa E711
+            .filter(or_(DM.dag_id == None,  # noqa: E711
                     not_(DM.is_paused)))
         )
         if None in states:
-            ti_query = ti_query.filter(or_(TI.state == None, TI.state.in_(states))) # noqa E711
+            ti_query = ti_query.filter(
+                or_(TI.state == None, TI.state.in_(states))  # noqa: E711
+            )
         else:
             ti_query = ti_query.filter(TI.state.in_(states))
 
@@ -1278,8 +1275,8 @@ class SchedulerJob(BaseJob):
                 )
                 if current_task_concurrency >= task_concurrency_limit:
                     self.log.info(
-                        "Not executing %s since the number of tasks running or queued from DAG %s"
-                        " is >= to the DAG's task concurrency limit of %s",
+                        "Not executing %s since the number of tasks running or queued "
+                        "from DAG %s is >= to the DAG's task concurrency limit of %s",
                         task_instance, dag_id, task_concurrency_limit
                     )
                     continue
@@ -1355,7 +1352,7 @@ class SchedulerJob(BaseJob):
 
         if None in acceptable_states:
             ti_query = ti_query.filter(
-                or_(TI.state == None, TI.state.in_(acceptable_states)) # noqa E711
+                or_(TI.state == None, TI.state.in_(acceptable_states))  # noqa: E711
             )
         else:
             ti_query = ti_query.filter(TI.state.in_(acceptable_states))
@@ -1655,16 +1652,18 @@ class SchedulerJob(BaseJob):
         # DAGs in parallel. By processing them in separate processes,
         # we can get parallelism and isolation from potentially harmful
         # user code.
-        self.log.info("Processing files using up to %s processes at a time",
-                      self.max_threads)
+        self.log.info(
+            "Processing files using up to %s processes at a time",
+            self.max_threads)
         self.log.info("Running execute loop for %s seconds", self.run_duration)
         self.log.info("Processing each file at most %s times", self.num_runs)
-        self.log.info("Process each file at most once every %s seconds",
-                      self.file_process_interval)
-        self.log.info("Wait until at least %s seconds have passed between file parsing "
-                      "loops", self.min_file_parsing_loop_time)
-        self.log.info("Checking for new files in %s every %s seconds",
-                      self.subdir, self.dag_dir_list_interval)
+        self.log.info(
+            "Process each file at most once every %s seconds",
+            self.file_process_interval)
+        self.log.info(
+            "Checking for new files in %s every %s seconds",
+            self.subdir,
+            self.dag_dir_list_interval)
 
         # 搜索遍历DAG目录返回所有的DAG路径
         # Build up a list of Python files that could contain DAGs
@@ -1682,7 +1681,6 @@ class SchedulerJob(BaseJob):
                                                     known_file_paths,
                                                     self.max_threads,
                                                     self.file_process_interval,
-                                                    self.min_file_parsing_loop_time,
                                                     self.num_runs,
                                                     processor_factory)
 
@@ -1855,13 +1853,17 @@ class SchedulerJob(BaseJob):
                 last_stat_print_time = datetime.now()
 
             loop_end_time = time.time()
-            self.log.debug("Ran scheduling loop in %.2f seconds",
-                           loop_end_time - loop_start_time)
+            self.log.debug(
+                "Ran scheduling loop in %.2f seconds",
+                loop_end_time - loop_start_time)
+            self.log.debug("Sleeping for %.2f seconds", self._processor_poll_interval)
+            time.sleep(self._processor_poll_interval)
 
             # Exit early for a test mode
             if processor_manager.max_runs_reached():
-                self.log.info("Exiting loop as all files have been processed %s times",
-                              self.num_runs)
+                self.log.info(
+                    "Exiting loop as all files have been processed %s times",
+                    self.num_runs)
                 break
 
         # 停止所有的DAG文件处理子进程
