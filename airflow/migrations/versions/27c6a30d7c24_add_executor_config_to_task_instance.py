@@ -46,3 +46,4 @@ def upgrade():
 
 def downgrade():
     op.drop_column(TASK_INSTANCE_TABLE, NEW_COLUMN)
+
