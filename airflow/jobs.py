@@ -619,16 +619,18 @@ class SchedulerJob(BaseJob):
         :type do_pickle: bool
         """
         # for BaseJob compatibility
+        # 需要处理的DagID
         self.dag_id = dag_id
         self.dag_ids = [dag_id] if dag_id else []
         if dag_ids:
             self.dag_ids.extend(dag_ids)
-
+        
+        # 子目录
         self.subdir = subdir
 
-        # 运行的次数
+        # 调度进程运行的次数
         self.num_runs = num_runs
-        # 运行的时长
+        # 调度进程运行的时长
         self.run_duration = run_duration
 
         # 是否将DAG实例化到DB中
@@ -637,9 +639,10 @@ class SchedulerJob(BaseJob):
 
         # 调度器的运行间隔
         self.heartrate = conf.getint('scheduler', 'SCHEDULER_HEARTBEAT_SEC')
-        # 调度器的线程数
+        # 调度器的线程数，即同时处理的DAG文件的数量，也即文件管理器同时开启多少个文件处理器进程
         self.max_threads = conf.getint('scheduler', 'max_threads')
 
+        # 调度器的日志单独记录
         if log:
             self._log = log
 
@@ -653,7 +656,7 @@ class SchedulerJob(BaseJob):
 
         # How often to scan the DAGs directory for new files. Default to 5
         # minutes.
-        # 默认5分钟扫描一次dag目录
+        # 默认5分钟扫描一次dag目录，检测文件是否有变更
         self.dag_dir_list_interval = conf.getint('scheduler',
                                                  'dag_dir_list_interval')
         # How often to print out DAG file processing stats to the log. Default to
@@ -662,13 +665,15 @@ class SchedulerJob(BaseJob):
                                                 'print_stats_interval')
         # Parse and schedule each file no faster than this interval. Default
         # to 3 minutes.
-        # 一个新的DAG从文件系统序列化到DB的需要的最小时间
+        # 文件处理器处理同一个文件的间隔
         self.file_process_interval = file_process_interval
 
         # Wait until at least this many seconds have passed before parsing files once all
         # files have finished parsing.
+        # 文件处理器管理器处理所有文件的间隔
         self.min_file_parsing_loop_time = min_file_parsing_loop_time
 
+        # 调度器job运行的最大次数，-1表示永久运行
         if run_duration is None:
             # 从配置文件中获得默认配置
             self.run_duration = conf.getint('scheduler',
@@ -691,7 +696,7 @@ class SchedulerJob(BaseJob):
             )
             return
 
-        # 获得dag最近运行的所有成功的任务实例
+        # 获得指定的dag中最近运行的所SUCCESS/SKIPPED的任务实例
         TI = models.TaskInstance
         sq = (
             session
@@ -715,13 +720,17 @@ class SchedulerJob(BaseJob):
 
         ts = timezone.utcnow()
         SlaMiss = models.SlaMiss
+        # 遍历任务实例
         for ti in max_tis:
+            # 获得任务对象
             task = dag.get_task(ti.task_id)
+            # 获得任务实例的调度时间
             dttm = ti.execution_date
             if task.sla:
-                # 获得下一次调度时间，如果是单次调度，则返回None
+                # 获得下一次调度时间
                 dttm = dag.following_schedule(dttm)
-                # 如果任务实例的下一次调度超时task.sla时间后没有执行，则记录到数据库中
+                # 根据task.sla计算出下一个调度的计划开始时间
+                # 如果当前时间超过了计划的开始时间，则记录到sla表中
                 while dttm < timezone.utcnow():
                     following_schedule = dag.following_schedule(dttm)
                     if following_schedule + task.sla < timezone.utcnow():
@@ -744,7 +753,8 @@ class SchedulerJob(BaseJob):
 
         if slas:
             sla_dates = [sla.execution_date for sla in slas]
-            # 获得失效的任务实例
+            # 获得DB中存在的失效的任务实例
+            # 因为有些任务实例可能都没有入库
             qry = (
                 session
                 .query(TI)
@@ -753,6 +763,8 @@ class SchedulerJob(BaseJob):
                 .filter(TI.dag_id == dag.dag_id)
                 .all()
             )
+            # 获得DAG存在的失效任务实例
+            # 因为可能部分任务应为DAG的变更已经不存在了
             blocking_tis = []
             for ti in qry:
                 if ti.task_id in dag.task_ids:
@@ -772,7 +784,7 @@ class SchedulerJob(BaseJob):
             # We consider email or the alert callback as notifications
             email_sent = False
             notification_sent = False
-            # 调用服务失效回调函数
+            # 调用DAG中定义的服务失效回调函数
             if dag.sla_miss_callback:
                 # Execute the alert callback
                 self.log.info(' --------------> ABOUT TO CALL SLA MISS CALL BACK ')
@@ -783,12 +795,14 @@ class SchedulerJob(BaseJob):
                 except Exception:
                     self.log.exception("Could not call sla_miss_callback for DAG %s",
                                        dag.dag_id)
+            # 获得邮件内容
             email_content = """\
             Here's a list of tasks that missed their SLAs:
             <pre><code>{task_list}\n<code></pre>
             Blocking tasks:
             <pre><code>{blocking_task_list}\n{bug}<code></pre>
             """.format(bug=asciiart.bug, **locals())
+            # 获得邮件收件人
             emails = []
             for t in dag.tasks:
                 if t.email:
@@ -796,6 +810,7 @@ class SchedulerJob(BaseJob):
                         l = [t.email]
                     elif isinstance(t.email, (list, tuple)):
                         l = t.email
+                    # 收件人去重
                     for email in l:
                         if email not in emails:
                             emails.append(email)
@@ -815,8 +830,10 @@ class SchedulerJob(BaseJob):
             # If we sent any notification, update the sla_miss table
             if notification_sent:
                 for sla in slas:
+                    # 邮件发送成功
                     if email_sent:
                         sla.email_sent = True
+                    # 执行了sla回调，或成功发送了邮件
                     sla.notification_sent = True
                     session.merge(sla)
             session.commit()
@@ -853,7 +870,8 @@ class SchedulerJob(BaseJob):
         :type dagbag: models.Dagbag
         """
         # Clear the errors of the processed files
-        # 删除已经接近的导入错误
+        # 删除已经处理的导入错误
+        # TODO 批量删除
         for dagbag_file in dagbag.file_last_changed:
             session.query(models.ImportError).filter(
                 models.ImportError.filename == dagbag_file
@@ -869,59 +887,72 @@ class SchedulerJob(BaseJob):
 
     @provide_session
     def create_dag_run(self, dag, session=None):
-        """
+        """创建dag实例，此dag必须存在调度周期设置
         This method checks whether a new DagRun needs to be created
         for a DAG based on scheduling interval
         Returns DagRun if one is scheduled. Otherwise returns None.
         """
         if dag.schedule_interval:
-            # 获得正在运行的所有内部dag_run
+            # 获得正在运行的所有内部触发的dag_run
+            # 外部触发的忽略
             active_runs = DagRun.find(
                 dag_id=dag.dag_id,
                 state=State.RUNNING,
                 external_trigger=False,
                 session=session
             )
-            # 如果一个dag的最大运行dag_run超出了阈值，则不再创建新的dag_run
+            # 如果一个dag的最大运行dag_run超出了阈值，且没有超时设置，则不再创建新的dag_run
             # return if already reached maximum active runs and no timeout
             # setting
             if len(active_runs) >= dag.max_active_runs and not dag.dagrun_timeout:
                 return
+
+            # 超时dagrun的数量
             timedout_runs = 0
-            for dr in active_runs:
-                if (
-                        dr.start_date and dag.dagrun_timeout and
-                        dr.start_date < timezone.utcnow() - dag.dagrun_timeout):
-                    dr.state = State.FAILED
-                    dr.end_date = timezone.utcnow()
-                    dag.handle_callback(dr, success=False, reason='dagrun_timeout',
-                                        session=session)
-                    timedout_runs += 1
-            session.commit()
+
+            if dag.dagrun_timeout:
+                # 判断dagrun是否超时未执行
+                for dr in active_runs:
+                    if (
+                            dr.start_date and
+                            dr.start_date < timezone.utcnow() - dag.dagrun_timeout):
+                        # 设置为失败状态，记录结束时间
+                        dr.state = State.FAILED
+                        dr.end_date = timezone.utcnow()
+                        # 执行dag失败回调函数
+                        dag.handle_callback(dr, success=False, reason='dagrun_timeout',
+                                            session=session)
+                        timedout_runs += 1
+                session.commit()
+
+            # 重新判断 max_active_runs 阈值
             if len(active_runs) - timedout_runs >= dag.max_active_runs:
                 return
 
             # this query should be replaced by find dagrun
-            # 获得最近的一个dag_run
+            # 获得最近的一个正常调度的dag_run
             qry = (
                 session.query(func.max(DagRun.execution_date))
                 .filter_by(dag_id=dag.dag_id)
                 .filter(or_(
                     DagRun.external_trigger == False,
-                    # add % as a wildcard for the like query
+                    # add % as a wildcard for the like query ID_PREFIX = 'scheduled__'
                     DagRun.run_id.like(DagRun.ID_PREFIX + '%')
                 ))
             )
+            # 获得最近的一个dagrun的调度日期
             last_scheduled_run = qry.scalar()
 
             # don't schedule @once again
+            # 确保@once，只调度一次
             if dag.schedule_interval == '@once' and last_scheduled_run:
                 return None
 
-            # don't do scheduler catchup for dag's that don't have dag.catchup
-            # = True
-            # 设置dag的开始时间
-            if not (dag.catchup or dag.schedule_interval == '@once'):
+            # don't do scheduler catchup for dag's that don't have dag.catchup = True
+            # 修正dag的开始时间
+            # 即如果上几次的dagrun没有运行，则通过修改dag的开始时间，不再补录缺失的dagrun
+            # if not (dag.catchup or dag.schedule_interval == '@once'):
+            if not dag.catchup and dag.schedule_interval != '@once'):
                 # The logic is that we move start_date up until
                 # one period before, so that timezone.utcnow() is AFTER
                 # the period end, and the job can be created...
@@ -929,6 +960,7 @@ class SchedulerJob(BaseJob):
                 next_start = dag.following_schedule(now)
                 last_start = dag.previous_schedule(now)
                 if next_start <= now:
+                    # TODO 不可能到达这个分支
                     new_start = last_start
                 else:
                     new_start = dag.previous_schedule(last_start)
@@ -939,28 +971,37 @@ class SchedulerJob(BaseJob):
                 else:
                     dag.start_date = new_start
 
+            # 如果是dag的第一次调度，此时还不存在dagrun
             next_run_date = None
             if not last_scheduled_run:
                 # First run
+                # 如果任务设置了开始时间，会影响dagrun的调度
                 task_start_dates = [t.start_date for t in dag.tasks]
                 if task_start_dates:
+                    # 获得所有任务的最小开始时间
+                    # 并获得下一次调度时间
                     next_run_date = dag.normalize_schedule(min(task_start_dates))
                     self.log.debug(
                         "Next run date based on tasks %s",
                         next_run_date
                     )
             else:
+                # 获得下一次调度时间
                 next_run_date = dag.following_schedule(last_scheduled_run)
 
             # make sure backfills are also considered
-            # 获得最近的dagrun
+            # 获得最近的内部触发的dagrun：包括内部调度和补录的
             last_run = dag.get_last_dagrun(session=session)
             if last_run and next_run_date:
+                # 跳过已经补录的记录
                 while next_run_date <= last_run.execution_date:
                     next_run_date = dag.following_schedule(next_run_date)
 
             # don't ever schedule prior to the dag's start_date
+            # 处理调度和dag开始时间的关系
             if dag.start_date:
+                # 如果为单次任务，则等于开始时间
+                # 否则取最大值
                 next_run_date = (dag.start_date if not next_run_date
                                  else max(next_run_date, dag.start_date))
                 if next_run_date == dag.start_date:
@@ -975,21 +1016,25 @@ class SchedulerJob(BaseJob):
             if next_run_date > timezone.utcnow():
                 return
 
+            # Don't schedule a dag beyond its end_date (as specified by the dag
+            # param)
+            # 验证dag结束时间
+            if next_run_date and dag.end_date and next_run_date > dag.end_date:
+                return
+
             # this structure is necessary to avoid a TypeError from concatenating
             # NoneType
+            # 数据处理区间为 [next_run_date, period_end]
+            # 当now > period_end时可执行
             if dag.schedule_interval == '@once':
                 period_end = next_run_date
             elif next_run_date:
                 period_end = dag.following_schedule(next_run_date)
 
-            # Don't schedule a dag beyond its end_date (as specified by the dag
-            # param)
-            if next_run_date and dag.end_date and next_run_date > dag.end_date:
-                return
-
             # Don't schedule a dag beyond its end_date (as specified by the task params)
             # Get the min task end date, which may come from the
             # dag.default_args
+            # 验证任务结束时间
             min_task_end_date = []
             task_end_dates = [t.end_date for t in dag.tasks if t.end_date]
             if task_end_dates:
@@ -997,6 +1042,8 @@ class SchedulerJob(BaseJob):
             if next_run_date and min_task_end_date and next_run_date > min_task_end_date:
                 return
 
+            # 判断当前时间是否超出区间的右边界
+            # 创建dagrun
             if next_run_date and period_end and period_end <= timezone.utcnow():
                 next_run = dag.create_dagrun(
                     run_id=DagRun.ID_PREFIX + next_run_date.isoformat(),

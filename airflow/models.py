@@ -1314,12 +1314,12 @@ class TaskInstance(Base, LoggingMixin):
 
             # Note: 因为dag_run的dag属性默认为None
             dr.dag = dag
-            #
+            # 根据调度器的默认调度行为获取上一次dagrun
             if dag.catchup:
                 # 获得上一个调度的dag实例
                 last_dagrun = dr.get_previous_scheduled_dagrun(session=session)
             else:
-                # 获得上一个dag实例
+                # 获得上一个dag实例，此dag实例可能不是上一次调度的实例
                 last_dagrun = dr.get_previous_dagrun(session=session)
 
             if last_dagrun:
@@ -2463,6 +2463,7 @@ class BaseOperator(LoggingMixin):
         validate_key(task_id)
         self.task_id = task_id
         self.owner = owner
+        # 邮件收件人，字符串或列表/元组
         self.email = email
         # 任务重试时发送邮件 task.email_on_retry and task.email:
         self.email_on_retry = email_on_retry
@@ -2502,6 +2503,7 @@ class BaseOperator(LoggingMixin):
         # 指定所运行的队列
         self.queue = queue
         self.pool = pool
+        # 是否进行任务实例服务可用性检测
         self.sla = sla
         # 任务实例的执行超时时间，如果超时则抛出异常AirflowTaskTimeout
         self.execution_timeout = execution_timeout
@@ -3469,7 +3471,7 @@ class DAG(BaseDag, LoggingMixin):
             num=num, delta=self._schedule_interval)
 
     def following_schedule(self, dttm):
-        """获得下一次调度时间，如果是单次调度，则返回None
+        """获得下一次调度时间
         Calculates the following schedule for this dag in local time
 
         :param dttm: utc datetime
