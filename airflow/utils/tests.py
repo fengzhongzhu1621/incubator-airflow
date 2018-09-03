@@ -22,7 +22,7 @@ import unittest
 
 
 def skipUnlessImported(module, obj):
-    """Èç¹û¶ÔÏó²»ÔÚµ¼ÈëµÄÄ£¿éÖĞ£¬Ìø¹ı±»×°ÊÎµÄ²âÊÔ .
+    """å¦‚æœå¯¹è±¡ä¸åœ¨å¯¼å…¥çš„æ¨¡å—ä¸­ï¼Œè·³è¿‡è¢«è£…é¥°çš„æµ‹è¯• .
     
     @skipUnlessImported('airflow.operators.mysql_operator', 'MySqlOperator')
     """

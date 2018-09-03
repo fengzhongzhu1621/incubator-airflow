@@ -1,0 +1,7 @@
+Exception: STATUS_IN_PAGE_ERROR at eip=6418C800
+eax=0022D51C ebx=80069B40 ecx=0022BD1C edx=80042300 esi=641C7B40 edi=0022BD7E
+ebp=80042300 esp=0022BD3C program=d:\Program Files\Git\usr\bin\mintty.exe, pid 11064, thread main
+cs=001B ds=0023 es=0023 fs=003B gs=0000 ss=0023
+Stack trace:
+Frame     Function  Args
+End of stack trace
