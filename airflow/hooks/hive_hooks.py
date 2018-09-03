@@ -18,27 +18,41 @@
 # under the License.
 
 from __future__ import print_function, unicode_literals
-from six.moves import zip
-from past.builtins import basestring, unicode
 
-import unicodecsv as csv
+import contextlib
+import os
 import re
-import six
 import subprocess
 import time
 from collections import OrderedDict
 from tempfile import NamedTemporaryFile
-import hmsclient
 
-from airflow import configuration as conf
+import hmsclient
+import six
+import unicodecsv as csv
+from past.builtins import basestring
+from past.builtins import unicode
+from six.moves import zip
+
+from airflow import configuration
 from airflow.exceptions import AirflowException
 from airflow.hooks.base_hook import BaseHook
-from airflow.utils.helpers import as_flattened_list
+from airflow.security import utils
 from airflow.utils.file import TemporaryDirectory
-from airflow import configuration
-import airflow.security.utils as utils
+from airflow.utils.helpers import as_flattened_list
+from airflow.utils.operator_helpers import AIRFLOW_VAR_NAME_FORMAT_MAPPING
 
 HIVE_QUEUE_PRIORITIES = ['VERY_HIGH', 'HIGH', 'NORMAL', 'LOW', 'VERY_LOW']
+
+
+def get_context_from_env_var():
+    """
+    Extract context from env variable, e.g. dag_id, task_id and execution_date,
+    so that they can be used inside BashOperator and PythonOperator.
+    :return: The context of interest.
+    """
+    return {format_map['default']: os.environ.get(format_map['env_var_format'], '')
+            for format_map in AIRFLOW_VAR_NAME_FORMAT_MAPPING.values()}
 
 
 class HiveCliHook(BaseHook):
@@ -88,8 +102,8 @@ class HiveCliHook(BaseHook):
                     "Invalid Mapred Queue Priority.  Valid values are: "
                     "{}".format(', '.join(HIVE_QUEUE_PRIORITIES)))
 
-        self.mapred_queue = mapred_queue or conf.get('hive',
-                                                     'default_hive_mapred_queue')
+        self.mapred_queue = mapred_queue or configuration.get('hive',
+                                                              'default_hive_mapred_queue')
         self.mapred_queue_priority = mapred_queue_priority
         self.mapred_job_name = mapred_job_name
 
@@ -122,6 +136,7 @@ class HiveCliHook(BaseHook):
                 jdbc_url += ";auth=" + self.auth
 
             jdbc_url = jdbc_url.format(**locals())
+            jdbc_url = '"{}"'.format(jdbc_url)
 
             cmd_extra += ['-u', jdbc_url]
             if conn.login:
@@ -133,7 +148,8 @@ class HiveCliHook(BaseHook):
 
         return [hive_bin] + cmd_extra + hive_params_list
 
-    def _prepare_hiveconf(self, d):
+    @staticmethod
+    def _prepare_hiveconf(d):
         """
         This function prepares a list of hiveconf params
         from a dictionary of key value pairs.
@@ -180,10 +196,15 @@ class HiveCliHook(BaseHook):
 
         with TemporaryDirectory(prefix='airflow_hiveop_') as tmp_dir:
             with NamedTemporaryFile(dir=tmp_dir) as f:
+                hql = hql + '\n'
                 f.write(hql.encode('UTF-8'))
                 f.flush()
                 hive_cmd = self._prepare_cli_cmd()
-                hive_conf_params = self._prepare_hiveconf(hive_conf)
+                env_context = get_context_from_env_var()
+                # Only extend the hive_conf if it is defined.
+                if hive_conf:
+                    env_context.update(hive_conf)
+                hive_conf_params = self._prepare_hiveconf(env_context)
                 if self.mapred_queue:
                     hive_conf_params.extend(
                         ['-hiveconf',
@@ -731,7 +752,7 @@ class HiveMetastoreHook(BaseHook):
 
 class HiveServer2Hook(BaseHook):
     """
-    Wrapper around the impyla library
+    Wrapper around the pyhive library
 
     Note that the default authMechanism is PLAIN, to override it you
     can specify it in the ``extra`` of your connection in the UI as in
@@ -741,56 +762,92 @@ class HiveServer2Hook(BaseHook):
 
     def get_conn(self, schema=None):
         db = self.get_connection(self.hiveserver2_conn_id)
-        auth_mechanism = db.extra_dejson.get('authMechanism', 'PLAIN')
+        auth_mechanism = db.extra_dejson.get('authMechanism', 'NONE')
+        if auth_mechanism == 'NONE' and db.login is None:
+            # we need to give a username
+            username = 'airflow'
         kerberos_service_name = None
         if configuration.conf.get('core', 'security') == 'kerberos':
-            auth_mechanism = db.extra_dejson.get('authMechanism', 'GSSAPI')
+            auth_mechanism = db.extra_dejson.get('authMechanism', 'KERBEROS')
             kerberos_service_name = db.extra_dejson.get('kerberos_service_name', 'hive')
 
-        # impyla uses GSSAPI instead of KERBEROS as a auth_mechanism identifier
-        if auth_mechanism == 'KERBEROS':
+        # pyhive uses GSSAPI instead of KERBEROS as a auth_mechanism identifier
+        if auth_mechanism == 'GSSAPI':
             self.log.warning(
-                "Detected deprecated 'KERBEROS' for "
-                "authMechanism for %s. Please use 'GSSAPI' instead",
+                "Detected deprecated 'GSSAPI' for authMechanism "
+                "for %s. Please use 'KERBEROS' instead",
                 self.hiveserver2_conn_id
             )
-            auth_mechanism = 'GSSAPI'
+            auth_mechanism = 'KERBEROS'
 
-        from impala.dbapi import connect
+        from pyhive.hive import connect
         return connect(
             host=db.host,
             port=db.port,
-            auth_mechanism=auth_mechanism,
+            auth=auth_mechanism,
             kerberos_service_name=kerberos_service_name,
-            user=db.login,
+            username=db.login or username,
             database=schema or db.schema or 'default')
 
-    def get_results(self, hql, schema='default', arraysize=1000):
-        from impala.error import ProgrammingError
-        with self.get_conn(schema) as conn:
-            if isinstance(hql, basestring):
-                hql = [hql]
-            results = {
-                'data': [],
-                'header': [],
-            }
-            cur = conn.cursor()
+    def _get_results(self, hql, schema='default', fetch_size=None, hive_conf=None):
+        from pyhive.exc import ProgrammingError
+        if isinstance(hql, basestring):
+            hql = [hql]
+        previous_description = None
+        with contextlib.closing(self.get_conn(schema)) as conn, \
+                contextlib.closing(conn.cursor()) as cur:
+            cur.arraysize = fetch_size or 1000
+
+            env_context = get_context_from_env_var()
+            if hive_conf:
+                env_context.update(hive_conf)
+            for k, v in env_context.items():
+                cur.execute("set {}={}".format(k, v))
+
             for statement in hql:
                 cur.execute(statement)
-                records = []
-                try:
-                    # impala Lib raises when no results are returned
-                    # we're silencing here as some statements in the list
-                    # may be `SET` or DDL
-                    records = cur.fetchall()
-                except ProgrammingError:
-                    self.log.debug("get_results returned no records")
-                if records:
-                    results = {
-                        'data': records,
-                        'header': cur.description,
-                    }
-            return results
+                # we only get results of statements that returns
+                lowered_statement = statement.lower().strip()
+                if (lowered_statement.startswith('select') or
+                    lowered_statement.startswith('with') or
+                    (lowered_statement.startswith('set') and
+                     '=' not in lowered_statement)):
+                    description = [c for c in cur.description]
+                    if previous_description and previous_description != description:
+                        message = '''The statements are producing different descriptions:
+                                     Current: {}
+                                     Previous: {}'''.format(repr(description),
+                                                            repr(previous_description))
+                        raise ValueError(message)
+                    elif not previous_description:
+                        previous_description = description
+                        yield description
+                    try:
+                        # DB API 2 raises when no results are returned
+                        # we're silencing here as some statements in the list
+                        # may be `SET` or DDL
+                        for row in cur:
+                            yield row
+                    except ProgrammingError:
+                        self.log.debug("get_results returned no records")
+
+    def get_results(self, hql, schema='default', fetch_size=None, hive_conf=None):
+        """
+        Get results of the provided hql in target schema.
+        :param hql: hql to be executed.
+        :param schema: target schema, default to 'default'.
+        :param fetch_size max size of result to fetch.
+        :param hive_conf: hive_conf to execute alone with the hql.
+        :return: results of hql execution.
+        """
+        results_iter = self._get_results(hql, schema,
+                                         fetch_size=fetch_size, hive_conf=hive_conf)
+        header = next(results_iter)
+        results = {
+            'data': list(results_iter),
+            'header': header
+        }
+        return results
 
     def to_csv(
             self,
@@ -800,30 +857,49 @@ class HiveServer2Hook(BaseHook):
             delimiter=',',
             lineterminator='\r\n',
             output_header=True,
-            fetch_size=1000):
-        schema = schema or 'default'
-        with self.get_conn(schema) as conn:
-            with conn.cursor() as cur:
-                self.log.info("Running query: %s", hql)
-                cur.execute(hql)
-                schema = cur.description
-                with open(csv_filepath, 'wb') as f:
-                    writer = csv.writer(f,
-                                        delimiter=delimiter,
-                                        lineterminator=lineterminator,
-                                        encoding='utf-8')
-                    if output_header:
-                        writer.writerow([c[0] for c in cur.description])
-                    i = 0
-                    while True:
-                        rows = [row for row in cur.fetchmany(fetch_size) if row]
-                        if not rows:
-                            break
+            fetch_size=1000,
+            hive_conf=None):
+        """
+        Execute hql in target schema and write results to a csv file.
+        :param hql: hql to be executed.
+        :param csv_filepath: filepath of csv to write results into.
+        :param schema: target schema, , default to 'default'.
+        :param delimiter: delimiter of the csv file.
+        :param lineterminator: lineterminator of the csv file.
+        :param output_header: header of the csv file.
+        :param fetch_size: number of result rows to write into the csv file.
+        :param hive_conf: hive_conf to execute alone with the hql.
+        :return:
+        """
 
-                        writer.writerows(rows)
-                        i += len(rows)
+        results_iter = self._get_results(hql, schema,
+                                         fetch_size=fetch_size, hive_conf=hive_conf)
+        header = next(results_iter)
+        message = None
+
+        with open(csv_filepath, 'wb') as f:
+            writer = csv.writer(f,
+                                delimiter=delimiter,
+                                lineterminator=lineterminator,
+                                encoding='utf-8')
+            try:
+                if output_header:
+                    self.log.debug('Cursor description is %s', header)
+                    writer.writerow([c[0] for c in header])
+
+                for i, row in enumerate(results_iter):
+                    writer.writerow(row)
+                    if i % fetch_size == 0:
                         self.log.info("Written %s rows so far.", i)
-                    self.log.info("Done. Loaded a total of %s rows.", i)
+            except ValueError as exception:
+                message = str(exception)
+
+        if message:
+            # need to clean up the file first
+            os.remove(csv_filepath)
+            raise ValueError(message)
+
+        self.log.info("Done. Loaded a total of %s rows.", i)
 
     def get_records(self, hql, schema='default'):
         """

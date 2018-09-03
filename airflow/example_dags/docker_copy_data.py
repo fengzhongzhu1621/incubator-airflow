@@ -38,7 +38,7 @@ TODO: Review the workflow, change it accordingly to
 # default_args = {
 #     'owner': 'airflow',
 #     'depends_on_past': False,
-#     'start_date': datetime.utcnow(),
+#     'start_date': datetime.now(),
 #     'email': ['airflow@example.com'],
 #     'email_on_failure': False,
 #     'email_on_retry': False,

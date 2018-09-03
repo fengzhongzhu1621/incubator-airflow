@@ -22,7 +22,6 @@ from __future__ import division
 from __future__ import print_function
 from __future__ import unicode_literals
 
-from builtins import str
 from past.builtins import basestring
 
 import importlib
@@ -41,7 +40,7 @@ from airflow.utils.log.logging_mixin import LoggingMixin
 
 def send_email(to, subject, html_content,
                files=None, dryrun=False, cc=None, bcc=None,
-               mime_subtype='mixed', mime_charset='us-ascii', **kwargs):
+               mime_subtype='mixed', mime_charset='utf-8', **kwargs):
     """
     Send email using backend specified in EMAIL_BACKEND.
 
@@ -60,7 +59,7 @@ def send_email(to, subject, html_content,
 
 def send_email_smtp(to, subject, html_content, files=None,
                     dryrun=False, cc=None, bcc=None,
-                    mime_subtype='mixed', mime_charset='us-ascii',
+                    mime_subtype='mixed', mime_charset='utf-8',
                     **kwargs):
     """
     Send an email with html content
@@ -68,15 +67,15 @@ def send_email_smtp(to, subject, html_content, files=None,
     >>> send_email('test@example.com', 'foo', '<b>Foo</b> bar', ['/dev/null'], dryrun=True)
     """
     # 发件人
-    SMTP_MAIL_FROM = configuration.conf.get('smtp', 'SMTP_MAIL_FROM')
-    
+    smtp_mail_from = configuration.conf.get('smtp', 'SMTP_MAIL_FROM')
+
     # 收件人格式化
     to = get_email_address_list(to)
 
     # 构建混合邮件体
     msg = MIMEMultipart(mime_subtype)
     msg['Subject'] = subject
-    msg['From'] = SMTP_MAIL_FROM
+    msg['From'] = smtp_mail_from
     msg['To'] = ", ".join(to)
     recipients = to
     if cc:
@@ -88,7 +87,7 @@ def send_email_smtp(to, subject, html_content, files=None,
         # don't add bcc in header
         bcc = get_email_address_list(bcc)
         recipients = recipients + bcc
-    
+
     # 添加邮件内容
     msg['Date'] = formatdate(localtime=True)
     mime_text = MIMEText(html_content, 'html', mime_charset)
@@ -108,7 +107,7 @@ def send_email_smtp(to, subject, html_content, files=None,
             msg.attach(part)
 
     # 发送邮件
-    send_MIME_email(SMTP_MAIL_FROM, recipients, msg, dryrun)
+    send_MIME_email(smtp_mail_from, recipients, msg, dryrun)
 
 
 def send_MIME_email(e_from, e_to, mime_msg, dryrun=False):

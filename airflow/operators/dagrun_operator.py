@@ -17,8 +17,8 @@
 # specific language governing permissions and limitations
 # under the License.
 
+from datetime import datetime
 from airflow.models import BaseOperator
-from airflow.utils import timezone
 from airflow.utils.decorators import apply_defaults
 from airflow.api.common.experimental.trigger_dag import trigger_dag
 
@@ -67,7 +67,7 @@ class TriggerDagRunOperator(BaseOperator):
         self.execution_date = execution_date
 
     def execute(self, context):
-        dro = DagRunOrder(run_id='trig__' + timezone.utcnow().isoformat())
+        dro = DagRunOrder(run_id='trig__' + datetime.now().isoformat())
         if self.python_callable is not None:
             dro = self.python_callable(context, dro)
         if dro:

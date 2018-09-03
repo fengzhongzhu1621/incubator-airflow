@@ -7,9 +7,9 @@
 # to you under the Apache License, Version 2.0 (the
 # "License"); you may not use this file except in compliance
 # with the License.  You may obtain a copy of the License at
-# 
+#
 #   http://www.apache.org/licenses/LICENSE-2.0
-# 
+#
 # Unless required by applicable law or agreed to in writing,
 # software distributed under the License is distributed on an
 # "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
@@ -32,7 +32,6 @@ import imp
 import os
 import re
 import signal
-import subprocess
 import sys
 import warnings
 
@@ -241,6 +240,7 @@ def reap_process_group(pid, log, sig=signal.SIGTERM,
     :param sig: signal type 软件终止信号
     :param timeout: how much time a process has to terminate 杀死进程后的等待超时时间
     """
+
     def on_terminate(p):
         """进程被关闭时的回调，打印进程ID和返回码 ."""
         log.info("Process %s (%s) terminated with exit code %s", p, p.pid, p.returncode)
@@ -345,7 +345,7 @@ class AirflowImporter(object):
         """
         attribute_modules = {}
 
-        for module, attributes in iteritems(module_attributes):
+        for module, attributes in list(module_attributes.items()):
             for attribute in attributes:
                 attribute_modules[attribute] = module
 
@@ -378,13 +378,13 @@ class AirflowImporter(object):
 
             # This functionality is deprecated, and AirflowImporter should be
             # removed in 2.0.
-            warnings.warn(
-                "Importing '{i}' directly from '{m}' has been "
-                "deprecated. Please import from "
-                "'{m}.[operator_module]' instead. Support for direct "
-                "imports will be dropped entirely in Airflow 2.0.".format(
-                    i=attribute, m=self._parent_module.__name__),
-                DeprecationWarning)
+            #warnings.warn(
+            #    "Importing '{i}' directly from '{m}' has been "
+            #    "deprecated. Please import from "
+            #    "'{m}.[operator_module]' instead. Support for direct "
+            #    "imports will be dropped entirely in Airflow 2.0.".format(
+            #        i=attribute, m=self._parent_module.__name__),
+            #    DeprecationWarning)
 
         loaded_module = self._loaded_modules[module]
         

@@ -32,7 +32,6 @@ from airflow.models import BaseOperator
 from airflow.utils.decorators import apply_defaults
 from airflow.version import version
 from googleapiclient.errors import HttpError
-from airflow.utils import timezone
 
 
 class DataprocClusterCreateOperator(BaseOperator):
@@ -327,7 +326,7 @@ class DataprocClusterCreateOperator(BaseOperator):
             cluster_data['config']['lifecycleConfig']['idleDeleteTtl'] = \
                 "{}s".format(self.idle_delete_ttl)
         if self.auto_delete_time:
-            utc_auto_delete_time = timezone.convert_to_utc(self.auto_delete_time)
+            utc_auto_delete_time = self.auto_delete_time
             cluster_data['config']['lifecycleConfig']['autoDeleteTime'] = \
                 utc_auto_delete_time.format('%Y-%m-%dT%H:%M:%S.%fZ', formatter='classic')
         elif self.auto_delete_ttl:
@@ -491,7 +490,8 @@ class DataprocClusterScaleOperator(BaseOperator):
         }
         return scale_data
 
-    def _get_graceful_decommission_timeout(self, timeout):
+    @staticmethod
+    def _get_graceful_decommission_timeout(timeout):
         match = re.match(r"^(\d+)(s|m|h|d)$", timeout)
         if match:
             if match.group(2) == "s":
@@ -575,7 +575,8 @@ class DataprocClusterDeleteOperator(BaseOperator):
         self.project_id = project_id
         self.region = region
 
-    def _wait_for_done(self, service, operation_name):
+    @staticmethod
+    def _wait_for_done(service, operation_name):
         time.sleep(15)
         while True:
             response = service.projects().regions().operations().get(
@@ -669,6 +670,11 @@ class DataProcPigOperator(BaseOperator):
     :type delegate_to: string
     :param region: The specified region where the dataproc cluster is created.
     :type region: string
+    :var dataproc_job_id: The actual "jobId" as submitted to the Dataproc API.
+        This is useful for identifying or linking to the job in the Google Cloud Console
+        Dataproc UI, as the actual "jobId" submitted to the Dataproc API is appended with
+        an 8 character random string.
+    :vartype dataproc_job_id: string
     """
     template_fields = ['query', 'variables', 'job_name', 'cluster_name', 'dataproc_jars']
     template_ext = ('.pg', '.pig',)
@@ -716,7 +722,10 @@ class DataProcPigOperator(BaseOperator):
         job.add_jar_file_uris(self.dataproc_jars)
         job.set_job_name(self.job_name)
 
-        hook.submit(hook.project_id, job.build(), self.region)
+        job_to_submit = job.build()
+        self.dataproc_job_id = job_to_submit["job"]["reference"]["jobId"]
+
+        hook.submit(hook.project_id, job_to_submit, self.region)
 
 
 class DataProcHiveOperator(BaseOperator):
@@ -749,6 +758,11 @@ class DataProcHiveOperator(BaseOperator):
     :type delegate_to: string
     :param region: The specified region where the dataproc cluster is created.
     :type region: string
+    :var dataproc_job_id: The actual "jobId" as submitted to the Dataproc API.
+        This is useful for identifying or linking to the job in the Google Cloud Console
+        Dataproc UI, as the actual "jobId" submitted to the Dataproc API is appended with
+        an 8 character random string.
+    :vartype dataproc_job_id: string
     """
     template_fields = ['query', 'variables', 'job_name', 'cluster_name', 'dataproc_jars']
     template_ext = ('.q',)
@@ -797,7 +811,10 @@ class DataProcHiveOperator(BaseOperator):
         job.add_jar_file_uris(self.dataproc_jars)
         job.set_job_name(self.job_name)
 
-        hook.submit(hook.project_id, job.build(), self.region)
+        job_to_submit = job.build()
+        self.dataproc_job_id = job_to_submit["job"]["reference"]["jobId"]
+
+        hook.submit(hook.project_id, job_to_submit, self.region)
 
 
 class DataProcSparkSqlOperator(BaseOperator):
@@ -831,6 +848,11 @@ class DataProcSparkSqlOperator(BaseOperator):
     :type delegate_to: string
     :param region: The specified region where the dataproc cluster is created.
     :type region: string
+    :var dataproc_job_id: The actual "jobId" as submitted to the Dataproc API.
+        This is useful for identifying or linking to the job in the Google Cloud Console
+        Dataproc UI, as the actual "jobId" submitted to the Dataproc API is appended with
+        an 8 character random string.
+    :vartype dataproc_job_id: string
     """
     template_fields = ['query', 'variables', 'job_name', 'cluster_name', 'dataproc_jars']
     template_ext = ('.q',)
@@ -879,7 +901,10 @@ class DataProcSparkSqlOperator(BaseOperator):
         job.add_jar_file_uris(self.dataproc_jars)
         job.set_job_name(self.job_name)
 
-        hook.submit(hook.project_id, job.build(), self.region)
+        job_to_submit = job.build()
+        self.dataproc_job_id = job_to_submit["job"]["reference"]["jobId"]
+
+        hook.submit(hook.project_id, job_to_submit, self.region)
 
 
 class DataProcSparkOperator(BaseOperator):
@@ -920,6 +945,11 @@ class DataProcSparkOperator(BaseOperator):
     :type delegate_to: string
     :param region: The specified region where the dataproc cluster is created.
     :type region: string
+    :var dataproc_job_id: The actual "jobId" as submitted to the Dataproc API.
+        This is useful for identifying or linking to the job in the Google Cloud Console
+        Dataproc UI, as the actual "jobId" submitted to the Dataproc API is appended with
+        an 8 character random string.
+    :vartype dataproc_job_id: string
     """
 
     template_fields = ['arguments', 'job_name', 'cluster_name', 'dataproc_jars']
@@ -970,7 +1000,10 @@ class DataProcSparkOperator(BaseOperator):
         job.add_file_uris(self.files)
         job.set_job_name(self.job_name)
 
-        hook.submit(hook.project_id, job.build(), self.region)
+        job_to_submit = job.build()
+        self.dataproc_job_id = job_to_submit["job"]["reference"]["jobId"]
+
+        hook.submit(hook.project_id, job_to_submit, self.region)
 
 
 class DataProcHadoopOperator(BaseOperator):
@@ -1011,6 +1044,11 @@ class DataProcHadoopOperator(BaseOperator):
     :type delegate_to: string
     :param region: The specified region where the dataproc cluster is created.
     :type region: string
+    :var dataproc_job_id: The actual "jobId" as submitted to the Dataproc API.
+        This is useful for identifying or linking to the job in the Google Cloud Console
+        Dataproc UI, as the actual "jobId" submitted to the Dataproc API is appended with
+        an 8 character random string.
+    :vartype dataproc_job_id: string
     """
 
     template_fields = ['arguments', 'job_name', 'cluster_name', 'dataproc_jars']
@@ -1061,10 +1099,14 @@ class DataProcHadoopOperator(BaseOperator):
         job.add_file_uris(self.files)
         job.set_job_name(self.job_name)
 
-        hook.submit(hook.project_id, job.build(), self.region)
+        job_to_submit = job.build()
+        self.dataproc_job_id = job_to_submit["job"]["reference"]["jobId"]
+
+        hook.submit(hook.project_id, job_to_submit, self.region)
 
 
 class DataProcPySparkOperator(BaseOperator):
+    # TODO Add docs around dataproc_job_id.
     """
     Start a PySpark Job on a Cloud DataProc cluster.
 
@@ -1102,6 +1144,11 @@ class DataProcPySparkOperator(BaseOperator):
     :type delegate_to: string
     :param region: The specified region where the dataproc cluster is created.
     :type region: string
+    :var dataproc_job_id: The actual "jobId" as submitted to the Dataproc API.
+        This is useful for identifying or linking to the job in the Google Cloud Console
+        Dataproc UI, as the actual "jobId" submitted to the Dataproc API is appended with
+        an 8 character random string.
+    :vartype dataproc_job_id: string
     """
 
     template_fields = ['arguments', 'job_name', 'cluster_name', 'dataproc_jars']
@@ -1192,7 +1239,10 @@ class DataProcPySparkOperator(BaseOperator):
         job.add_python_file_uris(self.pyfiles)
         job.set_job_name(self.job_name)
 
-        hook.submit(hook.project_id, job.build(), self.region)
+        job_to_submit = job.build()
+        self.dataproc_job_id = job_to_submit["job"]["reference"]["jobId"]
+
+        hook.submit(hook.project_id, job_to_submit, self.region)
 
 
 class DataprocWorkflowTemplateBaseOperator(BaseOperator):
@@ -1216,7 +1266,7 @@ class DataprocWorkflowTemplateBaseOperator(BaseOperator):
         )
 
     def execute(self, context):
-        self.hook.await(self.start())
+        self.hook.wait(self.start())
 
     def start(self, context):
         raise AirflowException('plese start a workflow operation')

@@ -34,7 +34,6 @@ import reprlib
 import argparse
 from builtins import input
 from collections import namedtuple
-from airflow.utils.timezone import parse as parsedate
 import json
 from tabulate import tabulate
 
@@ -62,6 +61,7 @@ from airflow.models import (DagModel, DagBag, TaskInstance,
 from airflow.ti_deps.dep_context import (DepContext, SCHEDULER_DEPS)
 from airflow.utils import cli as cli_utils
 from airflow.utils import db as db_utils
+from airflow.utils.dates import parse_execution_date
 from airflow.utils.net import get_hostname
 from airflow.utils.log.logging_mixin import (LoggingMixin, redirect_stderr,
                                              redirect_stdout)
@@ -124,17 +124,17 @@ def setup_logging(filename):
 def setup_locations(process, pid=None, stdout=None, stderr=None, log=None):
     """获得pid文件路径 ."""
     if not stderr:
-        stderr = os.path.join(os.path.expanduser(
-            settings.AIRFLOW_HOME), "airflow-{}.err".format(process))
+        stderr = os.path.join(os.path.expanduser(settings.AIRFLOW_HOME),
+                              'airflow-{}.err'.format(process))
     if not stdout:
-        stdout = os.path.join(os.path.expanduser(
-            settings.AIRFLOW_HOME), "airflow-{}.out".format(process))
+        stdout = os.path.join(os.path.expanduser(settings.AIRFLOW_HOME),
+                              'airflow-{}.out'.format(process))
     if not log:
-        log = os.path.join(os.path.expanduser(
-            settings.AIRFLOW_HOME), "airflow-{}.log".format(process))
+        log = os.path.join(os.path.expanduser(settings.AIRFLOW_HOME),
+                           'airflow-{}.log'.format(process))
     if not pid:
-        pid = os.path.join(os.path.expanduser(
-            settings.AIRFLOW_HOME), "airflow-{}.pid".format(process))
+        pid = os.path.join(os.path.expanduser(settings.AIRFLOW_HOME),
+                           'airflow-{}.pid'.format(process))
 
     return pid, stdout, stderr, log
 
@@ -211,7 +211,7 @@ def backfill(args, dag=None):
                 start_date=args.start_date,
                 end_date=args.end_date,
                 confirm_prompt=True,
-                include_subdags=False,
+                include_subdags=True,
             )
         # 调用 BackfillJob.run()
         dag.run(
@@ -383,8 +383,7 @@ def export_helper(filepath):
 
     with open(filepath, 'w') as varfile:
         varfile.write(json.dumps(var_dict, sort_keys=True, indent=4))
-    print("{} variables successfully exported to {}".format(
-        len(var_dict), filepath))
+    print("{} variables successfully exported to {}".format(len(var_dict), filepath))
 
 
 @cli_utils.action_logging
@@ -793,18 +792,15 @@ def restart_workers(gunicorn_master_proc, num_workers_expected, master_timeout):
             num_ready_workers_running = \
                 get_num_ready_workers_running(gunicorn_master_proc)
 
-            state = '[{0} / {1}]'.format(num_ready_workers_running,
-                                         num_workers_running)
+            state = '[{0} / {1}]'.format(num_ready_workers_running, num_workers_running)
 
-            # Whenever some workers are not ready, wait until all workers are
-            # ready
+            # Whenever some workers are not ready, wait until all workers are ready
             if num_ready_workers_running < num_workers_running:
                 log.debug('%s some workers are starting up, waiting...', state)
                 sys.stdout.flush()
                 time.sleep(1)
 
-            # Kill a worker gracefully by asking gunicorn to reduce number of
-            # workers
+            # Kill a worker gracefully by asking gunicorn to reduce number of workers
             # 删除多余的子进程
             elif num_workers_running > num_workers_expected:
                 excess = num_workers_running - num_workers_expected
@@ -815,15 +811,12 @@ def restart_workers(gunicorn_master_proc, num_workers_expected, master_timeout):
                     excess -= 1
                     # 验证需要删除的子进程在规定时间内是否被关闭，如果没有关闭则抛出异常 AirflowWebServerTimeout
                     wait_until_true(lambda: num_workers_expected + excess ==
-                                    get_num_workers_running(
-                                        gunicorn_master_proc),
+                                    get_num_workers_running(gunicorn_master_proc),
                                     master_timeout)
 
-            # Start a new worker by asking gunicorn to increase number of
-            # workers
+            # Start a new worker by asking gunicorn to increase number of workers
             elif num_workers_running == num_workers_expected:
-                refresh_interval = conf.getint(
-                    'webserver', 'worker_refresh_interval')
+                refresh_interval = conf.getint('webserver', 'worker_refresh_interval')
                 log.debug(
                     '%s sleeping for %ss starting doing a refresh...',
                     state, refresh_interval
@@ -857,10 +850,8 @@ def webserver(args):
     print(settings.HEADER)
 
     # 获得日志配置
-    access_logfile = args.access_logfile or conf.get(
-        'webserver', 'access_logfile')
-    error_logfile = args.error_logfile or conf.get(
-        'webserver', 'error_logfile')
+    access_logfile = args.access_logfile or conf.get('webserver', 'access_logfile')
+    error_logfile = args.error_logfile or conf.get('webserver', 'error_logfile')
     # 获得webserver worker数量
     num_workers = args.workers or conf.get('webserver', 'workers')
     # 获得worker超时时间
@@ -884,9 +875,11 @@ def webserver(args):
         app.run(debug=True, port=args.port, host=args.hostname,
                 ssl_context=(ssl_cert, ssl_key) if ssl_cert and ssl_key else None)
     else:
+        os.environ['SKIP_DAGS_PARSING'] = 'True'
         app = cached_app_rbac(conf) if settings.RBAC else cached_app(conf)
         pid, stdout, stderr, log_file = setup_locations(
             "webserver", args.pid, args.stdout, args.stderr, args.log_file)
+        os.environ.pop('SKIP_DAGS_PARSING')
         if args.daemon:
             handle = setup_logging(log_file)
             stdout = open(stdout, 'w+')
@@ -943,7 +936,7 @@ def webserver(args):
             '-b', args.hostname + ':' + str(args.port),
             '-n', 'airflow-webserver',
             '-p', str(pid),
-            '-c', 'python:airflow.www.gunicorn_config',
+            '-c', 'airflow.www.gunicorn_config'
         ]
 
         if args.access_logfile:
@@ -973,13 +966,13 @@ def webserver(args):
         def monitor_gunicorn(gunicorn_master_proc):
             # These run forever until SIG{INT, TERM, KILL, ...} signal is sent
             if conf.getint('webserver', 'worker_refresh_interval') > 0:
-                master_timeout = conf.getint(
-                    'webserver', 'web_server_master_timeout')
-                restart_workers(gunicorn_master_proc,
-                                num_workers, master_timeout)
+                master_timeout = conf.getint('webserver', 'web_server_master_timeout')
+                restart_workers(gunicorn_master_proc, num_workers, master_timeout)
             else:
-                while True:
+                while gunicorn_master_proc.poll() is None:
                     time.sleep(1)
+
+                sys.exit(gunicorn_master_proc.returncode)
 
         if args.daemon:
             base, ext = os.path.splitext(pid)
@@ -1005,8 +998,7 @@ def webserver(args):
                             gunicorn_master_proc_pid = int(f.read())
                             break
                     except IOError:
-                        log.debug(
-                            "Waiting for gunicorn's pid file to be created.")
+                        log.debug("Waiting for gunicorn's pid file to be created.")
                         time.sleep(0.1)
 
                 # 启动gunicorn进程
@@ -1082,8 +1074,9 @@ def serve_logs(args):
 
     WORKER_LOG_SERVER_PORT = \
         int(conf.get('celery', 'WORKER_LOG_SERVER_PORT'))
+    worker_log_server_host = conf.get('celery', 'worker_log_server_host')
     flask_app.run(
-        host='0.0.0.0', port=WORKER_LOG_SERVER_PORT)
+        host=worker_log_server_host, port=WORKER_LOG_SERVER_PORT)
 
 
 @cli_utils.action_logging
@@ -1091,6 +1084,11 @@ def worker(args):
     """启动celery ."""
     env = os.environ.copy()
     env['AIRFLOW_HOME'] = settings.AIRFLOW_HOME
+
+    if not settings.validate_session():
+        log = LoggingMixin().log
+        log.error("Worker exiting... database connection precheck failed! ")
+        sys.exit(1)
 
     # Celery worker
     from airflow.executors.celery_executor import app as celery_app
@@ -1122,8 +1120,7 @@ def worker(args):
             stderr=stderr,
         )
         with ctx:
-            sp = subprocess.Popen(
-                ['airflow', 'serve_logs'], env=env, close_fds=True)
+            sp = subprocess.Popen(['airflow', 'serve_logs'], env=env, close_fds=True)
             worker.run(**options)
             sp.kill()
 
@@ -1133,8 +1130,7 @@ def worker(args):
         signal.signal(signal.SIGINT, sigint_handler)
         signal.signal(signal.SIGTERM, sigint_handler)
 
-        sp = subprocess.Popen(['airflow', 'serve_logs'],
-                              env=env, close_fds=True)
+        sp = subprocess.Popen(['airflow', 'serve_logs'], env=env, close_fds=True)
 
         worker.run(**options)
         sp.kill()
@@ -1146,7 +1142,6 @@ def initdb(args):  # noqa
     print("Done.")
 
 
-@cli_utils.action_logging
 def resetdb(args):
     print("DB: " + repr(settings.engine.url))
     if args.yes or input("This will drop existing tables "
@@ -1423,12 +1418,108 @@ def create_user(args):
         if password != password_confirmation:
             raise SystemExit('Passwords did not match!')
 
+    if appbuilder.sm.find_user(args.username):
+        print('{} already exist in the db'.format(args.username))
+        return
     user = appbuilder.sm.add_user(args.username, args.firstname, args.lastname,
                                   args.email, role, password)
     if user:
         print('{} user {} created.'.format(args.role, args.username))
     else:
         raise SystemExit('Failed to create user.')
+
+
+@cli_utils.action_logging
+def delete_user(args):
+    if not args.username:
+        raise SystemExit('Required arguments are missing: username')
+
+    appbuilder = cached_appbuilder()
+
+    try:
+        u = next(u for u in appbuilder.sm.get_all_users() if u.username == args.username)
+    except StopIteration:
+        raise SystemExit('{} is not a valid user.'.format(args.username))
+
+    if appbuilder.sm.del_register_user(u):
+        print('User {} deleted.'.format(args.username))
+    else:
+        raise SystemExit('Failed to delete user.')
+
+
+@cli_utils.action_logging
+def list_users(args):
+    appbuilder = cached_appbuilder()
+    users = appbuilder.sm.get_all_users()
+    fields = ['id', 'username', 'email', 'first_name', 'last_name', 'roles']
+    users = [[user.__getattribute__(field) for field in fields] for user in users]
+    msg = tabulate(users, [field.capitalize().replace('_', ' ') for field in fields],
+                   tablefmt="fancy_grid")
+    if sys.version_info[0] < 3:
+        msg = msg.encode('utf-8')
+    print(msg)
+
+
+@cli_utils.action_logging
+def list_dag_runs(args, dag=None):
+    if dag:
+        args.dag_id = dag.dag_id
+
+    dagbag = DagBag()
+
+    if args.dag_id not in dagbag.dags:
+        error_message = "Dag id {} not found".format(args.dag_id)
+        raise AirflowException(error_message)
+
+    dag_runs = list()
+    state = args.state.lower() if args.state else None
+    for run in DagRun.find(dag_id=args.dag_id,
+                           state=state,
+                           no_backfills=args.no_backfill):
+        dag_runs.append({
+            'id': run.id,
+            'run_id': run.run_id,
+            'state': run.state,
+            'dag_id': run.dag_id,
+            'execution_date': run.execution_date.isoformat(),
+            'start_date': ((run.start_date or '') and
+                           run.start_date.isoformat()),
+        })
+    if not dag_runs:
+        print('No dag runs for {dag_id}'.format(dag_id=args.dag_id))
+
+    s = textwrap.dedent("""\n
+    {line}
+    DAG RUNS
+    {line}
+    {dag_run_header}
+    """)
+
+    dag_runs.sort(key=lambda x: x['execution_date'], reverse=True)
+    dag_run_header = '%-3s | %-20s | %-10s | %-20s | %-20s |' % ('id',
+                                                                 'run_id',
+                                                                 'state',
+                                                                 'execution_date',
+                                                                 'state_date')
+    print(s.format(dag_run_header=dag_run_header,
+                   line='-' * 120))
+    for dag_run in dag_runs:
+        record = '%-3s | %-20s | %-10s | %-20s | %-20s |' % (dag_run['id'],
+                                                             dag_run['run_id'],
+                                                             dag_run['state'],
+                                                             dag_run['execution_date'],
+                                                             dag_run['start_date'])
+        print(record)
+
+
+@cli_utils.action_logging
+def sync_perm(args): # noqa
+    if settings.RBAC:
+        appbuilder = cached_appbuilder()
+        print('Update permission, view-menu for all existing roles')
+        appbuilder.sm.sync_roles()
+    else:
+        print('The sync_perm command only works for rbac UI.')
 
 
 Arg = namedtuple(
@@ -1443,7 +1534,7 @@ class CLIFactory(object):
         'task_id': Arg(("task_id",), "The id of the task"),
         'execution_date': Arg(
             ("execution_date",), help="The execution date of the DAG",
-            type=parsedate),
+            type=parse_execution_date),
         'task_regex': Arg(
             ("-t", "--task_regex"),
             "The regex to filter specific task_ids to backfill (optional)"),
@@ -1453,10 +1544,10 @@ class CLIFactory(object):
             default=settings.DAGS_FOLDER),
         'start_date': Arg(
             ("-s", "--start_date"), "Override start_date YYYY-MM-DD",
-            type=parsedate),
+            type=parse_execution_date),
         'end_date': Arg(
             ("-e", "--end_date"), "Override end_date YYYY-MM-DD",
-            type=parsedate),
+            type=parse_execution_date),
         'dry_run': Arg(
             ("-dr", "--dry_run"), "Perform a dry run", "store_true"),
         'pid': Arg(
@@ -1477,6 +1568,19 @@ class CLIFactory(object):
             "Do not prompt to confirm reset. Use with care!",
             "store_true",
             default=False),
+        'username': Arg(
+            ('-u', '--username',),
+            help='Username of the user',
+            type=str),
+
+        # list_dag_runs
+        'no_backfill': Arg(
+            ("--no_backfill",),
+            "filter all the backfill dagruns given the dag id", "store_true"),
+        'state': Arg(
+            ("--state",),
+            "Only list the dag runs corresponding to the state"
+        ),
 
         # backfill
         'mark_success': Arg(
@@ -1562,7 +1666,7 @@ class CLIFactory(object):
             "JSON string that gets pickled into the DagRun's conf attribute"),
         'exec_date': Arg(
             ("-e", "--exec_date"), help="The execution date of the DAG",
-            type=parsedate),
+            type=parse_execution_date),
         # pool
         'pool_set': Arg(
             ("-s", "--set"),
@@ -1829,10 +1933,6 @@ class CLIFactory(object):
             ('-e', '--email',),
             help='Email of the user',
             type=str),
-        'username': Arg(
-            ('-u', '--username',),
-            help='Username of the user',
-            type=str),
         'password': Arg(
             ('-p', '--password',),
             help='Password of the user',
@@ -1860,6 +1960,15 @@ class CLIFactory(object):
                 'bf_ignore_dependencies', 'bf_ignore_first_depends_on_past',
                 'subdir', 'pool', 'delay_on_limit', 'dry_run', 'verbose', 'conf',
                 'reset_dag_run', 'rerun_failed_tasks',
+            )
+        }, {
+            'func': list_dag_runs,
+            'help': "List dag runs given a DAG id. If state option is given, it will only"
+                    "search for all the dagruns with the given state. "
+                    "If no_backfill option is given, it will filter out"
+                    "all backfill dagruns for given dag id.",
+            'args': (
+                'dag_id', 'no_backfill', 'state'
             )
         }, {
             'func': list_tasks,
@@ -1991,14 +2100,27 @@ class CLIFactory(object):
                      'conn_id', 'conn_uri', 'conn_extra') + tuple(alternative_conn_specs),
         }, {
             'func': create_user,
-            'help': "Create an admin account",
+            'help': "Create an account for the Web UI",
             'args': ('role', 'username', 'email', 'firstname', 'lastname',
                      'password', 'use_random_password'),
+        }, {
+            'func': delete_user,
+            'help': "Delete an account for the Web UI",
+            'args': ('username',),
+        }, {
+            'func': list_users,
+            'help': "List accounts for the Web UI",
+            'args': tuple(),
         },
+        {
+            'func': sync_perm,
+            'help': "Update existing role's permissions.",
+            'args': tuple(),
+        }
     )
     subparsers_dict = {sp['func'].__name__: sp for sp in subparsers}
     dag_subparsers = (
-        'list_tasks', 'backfill', 'test', 'run', 'pause', 'unpause')
+        'list_tasks', 'backfill', 'test', 'run', 'pause', 'unpause', 'list_dag_runs')
 
     @classmethod
     def get_parser(cls, dag_parser=False):

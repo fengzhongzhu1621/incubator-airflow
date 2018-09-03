@@ -21,7 +21,6 @@ from airflow import configuration as conf
 from airflow.lineage import datasets
 from airflow.lineage.backend import LineageBackend
 from airflow.lineage.backend.atlas.typedefs import operator_typedef
-from airflow.utils.timezone import convert_to_utc
 
 from atlasclient.client import Atlas
 from atlasclient.exceptions import HttpError
@@ -42,9 +41,9 @@ class AtlasBackend(LineageBackend):
         except HttpError:
             client.typedefs.update(data=operator_typedef)
 
-        _execution_date = convert_to_utc(context['ti'].execution_date)
-        _start_date = convert_to_utc(context['ti'].start_date)
-        _end_date = convert_to_utc(context['ti'].end_date)
+        _execution_date = context['ti'].execution_date
+        _start_date = context['ti'].start_date
+        _end_date = context['ti'].end_date
 
         inlet_list = []
         if inlets:

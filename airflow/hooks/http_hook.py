@@ -70,7 +70,11 @@ class HttpHook(BaseHook):
         if conn.login:
             session.auth = (conn.login, conn.password)
         if conn.extra:
-            session.headers.update(conn.extra_dejson)
+            try:
+                session.headers.update(conn.extra_dejson)
+            except TypeError:
+                self.log.warn('Connection to {} has invalid extra field.'.format(
+                    conn.host))
         if headers:
             session.headers.update(headers)
 
@@ -91,7 +95,7 @@ class HttpHook(BaseHook):
         :type extra_options: dict
         """
         extra_options = extra_options or {}
-
+        # 会话保持
         session = self.get_conn(headers)
 
         url = self.base_url + endpoint

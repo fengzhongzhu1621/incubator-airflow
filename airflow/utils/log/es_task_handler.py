@@ -7,9 +7,9 @@
 # to you under the Apache License, Version 2.0 (the
 # "License"); you may not use this file except in compliance
 # with the License.  You may obtain a copy of the License at
-# 
+#
 #   http://www.apache.org/licenses/LICENSE-2.0
-# 
+#
 # Unless required by applicable law or agreed to in writing,
 # software distributed under the License is distributed on an
 # "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
@@ -18,14 +18,15 @@
 # under the License.
 
 # Using `from elasticsearch import *` would break elasticseach mocking used in unit test.
+import datetime as dt
 import elasticsearch
 import pendulum
 from elasticsearch_dsl import Search
 
-from airflow.utils import timezone
 from airflow.utils.helpers import parse_template_string
 from airflow.utils.log.file_task_handler import FileTaskHandler
 from airflow.utils.log.logging_mixin import LoggingMixin
+from airflow.utils.dates import parse_execution_date
 
 
 class ElasticsearchTaskHandler(FileTaskHandler, LoggingMixin):
@@ -107,12 +108,12 @@ class ElasticsearchTaskHandler(FileTaskHandler, LoggingMixin):
         metadata['end_of_log'] = False if not logs \
             else logs[-1].message == self.end_of_log_mark.strip()
 
-        cur_ts = pendulum.now()
+        cur_ts = dt.datetime.now()
         # Assume end of log after not receiving new log for 5 min,
         # as executor heartbeat is 1 min and there might be some
         # delay before Elasticsearch makes the log available.
         if 'last_log_timestamp' in metadata:
-            last_log_ts = timezone.parse(metadata['last_log_timestamp'])
+            last_log_ts = parse_execution_date(metadata['last_log_timestamp'])
             if cur_ts.diff(last_log_ts).in_minutes() >= 5:
                 metadata['end_of_log'] = True
 

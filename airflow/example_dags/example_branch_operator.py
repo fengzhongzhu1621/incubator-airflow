@@ -39,12 +39,14 @@ run_this_first = DummyOperator(task_id='run_this_first', dag=dag)
 
 options = ['branch_a', 'branch_b', 'branch_c', 'branch_d']
 
+# 创建一个分支选择器，随机选择一条分支执行，其他的分支忽略
 branching = BranchPythonOperator(
     task_id='branching',
     python_callable=lambda: random.choice(options),
     dag=dag)
 branching.set_upstream(run_this_first)
 
+# 合并规则：只要有一条分支成功，则执行
 join = DummyOperator(
     task_id='join',
     trigger_rule='one_success',

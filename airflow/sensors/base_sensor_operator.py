@@ -7,9 +7,9 @@
 # to you under the Apache License, Version 2.0 (the
 # "License"); you may not use this file except in compliance
 # with the License.  You may obtain a copy of the License at
-# 
+#
 #   http://www.apache.org/licenses/LICENSE-2.0
-# 
+#
 # Unless required by applicable law or agreed to in writing,
 # software distributed under the License is distributed on an
 # "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
@@ -19,15 +19,14 @@
 
 
 from time import sleep
-
+from datetime import datetime
 from airflow.exceptions import AirflowException, AirflowSensorTimeout, \
     AirflowSkipException
-from airflow.models import BaseOperator
-from airflow.utils import timezone
+from airflow.models import BaseOperator, SkipMixin
 from airflow.utils.decorators import apply_defaults
 
 
-class BaseSensorOperator(BaseOperator):
+class BaseSensorOperator(BaseOperator, SkipMixin):
     """
     Sensor operators are derived from this class an inherit these attributes.
 
@@ -64,12 +63,22 @@ class BaseSensorOperator(BaseOperator):
         raise AirflowException('Override me.')
 
     def execute(self, context):
-        started_at = timezone.utcnow()
+        started_at = datetime.now()
         while not self.poke(context):
-            if (timezone.utcnow() - started_at).total_seconds() > self.timeout:
-                if self.soft_fail:
+            if (datetime.now() - started_at).total_seconds() > self.timeout:
+                # If sensor is in soft fail mode but will be retried then
+                # give it a chance and fail with timeout.
+                # This gives the ability to set up non-blocking AND soft-fail sensors.
+                if self.soft_fail and not context['ti'].is_eligible_to_retry():
+                    self._do_skip_downstream_tasks(context)
                     raise AirflowSkipException('Snap. Time is OUT.')
                 else:
                     raise AirflowSensorTimeout('Snap. Time is OUT.')
             sleep(self.poke_interval)
         self.log.info("Success criteria met. Exiting.")
+
+    def _do_skip_downstream_tasks(self, context):
+        downstream_tasks = context['task'].get_flat_relatives(upstream=False)
+        self.log.debug("Downstream task_ids %s", downstream_tasks)
+        if downstream_tasks:
+            self.skip(context['dag_run'], context['ti'].execution_date, downstream_tasks)

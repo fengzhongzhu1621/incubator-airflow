@@ -27,6 +27,9 @@ from airflow import DAG
 from airflow.operators.bash_operator import BashOperator
 from datetime import timedelta
 
+# 获得七天前的开始时间，精确到分钟
+#seven_days_ago = datetime.combine(datetime.today() - timedelta(7),
+#                                  datetime.min.time())
 
 # these args will get passed on to each operator
 # you can override them on a per-task basis during operator initialization

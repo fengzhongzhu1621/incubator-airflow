@@ -24,7 +24,7 @@
 
 
 import sys
-import os as _os
+import os
 
 # ------------------------------------------------------------------------
 #
@@ -60,10 +60,11 @@ _hooks = {
     'jenkins_hook': ['JenkinsHook'],
     'aws_dynamodb_hook': ['AwsDynamoDBHook'],
     'azure_data_lake_hook': ['AzureDataLakeHook'],
+    'azure_fileshare_hook': ['AzureFileShareHook'],
 }
 
 
-if not _os.environ.get('AIRFLOW_USE_NEW_IMPORTS', False):
+if not os.environ.get('AIRFLOW_USE_NEW_IMPORTS', False):
     from airflow.utils.helpers import AirflowImporter
 
     airflow_importer = AirflowImporter(sys.modules[__name__], _hooks)

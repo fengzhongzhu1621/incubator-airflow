@@ -26,6 +26,7 @@ import time
 import wtforms
 import bleach
 import markdown
+import datetime as dt
 
 from builtins import str
 from past.builtins import basestring
@@ -36,7 +37,6 @@ from flask import request, Response, Markup, url_for
 from airflow import configuration
 from airflow.models import BaseOperator
 from airflow.operators.subdag_operator import SubDagOperator
-from airflow.utils import timezone
 from airflow.utils.json import AirflowJsonEncoder
 from airflow.utils.state import State
 
@@ -54,8 +54,13 @@ DEFAULT_SENSITIVE_VARIABLE_FIELDS = (
 
 
 def should_hide_value_for_key(key_name):
-    return any(s in key_name.lower() for s in DEFAULT_SENSITIVE_VARIABLE_FIELDS) \
-        and configuration.getboolean('admin', 'hide_sensitive_variable_fields')
+    # It is possible via importing variables from file that a key is empty.
+    if key_name:
+        config_set = configuration.conf.getboolean('admin',
+                                                   'hide_sensitive_variable_fields')
+        field_comp = any(s in key_name.lower() for s in DEFAULT_SENSITIVE_VARIABLE_FIELDS)
+        return config_set and field_comp
+    return False
 
 
 def get_params(**kwargs):
@@ -255,7 +260,7 @@ def datetime_f(attr_name):
     def dt(attr):
         f = attr.get(attr_name)
         f = f.isoformat() if f else ''
-        if timezone.utcnow().isoformat()[:4] == f[:4]:
+        if dt.datetime.now().isoformat()[:4] == f[:4]:
             f = f[5:]
         return Markup("<nobr>{}</nobr>".format(f))
     return dt

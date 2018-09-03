@@ -82,6 +82,7 @@ t4 = SimpleHttpOperator(
     headers={"Content-Type": "application/x-www-form-urlencoded"},
     dag=dag)
 
+# 感知器：检验请求是否返回正常
 sensor = HttpSensor(
     task_id='http_sensor_check',
     http_conn_id='http_default',

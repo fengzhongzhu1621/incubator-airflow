@@ -27,7 +27,7 @@ class SimpleHttpOperator(BaseOperator):
     """
     Calls an endpoint on an HTTP system to execute an action
 
-    :param http_conn_id: The connection to run the sensor against
+    :param http_conn_id: The connection to run the operator against
     :type http_conn_id: string
     :param endpoint: The relative part of the full url. (templated)
     :type endpoint: string
@@ -80,13 +80,15 @@ class SimpleHttpOperator(BaseOperator):
         http = HttpHook(self.method, http_conn_id=self.http_conn_id)
 
         self.log.info("Calling HTTP method")
-
+        # 获得HTTP响应
         response = http.run(self.endpoint,
                             self.data,
                             self.headers,
                             self.extra_options)
+        # 对响应进行验证
         if self.response_check:
             if not self.response_check(response):
                 raise AirflowException("Response check returned False.")
+        # 返回响应结果
         if self.xcom_push_flag:
             return response.text
