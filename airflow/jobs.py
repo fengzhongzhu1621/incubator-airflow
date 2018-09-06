@@ -666,6 +666,8 @@ class SchedulerJob(BaseJob):
         # 默认5分钟扫描一次dag目录，检测文件是否有变更
         self.dag_dir_list_interval = conf.getint('scheduler',
                                                  'dag_dir_list_interval')
+
+        # 打印文件处理器统计日志的间隔
         # How often to print out DAG file processing stats to the log. Default to
         # 30 seconds.
         self.print_stats_interval = conf.getint('scheduler',
@@ -673,7 +675,7 @@ class SchedulerJob(BaseJob):
 
         # 文件处理器处理同一个文件的间隔
         self.file_process_interval = file_process_interval
-
+        # 因为需要批量更新TI的状态，为了防止SQL过长，需要设置每批更新的TI的数量
         self.max_tis_per_query = conf.getint('scheduler', 'max_tis_per_query')
         # 调度器job运行的最大次数，-1表示永久运行
         if run_duration is None:
@@ -698,7 +700,8 @@ class SchedulerJob(BaseJob):
             )
             return
 
-        # 获得指定的dag中最近运行的所SUCCESS/SKIPPED的任务实例
+        # 获得指定的dag中最近运行的状态为SUCCESS/SKIPPED的任务实例
+        # 创建子查询获取dag最近的所有任务实例
         TI = models.TaskInstance
         sq = (
             session
@@ -714,6 +717,7 @@ class SchedulerJob(BaseJob):
             .group_by(TI.task_id).subquery('sq')
         )
 
+        # 根据子查询获取最近的任务实例
         max_tis = session.query(TI).filter(
             TI.dag_id == dag.dag_id,
             TI.task_id == sq.c.task_id,
@@ -722,7 +726,7 @@ class SchedulerJob(BaseJob):
 
         ts = datetime.now()
         SlaMiss = models.SlaMiss
-        # 遍历任务实例
+        # 遍历dag最近执行的所有任务实例
         for ti in max_tis:
             # 获得任务对象
             task = dag.get_task(ti.task_id)
@@ -734,9 +738,17 @@ class SchedulerJob(BaseJob):
                 if not dttm:
                     continue
                 # 如果任务实例的下一次调度超时task.sla时间后没有执行，则记录到数据库中
+                # execution_time         dttm                    following_schedule
+                # |----------------------|-----------------------|---------------------------|
+                #                            ||                     ||               ||
+                #                            \/                     \/               \/
+                #                            最近实例的执行时间     下一次执行时间   now()
                 while dttm < datetime.now():
                     following_schedule = dag.following_schedule(dttm)
                     if following_schedule + task.sla < datetime.now():
+                        # 记录到服务时效DB中
+                        # 注意如果任务一直失效，会修改timestamp时间为当前时间
+                        # TODO 如果失效的任务一直没有处理，会导致对DB的方法update操作，但不会重复发送告警
                         session.merge(models.SlaMiss(
                             task_id=ti.task_id,
                             dag_id=ti.dag_id,
@@ -745,7 +757,7 @@ class SchedulerJob(BaseJob):
                     dttm = dag.following_schedule(dttm)
         session.commit()
 
-        # 获得还没有发送通知的任务失效记录
+        # 获得还没有发送通知的DAG的所有的任务失效记录
         slas = (
             session
             .query(SlaMiss)
@@ -767,7 +779,8 @@ class SchedulerJob(BaseJob):
                 .all()
             )
             # 获得DAG存在的失效任务实例
-            # 因为可能部分任务应为DAG的变更已经不存在了
+            # 因为可能部分任务因为DAG的变更已经不存在了，
+            # 这部分无效的任务实例需要从DB中删除，且不需要告警
             blocking_tis = []
             for ti in qry:
                 if ti.task_id in dag.task_ids:
@@ -805,7 +818,7 @@ class SchedulerJob(BaseJob):
             Blocking tasks:
             <pre><code>{blocking_task_list}\n{bug}<code></pre>
             """.format(bug=asciiart.bug, **locals())
-            # 获得邮件收件人
+            # 获得邮件收件人，并去重
             emails = set()
             for task in dag.tasks:
                 if task.email:
@@ -814,7 +827,7 @@ class SchedulerJob(BaseJob):
                     elif isinstance(task.email, (list, tuple)):
                         emails |= set(task.email)
             # 发送邮件通知失效任务实例，所在的dag所有的任务负责人
-            if emails and len(slas):
+            if emails and slas:
                 try:
                     send_email(
                         emails,
@@ -848,11 +861,13 @@ class SchedulerJob(BaseJob):
         :param known_file_paths: The list of existing files that are parsed for DAGs
         :type known_file_paths: list[unicode]
         """
+        # 获得没有加载成功的DAG文件
         query = session.query(models.ImportError)
         if known_file_paths:
             query = query.filter(
                 ~models.ImportError.filename.in_(known_file_paths)
             )
+        # 从DB中删除
         query.delete(synchronize_session='fetch')
         session.commit()
 
@@ -869,7 +884,7 @@ class SchedulerJob(BaseJob):
         :type dagbag: models.Dagbag
         """
         # Clear the errors of the processed files
-        # 删除已经处理的导入错误
+        # 删除最近变更且已经处理了导入错误的dag文件
         # TODO 批量删除
         for dagbag_file in dagbag.file_last_changed:
             session.query(models.ImportError).filter(
@@ -891,23 +906,28 @@ class SchedulerJob(BaseJob):
         for a DAG based on scheduling interval
         Returns DagRun if one is scheduled. Otherwise returns None.
         """
+        # 如果没有设置调度周期或为None，则不会创建任务实例
+        # 通常设置为None的dag为子DAG
         if dag.schedule_interval:
             # 获得正在运行的所有内部触发的dag_run
             # 外部触发的忽略
+            # 注意：需要定时删除历史的dag实例，否则会降低DB的性能
             active_runs = DagRun.find(
                 dag_id=dag.dag_id,
                 state=State.RUNNING,
                 external_trigger=False,
                 session=session
             )
+            # 在没有设置dag实例超时参数的情况下，默认dagrun_timeout是设置的
             # 如果一个dag的最大运行dag_run超出了阈值，则不再创建新的dag_run
             # return if already reached maximum active runs and no timeout setting
-            if len(active_runs) >= dag.max_active_runs and not dag.dagrun_timeout:
+            active_runs_len = len(active_runs)
+            if active_runs_len >= dag.max_active_runs and not dag.dagrun_timeout:
                 return
 
             # 超时dagrun的数量
             timedout_runs = 0
-            # 判断dagrun是否超时未执行
+            # 判断dagrun是否在指定时间内执行完成
             for dr in active_runs:
                 if (
                         dr.start_date and dag.dagrun_timeout and
@@ -915,13 +935,22 @@ class SchedulerJob(BaseJob):
                     # 设置为失败状态，记录结束时间
                     dr.state = State.FAILED
                     dr.end_date = datetime.now()
-                    # 执行dag失败回调函数
+                    # 执行dag失败回调函数，可以在其中发送告警，
+                    # 如果任务开启了sla和email，就不需要在回调中发送告警了
+                    # 但是如果有大量的dagrun因为超时积压，后续还有有源源不断的新的dagrun创建
+                    # worker集群中有大量未完成的任务，有可能导致整个集群的计算资源都被这些任务消耗完
+                    # 及时把dagrun的状态改为了失败，但是这些未完成的任务可能还是在僵死中，
+                    # 需要人工kill掉这些僵死的进程
                     dag.handle_callback(dr, success=False, reason='dagrun_timeout',
                                         session=session)
                     timedout_runs += 1
             session.commit()
+
             # 重新判断 max_active_runs 阈值
-            if len(active_runs) - timedout_runs >= dag.max_active_runs:
+            # 注意: 超时的dag实例是不算在阈值中的，
+            #       如果大量的dag实例超时了，会影响其他dag实例的创建
+            #       最终引起连锁反应，整个集群都会停止创建dag实例
+            if active_runs_len - timedout_runs >= dag.max_active_runs:
                 return
 
             # this query should be replaced by find dagrun
