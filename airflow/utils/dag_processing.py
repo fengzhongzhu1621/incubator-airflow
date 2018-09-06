@@ -588,9 +588,9 @@ class DagFileProcessorManager(LoggingMixin):
                     file_paths_recently_processed.append(file_path)
 
             # 获得已经运行的process文件，且已经达到最大运行次数
-            files_paths_at_run_limit = [file_path
-                                        for file_path, num_runs in self._run_count.items()
-                                        if num_runs == self._max_runs]
+            #files_paths_at_run_limit = [file_path
+            #                            for file_path, num_runs in self._run_count.items()
+            #                            if num_runs == self._max_runs]
 
             # 获得需要入队的文件，新增的文件在此入库
             # 去掉正在运行的文件
@@ -598,8 +598,7 @@ class DagFileProcessorManager(LoggingMixin):
             # 去掉运行次数已经达到阈值的文件
             files_paths_to_queue = list(set(self._file_paths) -
                                         set(file_paths_in_progress) -
-                                        set(file_paths_recently_processed) -
-                                        set(files_paths_at_run_limit))
+                                        set(file_paths_recently_processed))
 
             # 打印调试信息：遍历正在运行的处理器进程
             for file_path, processor in self._processors.items():
@@ -647,9 +646,9 @@ class DagFileProcessorManager(LoggingMixin):
         if self._max_runs == -1:  # Unlimited runs.
             return False
         # 如果有任意一个文件都没有达到执行次数，也认为没有到达最大阈值
-        for file_path in self._file_paths:
-            if self._run_count[file_path] != self._max_runs:
-                return False
+        #for file_path in self._file_paths:
+        #    if self._run_count[file_path] != self._max_runs:
+        #        return False
         # 心跳总数大于等于最大运行次数时，也会停止调度
         if self._run_count[self._heart_beat_key] < self._max_runs:
             return False
