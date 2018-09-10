@@ -1155,12 +1155,13 @@ class SchedulerJob(BaseJob):
 
     @provide_session
     def _process_task_instances(self, dag, queue, session=None):
-        """将正在运行的dag_run中的任务实例加入到queue中
+        """获取正在运行的dagrun
+            1. 创建dagrun关联的任务实例
+            2. 将任务实例加入到队列中
         This method schedules the tasks for a single DAG by looking at the
         active DAG runs and adding task instances that should run to the
         queue.
         """
-
         # update the state of the previously active dag runs
         # 性能瓶颈：如果外部dag_run触发太快，会导致一个scheduler中的一个dag processor处理很长时间
         dag_runs = DagRun.find(dag_id=dag.dag_id, state=State.RUNNING, session=session)
@@ -1175,10 +1176,12 @@ class SchedulerJob(BaseJob):
                 )
                 continue
 
+            # 如果dagrun超过了最大阈值，则不会创建任务实例
             if len(active_dag_runs) >= dag.max_active_runs:
                 self.log.info("Active dag runs > max_active_run.")
                 continue
 
+            # 跳过补录任务
             # skip backfill dagruns for now as long as they are not really scheduled
             if run.is_backfill:
                 continue
@@ -1187,6 +1190,8 @@ class SchedulerJob(BaseJob):
             run.dag = dag
             # todo: preferably the integrity check happens at dag collection time
             # 根据dag实例，创建所有的任务实例
+            # 如果dag修改后增加了一个task，会通过验证后补录新增加的任务实例
+            # 如果任务类型是即席查询，则不会创建任务实例
             run.verify_integrity(session=session)
             # 更新dagrun的状态，由所有的任务实例的状态决定
             run.update_state(session=session)
@@ -1204,21 +1209,25 @@ class SchedulerJob(BaseJob):
             # every task (in ti.is_runnable). This is also called in
             # update_state above which has already checked these tasks
             for ti in tis:
+                # 根据任务实例获得任务
                 task = dag.get_task(ti.task_id)
 
                 # fixme: ti.task is transient but needs to be set
                 ti.task = task
 
                 # future: remove adhoc
+                # 如果任务类型是即席查询，则不会放入队列中
                 if task.adhoc:
                     continue
 
-                # 验证上游依赖任务
+                # 验证任务触发规则，判断上游依赖任务是否完成
                 # 根据上游任务失败的情况设置当前任务实例的状态
+                # 如果满足规则，则把任务实例发送到队列中
                 if ti.are_dependencies_met(
                         dep_context=DepContext(flag_upstream_failed=True),
                         session=session):
                     self.log.debug('Queuing task: %s', ti)
+                    # 将任务实例的主键加入队列
                     queue.append(ti.key)
 
     @provide_session
