@@ -932,7 +932,7 @@ class SchedulerJob(BaseJob):
                 if (
                         dr.start_date and dag.dagrun_timeout and
                         dr.start_date < datetime.now() - dag.dagrun_timeout):
-                    # 设置为失败状态，记录结束时间
+                    # 超时的dagrun需要设置为失败状态，并记录结束时间
                     dr.state = State.FAILED
                     dr.end_date = datetime.now()
                     # 执行dag失败回调函数，可以在其中发送告警，
@@ -954,7 +954,7 @@ class SchedulerJob(BaseJob):
                 return
 
             # this query should be replaced by find dagrun
-            # 获得最近的一个正常调度的dag_run
+            # 获得最近的一个正常非外部调度的dag_run，不包括补录的单据
             qry = (
                 session.query(func.max(DagRun.execution_date))
                 .filter_by(dag_id=dag.dag_id)
@@ -968,18 +968,32 @@ class SchedulerJob(BaseJob):
             last_scheduled_run = qry.scalar()
 
             # don't schedule @once again
-            # 确保@once，只调度一次
+            # 确保@once，只调度一次；如果存在上一次调度，说明once已经调度过了，不能再次调度
             if dag.schedule_interval == '@once' and last_scheduled_run:
                 return None
 
             # don't do scheduler catchup for dag's that don't have dag.catchup = True
-            # 修正dag的开始时间
+            # 修正dag的开始时间，dag.catchup 默认为 True
             # 即如果上几次的dagrun没有运行，则通过修改dag的开始时间，不再补录缺失的dagrun
-            # if not (dag.catchup or dag.schedule_interval == '@once'):
+            # dag.catchup为False，且调度周期不是单次时，执行下面的代码
+            # if not dag.catchup and dag.schedule_interval != '@once'):
             if not (dag.catchup or dag.schedule_interval == '@once'):
                 # The logic is that we move start_date up until
                 # one period before, so that datetime.now() is AFTER
                 # the period end, and the job can be created...
+                # |-----------------|--------------- |------------------|-----------------|
+                #                                          ||
+                #                                          \/
+                #                                          now
+                #                                    ||
+                #                                    \/
+                #                                 last_start
+                #                                                       ||
+                #                                                       \/
+                #                                                    next_start
+                #                  ||
+                #                  \/
+                #                new_start
                 now = datetime.now()
                 next_start = dag.following_schedule(now)
                 last_start = dag.previous_schedule(now)
@@ -989,10 +1003,12 @@ class SchedulerJob(BaseJob):
                 else:
                     new_start = dag.previous_schedule(last_start)
 
+                # 设置dag的开始时间最早为new_start
                 if dag.start_date:
                     if new_start >= dag.start_date:
                         dag.start_date = new_start
                 else:
+                    # 唯一需要将dag的开始时间不需要设置的场景
                     dag.start_date = new_start
 
             # 如果是dag的第一次调度，此时还不存在dagrun
@@ -1004,13 +1020,15 @@ class SchedulerJob(BaseJob):
                 if task_start_dates:
                     # 获得所有任务的最小开始时间
                     # 并获得下一次调度时间
+                    # 如果是单次任务，则下一次调度时间为任务的最小开始时间
                     next_run_date = dag.normalize_schedule(min(task_start_dates))
                     self.log.debug(
                         "Next run date based on tasks %s",
                         next_run_date
                     )
+                # 如果任务没有设置开始时间，则 next_run_date is None
             else:
-                # 获得下一次调度时间
+                # 不是第一次调度，获得下一次调度时间
                 next_run_date = dag.following_schedule(last_scheduled_run)
 
             # make sure backfills are also considered
@@ -1023,12 +1041,19 @@ class SchedulerJob(BaseJob):
 
             # don't ever schedule prior to the dag's start_date
             # 处理调度和dag开始时间的关系
+            # 注意：dag的开始时间必须设置
             if dag.start_date:
-                # 如果为单次任务，则等于开始时间
-                # 否则取最大值
+                # 如果dag设置了开始时间
+                # -- 如果是第一次调度
+                #    -- 如果任务设置了开始时间，  则 next_run_date 为所有任务的最小开始时间
+                #    -- 如果任务没有设置开始时间，则 next_run_date 为 None，且重新设置为dag的开始时间【最常见的场景】
+                # -- 如果不是第一次调度，则 next_run_date 为下一次调度时间
                 next_run_date = (dag.start_date if not next_run_date
                                  else max(next_run_date, dag.start_date))
+                # 设置next_run_date为其和dag开始时间的最大值
                 if next_run_date == dag.start_date:
+                    # 如果 dag.start_date 刚好在调度临界点上，则 next_run_date == dag.start_date
+                    # 如果 dag.start_date 不在调度临界点上，  则 next_run_date 为 dag.start_date 的下一次调度周期
                     next_run_date = dag.normalize_schedule(dag.start_date)
 
                 self.log.debug(
@@ -1040,11 +1065,64 @@ class SchedulerJob(BaseJob):
             if next_run_date > datetime.now():
                 return
 
+            # 以第一次调度【最常见的场景】为例
+            # -------------------------------------------------------------------------
+            # |-----------------|--------------- |------------------|-----------------|
+            # -------------------------------------------------------------------------
+            #                                          ||
+            #                                          \/
+            #                                       now >= period_end
+            #                   ||
+            #                   \/
+            #                dag.start_date (刚好在调度临界点，如果是小时调度，在00分00秒上)
+            #                next_run_date  (此时 next_run_date == dag.start_date)
+            #                execution_date
+            #                                   ||
+            #                                   \/
+            #                                 period_end
+
+            # -------------------------------------------------------------------------
+            # |-----------------|--------------- |------------------|-----------------|
+            # -------------------------------------------------------------------------
+            #                                          ||
+            #                                          \/
+            #                                       now >= period_end
+            #         ||
+            #         \/
+            # dag.start_date
+            #                  ||
+            #                  \/
+            #                next_run_date  (此时 next_run_date 为 dag.start_date的下一个调度时间)
+            #                execution_date
+            #                                   ||
+            #                                   \/
+            #                                 period_end
+
+            # 非第一次调度
+            # -------------------------------------------------------------------------
+            # |-----------------|--------------- |------------------|-----------------|
+            # -------------------------------------------------------------------------
+            # last_execution_date
+            #                                          ||
+            #                                          \/
+            #                                       now >= period_end
+            #                  ||
+            #                  \/
+            #                dag.start_date
+            #                  ||
+            #                  \/
+            #                next_run_date  (此时 next_run_date 为 last_execution_date的下一个调度时间)
+            #                execution_date
+            #                                   ||
+            #                                   \/
+            #                                 period_end
+
             # this structure is necessary to avoid a TypeError from concatenating
             # NoneType
             # 数据处理区间为 [next_run_date, period_end]
             # 当now > period_end时可执行
             if dag.schedule_interval == '@once':
+                # 如果是单次调度，只要当前时间大于 next_run_date 即可调用
                 period_end = next_run_date
             elif next_run_date:
                 period_end = dag.following_schedule(next_run_date)
@@ -1064,7 +1142,7 @@ class SchedulerJob(BaseJob):
                 return
 
             # 判断当前时间是否超出区间的右边界
-            # 创建dagrun
+            # 并创建dagrun
             if next_run_date and period_end and period_end <= datetime.now():
                 next_run = dag.create_dagrun(
                     run_id=DagRun.ID_PREFIX + next_run_date.isoformat(),

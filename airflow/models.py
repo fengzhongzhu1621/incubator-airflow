@@ -3369,7 +3369,9 @@ class DAG(BaseDag, LoggingMixin):
         self.task_dict = dict()
 
         # 获得指定时区
-        # 如果开始时间为空，则开始时间取所有任务的最小开始时间
+        # 如果开始时间为空，
+        # 如果catchup==True, 则开始时间取所有任务的最小开始时间
+        # 如果catchup==False, 则创建dagrun时，dag的开始时间设置为当前时间的上一个周期的上一个周期的时间
         # set timezone
         self.start_date = start_date
         self.end_date = end_date
@@ -3485,7 +3487,7 @@ class DAG(BaseDag, LoggingMixin):
             num=num, delta=self._schedule_interval)
 
     def following_schedule(self, dttm):
-        """获得下一次调度时间，如果是单次调度，则返回None
+        """获得下一次调度时间，如果是单次调度，因为self._schedule_interval为None，所以函数默认返回None
         Calculates the following schedule for this dag in local time
 
         :param dttm:  datetime
@@ -3553,7 +3555,7 @@ class DAG(BaseDag, LoggingMixin):
         return run_dates
 
     def normalize_schedule(self, dttm):
-        """获得下一次调度时间
+        """获得下一次调度时间，需要处理临界点
         Returns dttm + interval unless dttm is first interval then it returns dttm
         """
         following = self.following_schedule(dttm)
@@ -3563,13 +3565,15 @@ class DAG(BaseDag, LoggingMixin):
         if not following:
             return dttm
         # dttm不在调度时间点，即在两次调度的中间
+        # 返回下一次调度时间
         #    dttm      is          2018-04-12 00:04:33.836000，
         #    following is          2018-04-12 01:00:00
         #    previous following is 2018-04-12 00:00:00
         if self.previous_schedule(following) != dttm:
             return following
 
-        # dttm在调度时间点
+        # 如果dttm刚好在调度时间点上
+        # 则返回此时间
         #    dttm      is          2018-04-12 00:00:00
         #    following is          2018-04-12 01:00:00
         #    previous following is 2018-04-12 00:00:00
