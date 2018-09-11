@@ -37,18 +37,22 @@ class NotInRetryPeriodDep(BaseTIDep):
                        "permitted.")
             return
 
-        # 验证任务实例是否标记为重试
+        # 验证任务实例是否标记为重试，如果状态不为重试，则通过
         if ti.state != State.UP_FOR_RETRY:
             yield self._passing_status(
                 reason="The task instance was not marked for retrying.")
             return
 
-        # 任务实例已经标记为重试，但是还没有到下一次重试时间，如果运行就会失败
+        # 任务实例已经标记为重试
+        # 但是还没有到下一次重试时间，如果运行就会失败
         # Calculate the date first so that it is always smaller than the timestamp used by
         # ready_for_retry
-        cur_date = datetime.now()
-        next_task_retry_date = ti.next_retry_datetime()
+        # 如果还没有到达重试时间
         if ti.is_premature:
+            cur_date = datetime.now()
+            # 获得下一次重试开始时间
+            # 即当前时间 <= 下一次重试开始时间
+            next_task_retry_date = ti.next_retry_datetime()
             yield self._failing_status(
                 reason="Task is not ready for retry yet but will be retried "
                        "automatically. Current date is {0} and task will be retried "

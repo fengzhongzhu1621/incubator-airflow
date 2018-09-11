@@ -41,11 +41,13 @@ class TriggerRuleDep(BaseTIDep):
         TR = airflow.models.TriggerRule
 
         # Checking that all upstream dependencies have succeeded
+        # 如果任务没有上游任务，则通过，效率最高
         if not ti.task.upstream_list:
             yield self._passing_status(
                 reason="The task instance did not have any upstream tasks.")
             return
 
+        # 如果任务设置了DUMMY规则，仅作为测试使用
         if ti.task.trigger_rule == TR.DUMMY:
             yield self._passing_status(reason="The task had a dummy trigger rule set.")
             return
@@ -76,8 +78,8 @@ class TriggerRuleDep(BaseTIDep):
                     State.UPSTREAM_FAILED, State.SKIPPED]),
             )
         )
-
         successes, skipped, failed, upstream_failed, done = qry.first()
+
         for dep_status in self._evaluate_trigger_rule(
                 ti=ti,
                 successes=successes,    # 成功数量
@@ -128,10 +130,14 @@ class TriggerRuleDep(BaseTIDep):
         TR = airflow.models.TriggerRule
 
         task = ti.task
+        # 上游任务的数量
         upstream = len(task.upstream_task_ids)
         # 任务规则
         tr = task.trigger_rule
         # 判断上游任务是否全部完成
+        # 如果上游任务实例的数量 >= 上游任务的总量，
+        # 说明上游的所有任务实例已经执行完成
+        # done表示上游任务实例的总量
         upstream_done = done >= upstream
         upstream_tasks_state = {
             "total": upstream, "successes": successes, "skipped": skipped,
@@ -145,6 +151,8 @@ class TriggerRuleDep(BaseTIDep):
         # bundled together for efficiency.
         # handling instant state assignment based on trigger rules
         # 根据上游任务失败的情况设置当前任务实例的状态
+        # 变更任务实例的状态
+        # 标记为 SKIPPED 的原因当设置了 depends_on_past=True 时，不会影响下一个调度任务实例的执行
         if flag_upstream_failed:
             if tr == TR.ALL_SUCCESS:
                 if upstream_failed or failed:

@@ -1301,7 +1301,7 @@ class TaskInstance(Base, LoggingMixin):
         if not task.downstream_task_ids:
             return True
 
-        # 验证当前调度的任务实例的所有下游任务实例是否都执行完成
+        # 获得下游任务实例的状态为success的数量
         ti = session.query(func.count(TaskInstance.task_id)).filter(
             TaskInstance.dag_id == self.dag_id,
             TaskInstance.task_id.in_(task.downstream_task_ids),
@@ -1309,12 +1309,14 @@ class TaskInstance(Base, LoggingMixin):
             TaskInstance.state == State.SUCCESS,
         )
         count = ti[0][0]
+        # 验证当前调度的任务实例的所有下游任务实例是否都执行完成
         return count == len(task.downstream_task_ids)
 
     @property
     @provide_session
     def previous_ti(self, session=None):
-        """ The task instance for the task that ran before this task instance """
+        """根据当前任务实例获得上一个调度的同一个任务的任务实例
+        The task instance for the task that ran before this task instance """
 
         dag = self.task.dag
         if dag:
@@ -1324,6 +1326,7 @@ class TaskInstance(Base, LoggingMixin):
             # LEGACY: most likely running from unit tests
             if not dr:
                 # Means that this TI is NOT being run from a DR, but from a catchup
+                # 如果是单次调度，返回None
                 previous_scheduled_date = dag.previous_schedule(self.execution_date)
                 if not previous_scheduled_date:
                     return None
@@ -1333,7 +1336,7 @@ class TaskInstance(Base, LoggingMixin):
 
             # Note: 因为dag_run的dag属性默认为None
             dr.dag = dag
-            #
+            # 获得上一个调度的dag实例
             if dag.catchup:
                 # 获得上一个调度的dag实例
                 last_dagrun = dr.get_previous_scheduled_dagrun(session=session)
@@ -1448,6 +1451,7 @@ class TaskInstance(Base, LoggingMixin):
             delay = timedelta(seconds=delay_backoff_in_seconds)
             if self.task.max_retry_delay:
                 delay = min(self.task.max_retry_delay, delay)
+        # 任务失败的时间 + 偏移
         return self.end_date + delay
 
     def ready_for_retry(self):

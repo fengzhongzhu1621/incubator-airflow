@@ -1158,6 +1158,8 @@ class SchedulerJob(BaseJob):
         """获取正在运行的dagrun
             1. 创建dagrun关联的任务实例
             2. 将任务实例加入到队列中
+            3. 处理dagrun中所有任务实例状态为State.NONE, State.UP_FOR_RETRY的实例
+               如果命中策略，则加入到队列中
         This method schedules the tasks for a single DAG by looking at the
         active DAG runs and adding task instances that should run to the
         queue.
@@ -1199,6 +1201,7 @@ class SchedulerJob(BaseJob):
                 make_transient(run)
                 active_dag_runs.append(run)
 
+        # 处理状态为 State.NONE, State.UP_FOR_RETRY 的任务实例
         for run in active_dag_runs:
             self.log.debug("Examining active DAG run: %s", run)
             # this needs a fresh session sometimes tis get detached
@@ -1223,6 +1226,14 @@ class SchedulerJob(BaseJob):
                 # 验证任务触发规则，判断上游依赖任务是否完成
                 # 根据上游任务失败的情况设置当前任务实例的状态
                 # 如果满足规则，则把任务实例发送到队列中
+                # 需要验证的规则如下：
+                #     验证重试时间： 任务实例已经标记为重试，但是还没有到下一次重试时间，如果运行就会失败
+                #     NotInRetryPeriodDep(),
+                #     验证任务实例是否依赖上一个周期的任务实例
+                #     PrevDagrunDep(),
+                #     验证上游依赖任务
+                #     TriggerRuleDep(),
+                # flag_upstream_failed = True，表示需要根据上游任务的执行情况修改当前任务实例的状态
                 if ti.are_dependencies_met(
                         dep_context=DepContext(flag_upstream_failed=True),
                         session=session):
