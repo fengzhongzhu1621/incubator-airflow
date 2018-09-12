@@ -468,11 +468,12 @@ class DagFileProcessorManager(LoggingMixin):
         :return: None
         """
         # 设置DAG目录下最新的DAG文件路径数组
-        self._file_paths = new_file_paths
+        self._file_paths = list(new_file_paths)
         # 获得 self._file_path_queue 和  new_file_paths的交集
         # 即从文件队列中删除不存在的文件
         self._file_path_queue = [x for x in self._file_path_queue
-                                 if x in new_file_paths]
+                                 if x in self._file_paths]
+        self.log.info("There are %s files in file_path_queue", len(self._file_path_queue))
         # Stop processors that are working on deleted files
         # 已删除的文件关联的处理器停止运行
         filtered_processors = {}
@@ -485,6 +486,7 @@ class DagFileProcessorManager(LoggingMixin):
                 # 将被删除的文件关联的文件处理器进程，停止执行
                 processor.terminate()
         self._processors = filtered_processors
+        self.log.info("There are %s files in processors", len(self._processors))
 
     def processing_count(self):
         """获得文件处理器的数量
@@ -503,7 +505,7 @@ class DagFileProcessorManager(LoggingMixin):
 
     def heartbeat(self):
         """心跳
-        
+
         - 处理执行完毕的处理器
         - 将任务加入队列
         - 执行队列中的进程
@@ -518,7 +520,7 @@ class DagFileProcessorManager(LoggingMixin):
         # 已完成的文件处理器
         finished_processors = {}
         """:type : dict[unicode, AbstractDagFileProcessor]"""
-        # 正在运行的文件处理器		
+        # 正在运行的文件处理器
         running_processors = {}
         """:type : dict[unicode, AbstractDagFileProcessor]"""
         # 遍历所有的文件处理器
@@ -576,7 +578,6 @@ class DagFileProcessorManager(LoggingMixin):
             now = datetime.now()
             file_paths_recently_processed = []
 
-            longest_parse_duration = 0
             # 遍历需要处理的文件列表
             for file_path in self._file_paths:
                 # 获得文件处理器上一次执行完成的时间
@@ -606,14 +607,25 @@ class DagFileProcessorManager(LoggingMixin):
                     "File path %s is still being processed (started: %s)",
                     processor.file_path, processor.start_time.isoformat()
                 )
+
             self.log.debug(
                 "Queuing the following files for processing:\n\t%s",
                 "\n\t".join(files_paths_to_queue)
             )
 
-            # 将任务加入队列
+            # 将文件放入执行队列
             self._file_path_queue.extend(files_paths_to_queue)
 
+            file_paths_len = len(self._file_paths)
+            file_paths_in_progress_len = len(file_paths_in_progress)
+            file_paths_recently_processed_len = len(file_paths_recently_processed)
+            files_paths_to_queue_len = len(files_paths_to_queue)
+            self.log.info("Queuing %s files for processing: %s = %s - %s - %s",
+                          files_paths_to_queue_len,
+                          files_paths_to_queue_len,
+                          file_paths_len,
+                          file_paths_in_progress_len,
+                          file_paths_recently_processed_len)
         # 处理器并发性最大值验证
         # Start more processors if we have enough slots and files to process
         while (self._parallelism - len(self._processors) > 0 and
@@ -638,6 +650,9 @@ class DagFileProcessorManager(LoggingMixin):
 
         # 返回已完成处理器的执行结果
         return simple_dags
+
+    def get_heart_beat_count(self):
+        return self._run_count.get(self._heart_beat_key, 0)
 
     def max_runs_reached(self):
         """判断文件处理器是否触发最大阈值

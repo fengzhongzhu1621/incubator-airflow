@@ -295,7 +295,7 @@ class AirflowConfigParser(ConfigParser):
 
     def read(self, filenames):
         """读取多个配置文件，并进行校验 ."""
-        super(AirflowConfigParser, self).read(filenames)
+        super(AirflowConfigParser, self).read(filenames, encoding="utf-8")
         self._validate()
 
     def has_option(self, section, option):

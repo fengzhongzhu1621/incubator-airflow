@@ -379,6 +379,7 @@ class DagBag(BaseDagBag, LoggingMixin):
             if mod_name in sys.modules:
                 del sys.modules[mod_name]
 
+            # 导入DAG文件
             with timeout(configuration.conf.getint('core', "DAGBAG_IMPORT_TIMEOUT")):
                 try:
                     m = imp.load_source(mod_name, filepath)
@@ -2592,6 +2593,8 @@ class BaseOperator(LoggingMixin):
         # 用于上下文with dag
         if not dag and _CONTEXT_MANAGER_DAG:
             dag = _CONTEXT_MANAGER_DAG
+
+        # 将任务添加到DAG中
         if dag:
             self.dag = dag
 
@@ -2728,7 +2731,7 @@ class BaseOperator(LoggingMixin):
 
     @dag.setter
     def dag(self, dag):
-        """
+        """将任务添加到dag中
         Operators can be assigned to one DAG, one time. Repeat assignments to
         that same DAG are ok.
         """

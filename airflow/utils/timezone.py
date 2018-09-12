@@ -105,7 +105,7 @@ def convert_to_utc(value):
 
 
 def make_aware(value, timezone=None):
-    """将无时区的datetime对象，添加时区信息 
+    """将无时区的datetime对象，添加时区信息
 
     Make a naive datetime.datetime in a given time zone aware.
 
