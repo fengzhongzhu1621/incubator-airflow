@@ -2582,6 +2582,7 @@ class BaseOperator(LoggingMixin):
         # 给每个任务分配资源: 每个任务所分配的资源
         self.resources = Resources(**(resources or {}))
         self.run_as_user = run_as_user
+        # 任务并发数限制，[State.RUNNING, State.QUEUED]状态的任务实例的数量不能超过此阈值
         self.task_concurrency = task_concurrency
         self.executor_config = executor_config or {}
 
@@ -5315,6 +5316,8 @@ class DagRun(Base, LoggingMixin):
             session=session
         )
         none_depends_on_past = all(not t.task.depends_on_past for t in unfinished_tasks)
+
+        # 未完成的任务实例中，都没有设置并发数限制
         none_task_concurrency = all(t.task.task_concurrency is None
                                     for t in unfinished_tasks)
         # small speed up
