@@ -174,7 +174,7 @@ class BaseJob(Base, LoggingMixin):
         """
         # 每次心跳获得最新的job状态
         with create_session() as session:
-            # 如果只能查询到一个结果，返回它，否则抛出异常。 
+            # 如果只能查询到一个结果，返回它，否则抛出异常。
             # 没有结果时抛sqlalchemy.orm.exc.NoResultFound，
             # 有超过一个结果时抛sqlalchemy.orm.exc.MultipleResultsFound。
             job = session.query(BaseJob).filter_by(id=self.id).one()
@@ -632,7 +632,7 @@ class SchedulerJob(BaseJob):
         self.dag_ids = [dag_id] if dag_id else []
         if dag_ids:
             self.dag_ids.extend(dag_ids)
-        
+
         # 子目录
         self.subdir = subdir
 
@@ -1890,7 +1890,7 @@ class SchedulerJob(BaseJob):
                                     pickle_dags,
                                     self.dag_ids)
 
-        # 创建文件处理器进程管理类
+        # 创建文件处理器进程管理类，处理所有搜索到的多个可用文件
         processor_manager = DagFileProcessorManager(self.subdir,
                                                     known_file_paths,
                                                     self.max_threads,
@@ -1946,7 +1946,7 @@ class SchedulerJob(BaseJob):
 
     def _execute_helper(self, processor_manager):
         """
-        :param processor_manager: manager to use
+        :param processor_manager: manager to use  多文件进程管理器
         :type processor_manager: DagFileProcessorManager
         :return: None
         """
@@ -1969,6 +1969,7 @@ class SchedulerJob(BaseJob):
         # Use this value initially
         known_file_paths = processor_manager.file_paths
 
+        # scheduler主进程死循环
         # 判断scheduler job是否结束
         # 如果 run_duration 是否负数，则为死循环
         # For the execute duration, parse and schedule DAGs
@@ -2000,7 +2001,8 @@ class SchedulerJob(BaseJob):
             # 启动DAG文件子进程，启动子SchedulerJob
             # 返回子进程已经执行完毕的 DAG对象，即这个DAG的任务实例已经被标记为SCHEDULERED
             # Kick of new processes and collect results from finished ones
-            self.log.debug("Heartbeating the process manager")
+            self.log.info("Heartbeating the process manager, number of times is %s",
+                          processor_manager.get_heart_beat_count())
             simple_dags = processor_manager.heartbeat()
 
             # 因为sqlite只支持单进程，所以需要等待DAG子进程处理完成
@@ -3090,8 +3092,8 @@ class LocalTaskJob(BaseJob):
     @provide_session
     def heartbeat_callback(self, session=None):
         """Self destruct task if state has been moved away from running externally
-        每次心跳时执行此函数
-        """
+		每次心跳时执行此函数
+		"""
         if self.terminating:
             # ensure termination if processes are created later
             self.task_runner.terminate()
