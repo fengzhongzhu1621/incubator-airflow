@@ -48,6 +48,7 @@ standard_library.install_aliases()
 
 log = LoggingMixin().log
 
+# 控制警告错误的输出
 # show Airflow's deprecation warnings
 warnings.filterwarnings(
     action='default', category=DeprecationWarning, module='airflow')

@@ -2987,6 +2987,7 @@ class LocalTaskJob(BaseJob):
             *args, **kwargs):
         # 任务实例
         self.task_instance = task_instance
+        # DAG ID
         self.dag_id = task_instance.dag_id
         # 忽略任务的所有依赖
         self.ignore_all_deps = ignore_all_deps
@@ -3008,10 +3009,11 @@ class LocalTaskJob(BaseJob):
         super(LocalTaskJob, self).__init__(*args, **kwargs)
 
     def _execute(self):
-        # 获得任务实例运行期
+        """调用run()函数时执行 ."""
+        # 获得任务实例运行器
         self.task_runner = get_task_runner(self)
 
-        # job终止信号处理函数
+        # 注册job终止信号处理函数
         def signal_handler(signum, frame):
             """Setting kill signal handler"""
             self.log.error("Received SIGTERM. Terminating subprocesses")
@@ -3019,7 +3021,7 @@ class LocalTaskJob(BaseJob):
             raise AirflowException("LocalTaskJob received SIGTERM signal")
         signal.signal(signal.SIGTERM, signal_handler)
 
-        # 任务实例执行前的验证
+        # 任务实例执行前的验证，将任务实例的状态改为 RUNNING
         if not self.task_instance._check_and_change_state_before_execution(
                 mark_success=self.mark_success,
                 ignore_all_deps=self.ignore_all_deps,
@@ -3085,15 +3087,15 @@ class LocalTaskJob(BaseJob):
             self.on_kill()
 
     def on_kill(self):
-        """关闭任务执行器 ."""
+        """关闭任务实例执行器 ."""
         self.task_runner.terminate()
         self.task_runner.on_finish()
 
     @provide_session
     def heartbeat_callback(self, session=None):
         """Self destruct task if state has been moved away from running externally
-		每次心跳时执行此函数
-		"""
+            每次心跳时执行此函数
+        """
         if self.terminating:
             # ensure termination if processes are created later
             self.task_runner.terminate()
@@ -3107,7 +3109,7 @@ class LocalTaskJob(BaseJob):
         same_hostname = fqdn == ti.hostname
         same_process = ti.pid == os.getpid()
 
-        # TODO 为什么需要判断hostname和进程ID
+        # 需要判断hostname和进程ID，任务实例可能被另一台或本机重复调度
         if ti.state == State.RUNNING:
             if not same_hostname:
                 self.log.warning("The recorded hostname {ti.hostname} "

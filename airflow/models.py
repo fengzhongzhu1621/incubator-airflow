@@ -1633,8 +1633,7 @@ class TaskInstance(Base, LoggingMixin):
             session.merge(self)
         session.commit()
 
-        # TODO 为什么要在这里关闭DB连接
-        # 关闭DB连接池
+        # 关闭DB连接池，因为在后续的LocalTaskJob处理中不再需要DB操作了
         # Closing all pooled connections to prevent
         # "max number of connections reached"
         settings.engine.dispose()

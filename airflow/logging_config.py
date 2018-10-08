@@ -32,6 +32,7 @@ def configure_logging():
     try:
         # Prepare the classpath so we are sure that the config folder
         # is on the python classpath and it is reachable
+        # 将路径加入python系统路径
         prepare_classpath()
 
         logging_class_path = conf.get('core', 'logging_config_class')
