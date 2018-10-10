@@ -57,12 +57,13 @@ warnings.filterwarnings(
 
 
 def generate_fernet_key():
+    """生成一个44字节的随机数 ."""
     try:
         from cryptography.fernet import Fernet
     except ImportError:
         pass
     try:
-        # 产生了一个32位随机数，并用base64编码，并解码为unicode编码
+        # 产生了一个44字节的随机数，并用base64编码，并解码为unicode编码
         key = Fernet.generate_key().decode()
     except NameError:
         key = "cryptography_not_found_storing_passwords_in_plain_text"
@@ -70,7 +71,7 @@ def generate_fernet_key():
 
 
 def expand_env_var(env_var):
-    """
+    """将路径用环境变量中的值替换.
     Expands (potentially nested) env vars by repeatedly applying
     `expandvars` and `expanduser` until interpolation stops having
     any effect.
@@ -88,7 +89,7 @@ def expand_env_var(env_var):
 
 
 def run_command(command):
-    """
+    """执行shell命令
     Runs command and returns stdout
     """
     process = subprocess.Popen(
@@ -108,9 +109,11 @@ def run_command(command):
     return output
 
 
-# 读取默认配置
 def _read_default_config_file(file_name):
+    """读取默认配置 ."""
+    # 获得默认配置路径
     templates_dir = os.path.join(os.path.dirname(__file__), 'config_templates')
+    # 获得配置文件路径名
     file_path = os.path.join(templates_dir, file_name)
     if six.PY2:
         with open(file_path) as f:
@@ -269,7 +272,7 @@ class AirflowConfigParser(ConfigParser):
             log.warning(
                 "section/key [{section}/{key}] not found in config".format(**locals())
             )
-
+            # 配置不存在，抛出异常
             raise AirflowConfigException(
                 "section/key [{section}/{key}] not found "
                 "in config".format(**locals()))
@@ -453,29 +456,29 @@ mkdir_p(AIRFLOW_HOME)
 
 # 获得配置文件路径
 if 'AIRFLOW_CONFIG' not in os.environ:
+    # 首先从当前用户的home路径下获取配置文件
+    # 然后从AIRFLOW_HOME下的获取
     if os.path.isfile(expand_env_var('~/airflow.cfg')):
         AIRFLOW_CONFIG = expand_env_var('~/airflow.cfg')
     else:
         AIRFLOW_CONFIG = AIRFLOW_HOME + '/airflow.cfg'
 else:
+    # 从环境变量中获取配置文件路径
     AIRFLOW_CONFIG = expand_env_var(os.environ['AIRFLOW_CONFIG'])
 
+# 获得测试目录下dags的目录
 # Set up dags folder for unit tests
 # this directory won't exist if users install via pip
-_TEST_DAGS_FOLDER = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.realpath(__file__))),
-    'tests',
-    'dags')
+project_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+_TEST_DAGS_FOLDER = os.path.join(project_dir, 'tests', 'dags')
 if os.path.exists(_TEST_DAGS_FOLDER):
     TEST_DAGS_FOLDER = _TEST_DAGS_FOLDER
 else:
     TEST_DAGS_FOLDER = os.path.join(AIRFLOW_HOME, 'dags')
 
+# 获得测试目录下plugins的目录
 # Set up plugins folder for unit tests
-_TEST_PLUGINS_FOLDER = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.realpath(__file__))),
-    'tests',
-    'plugins')
+_TEST_PLUGINS_FOLDER = os.path.join(project_dir, 'tests', 'plugins')
 if os.path.exists(_TEST_PLUGINS_FOLDER):
     TEST_PLUGINS_FOLDER = _TEST_PLUGINS_FOLDER
 else:
@@ -483,7 +486,7 @@ else:
 
 
 def parameterized_config(template):
-    """
+    """使用全局变量和局部变量渲染模版字符串
     Generates a configuration from the provided template + variables defined in
     current scope
     :param template: a config content templated with {{variables}}
@@ -492,16 +495,20 @@ def parameterized_config(template):
     return template.format(**all_vars)
 
 
+# 获得单元测试配置文件
 TEST_CONFIG_FILE = AIRFLOW_HOME + '/unittests.cfg'
 
+# 如果需要创建一个新的配置文件，则需要产生一个44字节的随机数
 # only generate a Fernet key if we need to create a new config file
 if not os.path.isfile(TEST_CONFIG_FILE) or not os.path.isfile(AIRFLOW_CONFIG):
     FERNET_KEY = generate_fernet_key()
 else:
     FERNET_KEY = ''
 
+# 生成一个16个字节的加密串
 SECRET_KEY = b64encode(os.urandom(16)).decode('utf-8')
-# 安装单元测试配置文件
+
+# 自动生成单元测试配置文件
 TEMPLATE_START = (
     '# ----------------------- TEMPLATE BEGINS HERE -----------------------')
 if not os.path.isfile(TEST_CONFIG_FILE):
@@ -512,7 +519,7 @@ if not os.path.isfile(TEST_CONFIG_FILE):
         cfg = parameterized_config(TEST_CONFIG)
         f.write(cfg.split(TEMPLATE_START)[-1].strip())
 
-# 安装配置文件
+# 自动生成默认配置文件
 if not os.path.isfile(AIRFLOW_CONFIG):
     log.info(
         'Creating new Airflow config file in: %s',
@@ -529,11 +536,12 @@ log.info("Reading the config from %s", AIRFLOW_CONFIG)
 
 # 创建配置对象
 conf = AirflowConfigParser(default_config=parameterized_config(DEFAULT_CONFIG))
-
+# 读取正式环境配置文件
 conf.read(AIRFLOW_CONFIG)
 
-
+# 自动生成rbac webserver配置文件
 if conf.getboolean('webserver', 'rbac'):
+    # 读取默认webserver配置
     DEFAULT_WEBSERVER_CONFIG = _read_default_config_file('default_webserver_config.py')
 
     WEBSERVER_CONFIG = AIRFLOW_HOME + '/webserver_config.py'
@@ -543,6 +551,7 @@ if conf.getboolean('webserver', 'rbac'):
         with open(WEBSERVER_CONFIG, 'w') as f:
             f.write(DEFAULT_WEBSERVER_CONFIG)
 
+# 加载测试配置
 if conf.getboolean('core', 'unit_test_mode'):
     conf.load_test_config()
 
