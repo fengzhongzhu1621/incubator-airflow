@@ -19,7 +19,7 @@
 # under the License.
 
 from __future__ import print_function
-from backports.configparser import NoSectionError
+
 import logging
 
 import os
@@ -28,25 +28,28 @@ import textwrap
 import random
 import string
 from importlib import import_module
-
-import getpass
-import reprlib
-import argparse
-from builtins import input
-from collections import namedtuple
-import json
-from tabulate import tabulate
-
-import daemon
-from daemon.pidfile import TimeoutPIDLockFile
 import signal
 import sys
 import threading
 import traceback
 import time
-import psutil
+import getpass
+import argparse
+from collections import namedtuple
+import json
 import re
 from urllib.parse import urlunparse
+
+from builtins import input
+from builtins import itervalues
+from backports.configparser import NoSectionError
+
+import reprlib
+from tabulate import tabulate
+
+import daemon
+from daemon.pidfile import TimeoutPIDLockFile
+import psutil
 
 import airflow
 from airflow import api
@@ -162,12 +165,14 @@ def get_dags(args):
     if not args.dag_regex:
         return [get_dag(args)]
     dagbag = DagBag(process_subdir(args.subdir))
-    matched_dags = [dag for dag in dagbag.dags.values() if re.search(
+    # 获得dag_id名称匹配的dag对象
+    matched_dags = [dag for dag in itervalues(dagbag.dags) if re.search(
         args.dag_id, dag.dag_id)]
     if not matched_dags:
         raise AirflowException(
             'dag_id could not be found with regex: {}. Either the dag did not exist '
             'or it failed to parse.'.format(args.dag_id))
+    # 返回匹配的dag对象
     return matched_dags
 
 
@@ -2124,24 +2129,37 @@ class CLIFactory(object):
 
     @classmethod
     def get_parser(cls, dag_parser=False):
+        # 创建命令行解析器
         parser = argparse.ArgumentParser()
+        # 添加子解析器
         subparsers = parser.add_subparsers(
             help='sub-command help', dest='subcommand')
         subparsers.required = True
 
-        subparser_list = cls.dag_subparsers if dag_parser else cls.subparsers_dict.keys()
-        for sub in subparser_list:
-            sub = cls.subparsers_dict[sub]
-            sp = subparsers.add_parser(sub['func'].__name__, help=sub['help'])
+        # 获得需要添加到子解析器的命令名
+        subparser_name_list = cls.dag_subparsers if dag_parser else cls.subparsers_dict.keys()
+        # 遍历子解析器命令的名称
+        for subparser_name in subparser_name_list:
+            # 获得子解析器配置
+            subparser_conf = cls.subparsers_dict[subparser_name]
+            # 根据子命令名创建子解析器
+            sp = subparsers.add_parser(subparser_conf['func'].__name__,
+                                       help=subparser_conf['help'])
+            # 遍历子命令参数
             for arg in sub['args']:
                 if 'dag_id' in arg and dag_parser:
                     continue
-                arg = cls.args[arg]
+                # 根据参数名，从全局参数表中获取参数的详细配置
+                arg_namedtuple = cls.args[arg]
+                # 获得参数命名元组的值
                 kwargs = {
-                    f: getattr(arg, f)
-                    for f in arg._fields if f != 'flags' and getattr(arg, f)}
-                sp.add_argument(*arg.flags, **kwargs)
-            sp.set_defaults(func=sub['func'])
+                    f: getattr(arg_namedtuple, f)
+                    for f in arg_namedtuple._fields if f != 'flags' and getattr(arg_namedtuple, f)}
+                # 子解析器添加参数
+                # flags：参数的短写和长写
+                sp.add_argument(*arg_namedtuple.flags, **kwargs)
+            # 设置参数的动作
+            sp.set_defaults(func=subparser_conf['func'])
         return parser
 
 
