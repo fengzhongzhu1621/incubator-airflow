@@ -69,14 +69,17 @@ def action_logging(f):
         assert isinstance(args[0], Namespace), \
             "1st positional argument should be argparse.Namespace instance, " \
             "but {}".format(args[0])
+        # 创建命令行参数的上下文
         metrics = _build_metrics(f.__name__, args[0])
         cli_action_loggers.on_pre_execution(**metrics)
+        # 执行命令行
         try:
             return f(*args, **kwargs)
         except Exception as e:
             metrics['error'] = e
             raise
         finally:
+            # 记录命令行结束时间
             metrics['end_datetime'] = datetime.now()
             cli_action_loggers.on_post_execution(**metrics)
 
@@ -103,9 +106,12 @@ def _build_metrics(func_name, namespace):
     metrics['dag_id'] = tmp_dic.get('dag_id')
     metrics['task_id'] = tmp_dic.get('task_id')
     metrics['execution_date'] = tmp_dic.get('execution_date')
+    # TODO 记录IP地址
     metrics['host_name'] = socket.gethostname()
 
     extra = json.dumps(dict((k, metrics[k]) for k in ('host_name', 'full_command')))
+
+    # 构造需要记录在DB中的日志
     log = airflow.models.Log(
         event='cli_{}'.format(func_name),
         task_instance=None,
