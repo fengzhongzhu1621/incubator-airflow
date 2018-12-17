@@ -178,28 +178,34 @@ def get_dags(args):
 
 @cli_utils.action_logging
 def backfill(args, dag=None):
+    """补录指定时间范围内的dagrun ."""
     logging.basicConfig(
         level=settings.LOGGING_LEVEL,
         format=settings.SIMPLE_LOG_FORMAT)
 
+    # 根据命令行参数dag_id获得dag对象
     dag = dag or get_dag(args)
 
     if not args.start_date and not args.end_date:
         raise AirflowException("Provide a start_date and/or end_date")
 
     # If only one date is passed, using same as start and end
+    # TI.execution_date >= start_date && TI.execution_date <= end_date
     args.end_date = args.end_date or args.start_date
     args.start_date = args.start_date or args.end_date
 
     # 获得dag的子集，如果忽略依赖则匹配的任务不会包含上游任务
+    # 使用正则表达式匹配dag中所有的任务
     if args.task_regex:
         dag = dag.sub_dag(
             task_regex=args.task_regex,
             include_upstream=not args.ignore_dependencies)
 
+    # 获得dagrun运行时配置
     run_conf = None
     if args.conf:
         run_conf = json.loads(args.conf)
+
     # 模拟运行，仅仅渲染模板参数
     if args.dry_run:
         print("Dry run of DAG {0} on {1}".format(args.dag_id,
@@ -210,6 +216,7 @@ def backfill(args, dag=None):
             # 渲染任务模板参数，并打印渲染后的模板参数内容，不会运行任务实例
             ti.dry_run()
     else:
+        # 重置dagruns
         if args.reset_dagruns:
             DAG.clear_dags(
                 [dag],
@@ -218,6 +225,7 @@ def backfill(args, dag=None):
                 confirm_prompt=True,
                 include_subdags=True,
             )
+
         # 调用 BackfillJob.run()
         dag.run(
             # 开始调度时间 (>=)

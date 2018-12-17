@@ -191,10 +191,11 @@ def clear_task_instances(tis,
         if ti.state == State.RUNNING:
             # 如果任务实例已经被调度，则设置为关闭状态
             if ti.job_id:
+                # 将任务实例状态改为SHUTDOWN
                 ti.state = State.SHUTDOWN
+                # 记录job实例
                 job_ids.append(ti.job_id)
         else:
-            # TODO 修改任务实例重试次数的原因 ？
             task_id = ti.task_id
             if dag and dag.has_task(task_id):
                 # 获得任务
@@ -204,13 +205,15 @@ def clear_task_instances(tis,
                 # 重新设置任务实例的最大重试次数
                 ti.max_tries = ti.try_number + task_retries - 1
             else:
+                # DB中存在任务实例，但是dag中可能变更了代码导致原有的任务存在了
                 # Ignore errors when updating max_tries if dag is None or
                 # task not found in dag since database records could be
                 # outdated. We make max_tries the maximum value of its
                 # original max_tries or the current task try number.
                 ti.max_tries = max(ti.max_tries, ti.try_number - 1)
+            # 将任务设置为None
             ti.state = State.NONE
-            # TODO why merge
+            # TODO 为什么需要merge
             session.merge(ti)
 
     # 将正在运行的任务实例，关联的job设置为关闭状态
@@ -3954,7 +3957,8 @@ class DAG(BaseDag, LoggingMixin):
             start_date=None,
             end_date=None,
     ):
-        # TODO 更新dag每个状态的dag_run的数量，并设置dirty为False
+        """将dagrun的状态设置为RUNNING ."""
+        # 更新dag每个状态的dag_run的数量，并设置dirty为False，实际上并没有执行
         query = session.query(DagRun).filter_by(dag_id=self.dag_id)
         if start_date:
             query = query.filter(DagRun.execution_date >= start_date)
@@ -3962,10 +3966,13 @@ class DAG(BaseDag, LoggingMixin):
             query = query.filter(DagRun.execution_date <= end_date)
         drs = query.all()
 
+        # 将dagrun的状态设置为RUNNING
         dirty_ids = []
         for dr in drs:
             dr.state = state
             dirty_ids.append(dr.dag_id)
+
+        # 添加统计信息
         DagStat.update(dirty_ids, session=session)
 
     @provide_session
@@ -3979,7 +3986,8 @@ class DAG(BaseDag, LoggingMixin):
             dry_run=False,
             session=None,
     ):
-        """清除正在运行的任务实例和job，将dag_run设置为运行态
+        """删除任务实例，重置dagruns，返回重置成功的任务实例的数量
+        清除正在运行的任务实例和job，将dag_run设置为运行态
         Clears a set of task instances associated with the current dag for
         a specified date range.
         """
@@ -4013,11 +4021,13 @@ class DAG(BaseDag, LoggingMixin):
             session.expunge_all()
             return tis
 
-        # 获得任务实例的数量
+        # 获得需要清除的任务实例的数量
         count = tis.count()
         do_it = True
         if count == 0:
             return 0
+
+        # 是否需要确认
         if confirm_prompt:
             ti_list = "\n".join([str(t) for t in tis])
             question = (
@@ -4032,8 +4042,9 @@ class DAG(BaseDag, LoggingMixin):
                                  session,
                                  dag=self,
                                  )
+            # 重置dagrun
             if reset_dag_runs:
-                # 在dag统计表中，更新dag每个状态的dag_run的数量，并设置dirty为False
+                # 将dagrun的状态设置为RUNNING
                 self.set_dag_runs_state(session=session,
                                         start_date=start_date,
                                         end_date=end_date,
@@ -4050,13 +4061,14 @@ class DAG(BaseDag, LoggingMixin):
             cls, dags,
             start_date=None,
             end_date=None,
-            only_failed=False,
-            only_running=False,
-            confirm_prompt=False,
-            include_subdags=True,
-            reset_dag_runs=True,
+            only_failed=False,      # 是否仅删除失败的任务
+            only_running=False,     # 是否仅删除运行多个任务
+            confirm_prompt=False,   # 是否需要用户确认
+            include_subdags=True,   # 包含子dag
+            reset_dag_runs=True,    # 重置dagrun
             dry_run=False,
     ):
+        """删除任务实例，重置dagruns，返回重置成功的任务实例的数量 ."""
         all_tis = []
         for dag in dags:
             # 获得待清除的任务实例
@@ -4071,7 +4083,7 @@ class DAG(BaseDag, LoggingMixin):
                 dry_run=True)
             all_tis.extend(tis)
 
-        # 返回所有待清除的任务实例
+        # 模拟测试：返回所有待清除的任务实例
         if dry_run:
             return all_tis
 
@@ -4080,6 +4092,8 @@ class DAG(BaseDag, LoggingMixin):
         if count == 0:
             print("Nothing to clear.")
             return 0
+        
+        # 用户确认
         if confirm_prompt:
             ti_list = "\n".join([str(t) for t in all_tis])
             question = (
