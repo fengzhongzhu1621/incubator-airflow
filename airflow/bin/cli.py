@@ -178,7 +178,7 @@ def get_dags(args):
 
 @cli_utils.action_logging
 def backfill(args, dag=None):
-    """补录指定时间范围内的dagrun ."""
+    """补录指定时间范围内的dagrun，一次补录一个dag"""
     logging.basicConfig(
         level=settings.LOGGING_LEVEL,
         format=settings.SIMPLE_LOG_FORMAT)
@@ -196,6 +196,7 @@ def backfill(args, dag=None):
 
     # 获得dag的子集，如果忽略依赖则匹配的任务不会包含上游任务
     # 使用正则表达式匹配dag中所有的任务
+    # 默认包含上游任务，补录时从上游任务开始运行，下游任务默认不执行
     if args.task_regex:
         dag = dag.sub_dag(
             task_regex=args.task_regex,
@@ -206,18 +207,23 @@ def backfill(args, dag=None):
     if args.conf:
         run_conf = json.loads(args.conf)
 
-    # 模拟运行，仅仅渲染模板参数
+    # 模拟运行任务实例，仅仅渲染模板参数
     if args.dry_run:
         print("Dry run of DAG {0} on {1}".format(args.dag_id,
                                                  args.start_date))
         for task in dag.tasks:
             print("Task {0}".format(task.task_id))
-            ti = TaskInstance(task, args.start_date)
+            execution_date = args.start_date
+            ti = TaskInstance(task, execution_date)
             # 渲染任务模板参数，并打印渲染后的模板参数内容，不会运行任务实例
             ti.dry_run()
     else:
-        # 重置dagruns
+        # 删除任务实例，重置dagruns
+        # execution_date in [start_date, end_date]
         if args.reset_dagruns:
+            # - 正在运行的任务改为关闭状态，相关的job设置为关闭状态
+            # - 非正在运行的任务改为 None 状态，并修改任务实例的最大重试次数 max_tries
+            # - 任务相关的dagrun设置为RUNNING状态
             DAG.clear_dags(
                 [dag],
                 start_date=args.start_date,

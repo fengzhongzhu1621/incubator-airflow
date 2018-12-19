@@ -175,8 +175,9 @@ def clear_task_instances(tis,
                          dag=None,
                          ):
     """重置任务实例
-    - 正在运行的任务改为关闭状态
+    - 正在运行的任务改为关闭状态，相关的job设置为关闭状态
     - 非正在运行的任务改为 None 状态，并修改任务实例的最大重试次数 max_tries
+    - 任务相关的dagrun设置为RUNNING状态
 
     Clears a set of task instances, but makes sure the running ones
     get killed.
@@ -189,7 +190,7 @@ def clear_task_instances(tis,
     job_ids = []
     for ti in tis:
         if ti.state == State.RUNNING:
-            # 如果任务实例已经被调度，则设置为关闭状态
+            # 正在运行的任务是实例，则设置为关闭状态
             if ti.job_id:
                 # 将任务实例状态改为SHUTDOWN
                 ti.state = State.SHUTDOWN
@@ -205,7 +206,7 @@ def clear_task_instances(tis,
                 # 重新设置任务实例的最大重试次数
                 ti.max_tries = ti.try_number + task_retries - 1
             else:
-                # DB中存在任务实例，但是dag中可能变更了代码导致原有的任务存在了
+                # DB中存在任务实例，但是dag中可能变更了代码，导致dag中不存在此任务了
                 # Ignore errors when updating max_tries if dag is None or
                 # task not found in dag since database records could be
                 # outdated. We make max_tries the maximum value of its
@@ -213,7 +214,7 @@ def clear_task_instances(tis,
                 ti.max_tries = max(ti.max_tries, ti.try_number - 1)
             # 将任务设置为None
             ti.state = State.NONE
-            # TODO 为什么需要merge
+            # 立即变更任务实例在DB中的状态
             session.merge(ti)
 
     # 将正在运行的任务实例，关联的job设置为关闭状态
@@ -1825,10 +1826,12 @@ class TaskInstance(Base, LoggingMixin):
                 session=session)
 
     def dry_run(self):
+        """模拟运行任务实例，仅仅渲染模板参数 ."""
+        # 拷贝任务
         task = self.task
         task_copy = copy.copy(task)
         self.task = task_copy
-
+        # 渲染任务模版
         self.render_templates()
         task_copy.dry_run()
 
@@ -3024,22 +3027,27 @@ class BaseOperator(LoggingMixin):
 
         if not found_descendants:
             found_descendants = set()
-        # 获得依赖任务
+        # 获得上游任务ID集合，或下游任务ID集合
         relative_ids = self.get_direct_relative_ids(upstream)
 
         for relative_id in relative_ids:
             if relative_id not in found_descendants:
                 found_descendants.add(relative_id)
-                # 递归获得依赖任务的依赖任务
+                # 获得依赖任务
                 relative_task = self._dag.task_dict[relative_id]
+                # 递归获得依赖任务的依赖任务
                 relative_task.get_flat_relative_ids(upstream,
                                                     found_descendants)
 
         return found_descendants
 
     def get_flat_relatives(self, upstream=False):
-        """
+        """根据upstream参数决定获取任务的上游任务列表，还是下游任务列表
         Get a flat list of relatives, either upstream or downstream.
+
+        upstream=False 包含匹配任务的所有下游任务
+
+        upstream=True  包含匹配任务的所有上游任务
         """
         return list(map(lambda task_id: self._dag.task_dict[task_id],
                         self.get_flat_relative_ids(upstream)))
@@ -3065,17 +3073,23 @@ class BaseOperator(LoggingMixin):
                 ignore_ti_state=ignore_ti_state)
 
     def dry_run(self):
+        """模拟执行任务 ."""
         self.log.info('Dry run')
         for attr in self.template_fields:
+            # 根据模版参数，获得任务属性值
             content = getattr(self, attr)
             if content and isinstance(content, six.string_types):
                 self.log.info('Rendering template for %s', attr)
                 self.log.info(content)
 
     def get_direct_relative_ids(self, upstream=False):
-        """
+        """获得上游任务ID集合，或下游任务ID集合
         Get the direct relative ids to the current task, upstream or
         downstream.
+
+        upstream=False 包含匹配任务的所有下游任务
+
+        upstream=True  包含匹配任务的所有上游任务
         """
         if upstream:
             return self._upstream_task_ids
@@ -3957,7 +3971,7 @@ class DAG(BaseDag, LoggingMixin):
             start_date=None,
             end_date=None,
     ):
-        """将dagrun的状态设置为RUNNING ."""
+        """在dag中，将dagrun的状态设置为RUNNING ."""
         # 更新dag每个状态的dag_run的数量，并设置dirty为False，实际上并没有执行
         query = session.query(DagRun).filter_by(dag_id=self.dag_id)
         if start_date:
@@ -3986,11 +4000,19 @@ class DAG(BaseDag, LoggingMixin):
             dry_run=False,
             session=None,
     ):
-        """删除任务实例，重置dagruns，返回重置成功的任务实例的数量
+        """在dag中，删除任务实例，重置dagruns，返回重置成功的任务实例的数量
         清除正在运行的任务实例和job，将dag_run设置为运行态
+
+        execution_date in [start_date, end_date]
+
+        - 正在运行的任务改为关闭状态，相关的job设置为关闭状态
+        - 非正在运行的任务改为 None 状态，并修改任务实例的最大重试次数 max_tries
+        - 任务相关的dagrun设置为RUNNING状态
+
         Clears a set of task instances associated with the current dag for
         a specified date range.
         """
+        # 根据条件获得任务实例
         TI = TaskInstance
         tis = session.query(TI)
         if include_subdags:
@@ -4015,9 +4037,11 @@ class DAG(BaseDag, LoggingMixin):
         if only_running:
             tis = tis.filter(TI.state == State.RUNNING)
 
+        # 模拟运行，用于判断是否存在任务实例
         if dry_run:
             # 不会删除dag_run
             tis = tis.all()
+            # 清除session实例
             session.expunge_all()
             return tis
 
@@ -4038,13 +4062,18 @@ class DAG(BaseDag, LoggingMixin):
 
         if do_it:
             # 将任务实例和job关闭，将dag_run设置为运行态
+            # 会把subdag中的dagrun也设置为RUNNNING
+            # - 正在运行的任务改为关闭状态，相关的job设置为关闭状态
+            # - 非正在运行的任务改为 None 状态，并修改任务实例的最大重试次数 max_tries
+            # - 任务相关的dagrun设置为RUNNING状态
             clear_task_instances(tis.all(),
                                  session,
                                  dag=self,
                                  )
-            # 重置dagrun
+            # 重置dagrun，不包含subdag
+            # TODO 重复操作
             if reset_dag_runs:
-                # 将dagrun的状态设置为RUNNING
+                # 在dag中，将dagrun的状态设置为RUNNING
                 self.set_dag_runs_state(session=session,
                                         start_date=start_date,
                                         end_date=end_date,
@@ -4136,12 +4165,13 @@ class DAG(BaseDag, LoggingMixin):
 
     def sub_dag(self, task_regex, include_downstream=False,
                 include_upstream=True):
-        """返回当前dag的子集
+        """根据任务的名称的正则表达式，返回当前dag的子集
+        默认包含上游任务，补录时从上游任务开始运行，下游任务默认不执行
         Returns a subset of the current dag as a deep copy of the current dag
         based on a regex that should match one or many tasks, and includes
         upstream and downstream neighbours based on the flag passed.
         """
-        # 拷贝dag
+        # 拷贝dag，新的dag的任务列表为空
         # deep-copying self.task_dict takes a long time, and we don't want all
         # the tasks anyway, so we copy the tasks manually later
         task_dict = self.task_dict
@@ -4152,6 +4182,8 @@ class DAG(BaseDag, LoggingMixin):
         # 根据任务ID模糊匹配，获得匹配的任务
         regex_match = [
             t for t in self.tasks if re.findall(task_regex, t.task_id)]
+
+        # 遍历匹配的任务，获取关联的上下级任务
         also_include = []
         for t in regex_match:
             # 包含匹配任务的所有下游任务
