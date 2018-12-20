@@ -217,16 +217,22 @@ class BaseJob(Base, LoggingMixin):
         Stats.incr(self.__class__.__name__.lower() + '_start', 1, 1)
         # Adding an entry in the DB
         with create_session() as session:
-            # 新增job
+            # 新增job，默认状态为RUNNING
             self.state = State.RUNNING
             session.add(self)
             session.commit()
+            
+            # 获得新增job的自增ID
             id_ = self.id
+            
+            # 删除self与session对象的关联关系，成为一个新建的对象
+            # 为了解决在job调度的过程中，如果从DB中删除了此job，则job执行完成后会自动将其恢复到DB中
             make_transient(self)
             self.id = id_
 
             # job执行完成后，记录完成时间和状态
             try:
+                # TODO session事务嵌套
                 self._execute()
                 # In case of max runs or max duration
                 self.state = State.SUCCESS
@@ -238,6 +244,7 @@ class BaseJob(Base, LoggingMixin):
                 raise
             finally:
                 self.end_date = datetime.now()
+                # 判断新的job对象是否在数据库中存在，如果存在则更新，不存在则插入
                 session.merge(self)
                 session.commit()
 
@@ -2247,7 +2254,7 @@ class SchedulerJob(BaseJob):
 
 
 class BackfillJob(BaseJob):
-    """
+    """补录作业
     A backfill job consists of a dag or subdag for a specific time range. It
     triggers a set of task instance runs, in the right order and lasts for
     as long as it takes for the set of task instance to be completed.
@@ -2309,18 +2316,26 @@ class BackfillJob(BaseJob):
             """
             # 确认可以调度的dag_run包含的所有任务实例
             self.to_run = to_run or dict()
+            # 正在运行的任务实例
             self.running = running or dict()
+            # 已经跳过的任务实例
             self.skipped = skipped or set()
+            # 已经执行成功的任务实例
             self.succeeded = succeeded or set()
+            # 执行失败的任务实例
             self.failed = failed or set()
+            # 未准备的任务实例
             self.not_ready = not_ready or set()
+            # 死锁的任务实例
             self.deadlocked = deadlocked or set()
+            
             # 确认可以调度的dag_run
             self.active_runs = active_runs or list()
-            # 已经执行的dag_run
+            # 正在执行的dag_run
             self.executed_dag_run_dates = executed_dag_run_dates or set()
+            # 执行完成的dagrun
             self.finished_runs = finished_runs
-            # 需要补录的dag_run的数量
+            # 需要补录的dag_run的总量
             self.total_runs = total_runs
 
     def __init__(
@@ -2385,7 +2400,9 @@ class BackfillJob(BaseJob):
         # 每次补录的时间间隔，默认1s
         self.delay_on_limit_secs = delay_on_limit_secs
         self.verbose = verbose
+        # dagrun运行时配置
         self.conf = conf
+        # 是否重新运行失败的任务，默认不重新运行
         self.rerun_failed_tasks = rerun_failed_tasks
         super(BackfillJob, self).__init__(*args, **kwargs)
 
@@ -2885,30 +2902,29 @@ class BackfillJob(BaseJob):
             start_date=start_date,
             session=session)
 
-        # 记录补录成功的dag_runs
+        # 记录正在执行的补录的dag_runs
         ti_status.executed_dag_run_dates.update(processed_dag_run_dates)
 
     @provide_session
     def _execute(self, session=None):
-        """
+        """通过backfilljob执行一个dag的补录
         Initializes all components required to run a dag for a specified date range and
         calls helper method to execute the tasks.
         """
         # 获得BackfillJob状态管理类
         ti_status = BackfillJob._DagRunTaskStatus()
-
-        # 获得需要补录的开始时间
-        start_date = self.bf_start_date
-
-        # 根据调度配置获得指定范围内的运行时间
+        
+        # 获得指定范围内的execution_time，用于确定哪些dagrun需要补录
         # Get intervals between the start/end dates, which will turn into dag runs
-        run_dates = self.dag.get_run_dates(start_date=start_date,
+        run_dates = self.dag.get_run_dates(start_date=self.bf_start_date,
                                            end_date=self.bf_end_date)
+                                           
+        # 没有补录的任务直接返回，job状态设置为SUCCESS
         if len(run_dates) == 0:
             self.log.info("No run dates were found for the given dates and dag interval.")
             return
 
-        # picklin'
+        # 如果需要序列化，且为分布式executor
         pickle_id = None
         if not self.donot_pickle and self.executor.__class__ not in (
                 executors.LocalExecutor, executors.SequentialExecutor):
@@ -2917,7 +2933,7 @@ class BackfillJob(BaseJob):
             pickle = models.DagPickle(self.dag)
             session.add(pickle)
             session.commit()
-            # 获得实例化后的pickle_id
+            # 获得实例化后的pickle_id，即自增ID
             pickle_id = pickle.id
 
         # 启动调度器
@@ -2930,16 +2946,16 @@ class BackfillJob(BaseJob):
         try:
             remaining_dates = ti_status.total_runs
             while remaining_dates > 0:
-                # 获得需要补录的dag_run
+                # 获得需要补录的dag_run，即去掉正在补录的任务
                 dates_to_process = [run_date for run_date in run_dates
                                     if run_date not in ti_status.executed_dag_run_dates]
 
-                # 补录dag_run
+                # 补录dag_run，并记录正在补录的dagrun
                 self._execute_for_run_dates(run_dates=dates_to_process,
                                             ti_status=ti_status,
                                             executor=executor,
                                             pickle_id=pickle_id,
-                                            start_date=start_date,
+                                            start_date=self.bf_start_date,
                                             session=session)
 
                 # 获得未补录的dag_run
@@ -2959,6 +2975,7 @@ class BackfillJob(BaseJob):
                         " - waiting for other dag runs to finish",
                         self.dag_id
                     )
+                    # 每次补录一批任务，等待指定时间后，再补录下一批任务
                     time.sleep(self.delay_on_limit_secs)
         finally:
             # 终止调度器

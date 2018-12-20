@@ -240,14 +240,15 @@ def backfill(args, dag=None):
             end_date=args.end_date,
             # 将任务实例标记为成功
             mark_success=args.mark_success,
-            # 使用单机并发执行器 LocalExecutor
+            # 如果设置了local参数，使用单机并发执行器 LocalExecutor
+            # 默认采用默认的executor
             local=args.local,
-            # 是否需要将dag对象序列化到db中，False表示需要
+            # 是否需要将dag对象序列化到db中，False表示需要，默认打开dag序列化开关，但是如果dag参数中没有配置pickle_id，也不会序列化
             donot_pickle=(args.donot_pickle or
                           conf.getboolean('core', 'donot_pickle')),
-            # 是否忽略上次任务实例的依赖
+            # 是否忽略上次历史任务实例的依赖
             ignore_first_depends_on_past=args.ignore_first_depends_on_past,
-            # 是否忽略任务依赖
+            # 是否忽略任务依赖，默认不跳过上游任务依赖
             ignore_task_deps=args.ignore_dependencies,
             # 任务插槽名称，用于对任务实例的数量进行限制
             pool=args.pool,
@@ -255,7 +256,9 @@ def backfill(args, dag=None):
             # 如果dag_run实例超过了阈值，job执行时需要循环等待其他的dag_run运行完成，设置循环的间隔
             delay_on_limit_secs=args.delay_on_limit,
             verbose=args.verbose,
+            # dagrun参数
             conf=run_conf,
+            # 是否重新运行失败的任务，默认不重新运行
             rerun_failed_tasks=args.rerun_failed_tasks,
         )
 

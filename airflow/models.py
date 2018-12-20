@@ -3540,7 +3540,7 @@ class DAG(BaseDag, LoggingMixin):
             return dttm - self._schedule_interval
 
     def get_run_dates(self, start_date, end_date=None):
-        """获得指定范围内的运行时间
+        """获得指定范围内的execution_time，用于确定哪些dagrun需要补录
         Returns a list of dates between the interval received as parameter using this
         dag's schedule interval. Returned dates can be used for execution dates.
 
@@ -3559,17 +3559,23 @@ class DAG(BaseDag, LoggingMixin):
         # dates for dag runs
         # 如果开始时间为空，则取所有任务的最小开始时间
         using_start_date = using_start_date or min([t.start_date for t in self.tasks])
-        # 结束时间为空，则去当前时间
+        # 结束时间为空，则取当前时间
         using_end_date = using_end_date or datetime.now()
 
         # next run date for a subdag isn't relevant (schedule_interval for subdags
         # is ignored) so we use the dag run's start date in the case of a subdag
-        # 获得下一次调度时间
+        # 获得 execution_time
         # 1. 如果是子dag，下一次调度时间为开始时间
         # 2. 如果不是子dag，需要根据调度配置计算下一次调度时间
         next_run_date = (self.normalize_schedule(using_start_date)
                          if not self.is_subdag else using_start_date)
 
+        # 获取开始时间和结束时间之间所有的execution_time
+        #     next_run_date                                            using_end_date
+        #          ||                                                       ||
+        #          \/                                                       \/
+        # |-------------------|-------------------|-------------------|---------------|
+        #                run_dates[0]        run_dates[1]       run_dates[2]
         while next_run_date and next_run_date <= using_end_date:
             run_dates.append(next_run_date)
             # 如果是单次任务，则返回None
@@ -4347,7 +4353,7 @@ class DAG(BaseDag, LoggingMixin):
             conf=None,
             rerun_failed_tasks=False,
     ):
-        """
+        """通过BackfillJob的方式运行一个dag
         Runs the DAG.
 
         :param start_date: the start date of the range to run
@@ -4395,18 +4401,20 @@ class DAG(BaseDag, LoggingMixin):
             mark_success=mark_success,
             # 选择的执行器
             executor=executor,
-            # 是否需要将dag对象序列化到db中，False表示需要
+            # 是否需要将dag对象序列化到db中，False表示需要，默认打开dag序列化开关，但是如果dag参数中没有配置pickle_id，也不会序列化
             donot_pickle=donot_pickle,
-            # 是否忽略任务依赖
+            # 是否忽略任务依赖，默认不跳过上游任务依赖
             ignore_task_deps=ignore_task_deps,
-            # 是否忽略上次任务实例的依赖
+            # 是否忽略上次历史任务实例的依赖
             ignore_first_depends_on_past=ignore_first_depends_on_past,
             # 任务实例插槽的数量，用于对任务实例的数量进行限制
             pool=pool,
             # 如果dag_run实例超过了阈值，job执行时需要循环等待其他的dag_run运行完成，设置循环的间隔
             delay_on_limit_secs=delay_on_limit_secs,
             verbose=verbose,
+            # dagrun运行时配置
             conf=conf,
+            # 是否重新运行失败的任务，默认不重新运行
             rerun_failed_tasks=rerun_failed_tasks,
         )
         # 运行job
