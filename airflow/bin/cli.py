@@ -246,9 +246,9 @@ def backfill(args, dag=None):
             # 是否需要将dag对象序列化到db中，False表示需要，默认打开dag序列化开关，但是如果dag参数中没有配置pickle_id，也不会序列化
             donot_pickle=(args.donot_pickle or
                           conf.getboolean('core', 'donot_pickle')),
-            # 是否忽略上次历史任务实例的依赖
+            # 所有补录dagruns的第一个dagrun默认不依赖与上一个dagrun
             ignore_first_depends_on_past=args.ignore_first_depends_on_past,
-            # 是否忽略任务依赖，默认不跳过上游任务依赖
+            # 默认不忽略上游任务依赖
             ignore_task_deps=args.ignore_dependencies,
             # 任务插槽名称，用于对任务实例的数量进行限制
             pool=args.pool,
