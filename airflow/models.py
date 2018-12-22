@@ -4405,7 +4405,7 @@ class DAG(BaseDag, LoggingMixin):
             donot_pickle=donot_pickle,
             # 是否忽略任务依赖，默认不跳过上游任务依赖
             ignore_task_deps=ignore_task_deps,
-            # 是否忽略上次历史任务实例的依赖
+            # 所有补录dagruns的第一个dagrun默认不依赖与上一个dagrun
             ignore_first_depends_on_past=ignore_first_depends_on_past,
             # 任务实例插槽的数量，用于对任务实例的数量进行限制
             pool=pool,
@@ -5257,7 +5257,7 @@ class DagRun(Base, LoggingMixin):
 
     @provide_session
     def get_task_instances(self, state=None, session=None):
-        """获得当前dag实例的多个任务实例
+        """获得当前dagrun的多个任务实例
         Returns the task instances for this dag run
         """
         # 获得当前dag实例的所有任务实例

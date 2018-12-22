@@ -268,10 +268,10 @@ class BaseJob(Base, LoggingMixin):
         :return: the TIs reset (in expired SQLAlchemy state)
         :rtype: List(TaskInstance)
         """
-        # 获得执行器等待执行队列中的任务实例
+        # 获得执行器等待执行队列中的任务实例，此队列中的任务实例还没有发送到celery
         queued_tis = self.executor.queued_tasks
         # also consider running as the state might not have changed in the db yet
-        # 获得执行器中正在执行的任务实例
+        # 获得执行器中正在执行的任务实例，此队列中的任务实例已经发送给了celery
         running_tis = self.executor.running
 
         # 从DB中获取已调度和在队列中的任务实例
@@ -307,9 +307,10 @@ class BaseJob(Base, LoggingMixin):
             if ti.key not in queued_tis and ti.key not in running_tis:
                 tis_to_reset.append(ti)
 
-        if len(tis_to_reset) == 0:
+        if not tis_to_reset:
             return []
 
+        # 如果存在这种异常情况
         # 将不在执行器队列（待执行队列和运行队列）中的任务实例状态设置为None
         # TODO 为什么不根据任务实例的ID来设置where添加呢？待优化！！！
         def query(result, items):
@@ -328,7 +329,7 @@ class BaseJob(Base, LoggingMixin):
                 session.merge(ti)
             return result + reset_tis
 
-        # 将任务实例的状态批量改为None
+        # 将任务实例的状态批量改为None，max_tis_per_query表示批次update处理的数量
         reset_tis = helpers.reduce_in_chunks(query,
                                              tis_to_reset,
                                              [],
@@ -2481,7 +2482,7 @@ class BackfillJob(BaseJob):
 
     @provide_session
     def _get_dag_run(self, run_date, session=None):
-        """创建需要补录的 dag_run
+        """根据调度日期，创建需要补录的 dag_run
         Returns a dag run for the given run date, which will be matched to an existing
         dag run if available or create a new dag run otherwise. If the max_active_runs
         limit is reached, this function will return None.
@@ -2501,34 +2502,34 @@ class BackfillJob(BaseJob):
                                             not self.dag.is_subdag)
                                         else False)
 
-        # 根据dagid，获得正在运行的dagrun的数量
-        current_active_dag_count = self.dag.get_num_active_runs(external_trigger=False)
-
-        # 判断需要补录的指定的调度时间的dag_run是否存在
+        # 根据dagid，获得正在运行的dagrun的数量，用于判断dagrun的最大阈值
+        current_active_dag_count = self.dag.get_num_active_runs(external_trigger=False) 
+        
+        # 根据调度日期，获取dagrun，可能正在运行，也可能运行失败或成功
         # check if we are scheduling on top of a already existing dag_run
         # we could find a "scheduled" run instead of a "backfill"
-        run = DagRun.find(dag_id=self.dag.dag_id,
+        runs = DagRun.find(dag_id=self.dag.dag_id,
                           execution_date=run_date,
                           session=session)
 
-        if run is not None and run:
-            run = run[0]
-            # 如果dag_run存在，则修改此orm实例属性值，并返回这个dag_run
+        # 判断需要补录的指定的调度时间的dag_run是否存在
+        if runs:
+            run = runs[0]
+            # 如果需要补录的dag_run已经存在，则忽略dag_run的最大阈值限制
             if run.state == State.RUNNING:
                 respect_dag_max_active_limit = False
         else:
             # 如果dag_run不存在，则创建一个新的dag_run
             run = None
 
-        # 如果命中了阈值，则返回None，忽略这个调度时间的补录
+        # 如果正在运行的dagrun已经达到最大值，则忽略此补录
         # enforce max_active_runs limit for dag, special cases already
         # handled by respect_dag_max_active_limit
         if (respect_dag_max_active_limit and
                 current_active_dag_count >= self.dag.max_active_runs):
             return None
 
-        # 如果dag_run不存在，则创建一个新的dag_run
-        # 并创建所有的任务实例
+        # 如果dag_run不存在，则创建一个新的dag_run，并commit入库
         run = run or self.dag.create_dagrun(
             run_id=run_id,
             execution_date=run_date,
@@ -2538,19 +2539,23 @@ class BackfillJob(BaseJob):
             session=session,
             conf=self.conf,
         )
-
+        
         # set required transient field
         run.dag = self.dag
 
         # explicitly mark as backfill and running
+        # 如果存在dagrun但是状态不是运行态，则需要将其状态重新设置为运行态
         run.state = State.RUNNING
+        # 创建的dagrun中的run_id是带有BackfillJob.ID_FORMAT_PREFIX前缀的
         run.run_id = run_id
+        
+        # 根据dag实例，创建所有的任务实例
         run.verify_integrity(session=session)
         return run
 
     @provide_session
     def _task_instances_for_dag_run(self, dag_run, session=None):
-        """获得dag_run关联的所有任务实例
+        """获得dag_run关联的所有任务实例：刷新dagrun对象，去掉删除状态的任务实例，去掉None状态的任务实例（孤儿任务实例）
         Returns a map of task instance key to task instance object for the tasks to
         run in the given dag run.
         :param dag_run: the dag run to get the tasks from
@@ -2563,10 +2568,12 @@ class BackfillJob(BaseJob):
         if dag_run is None:
             return tasks_to_run
 
-        # 验证是否存在孤儿任务实例，将正在调度中的任务实例的状态改为None
+        # 验证是否存在孤儿任务实例
+        # 将不在执行器队列（待执行队列和运行队列）中的任务实例状态，即孤儿任务实例的状态设置为None，保存到DB中
         # check if we have orphaned tasks
         self.reset_state_for_orphaned_tasks(filter_by_dag_run=dag_run, session=session)
 
+        # 从DB刷新dagrun对象，以防止用户在界面上直接对DB进行变更
         # for some reason if we don't refresh the reference to run is lost
         dag_run.refresh_from_db()
         make_transient(dag_run)
@@ -2575,6 +2582,8 @@ class BackfillJob(BaseJob):
         for ti in dag_run.get_task_instances():
             # all tasks part of the backfill are scheduled to run
             if ti.state == State.NONE:
+                # 孤儿任务实例不进行补录
+                # 补录任务的状态变更 None -> SCHEDULED
                 ti.set_state(State.SCHEDULED, session=session)
             if ti.state != State.REMOVED:
                 tasks_to_run[ti.key] = ti
@@ -2615,7 +2624,7 @@ class BackfillJob(BaseJob):
                                          executor,
                                          pickle_id,
                                          start_date=None, session=None):
-        """补录dag_runs
+        """补录dag_runs，将符合条件的记录发给executor执行
         Process a set of task instances from a set of dag runs. Special handling is done
         to account for different task instance states that could be present when running
         them in a backfill process.
@@ -2635,9 +2644,12 @@ class BackfillJob(BaseJob):
 
         executed_run_dates = []
 
+        # to_run: 等待补录的任务实例
+        # running: 正在运行的任务实例
         while ((ti_status.to_run or ti_status.running) and
-                len(ti_status.deadlocked) == 0):
+                not ti_status.deadlocked):
             self.log.debug("*** Clearing out not_ready list ***")
+            # 每次补录前先清空：未准备的任务实例
             ti_status.not_ready.clear()
 
             # we need to execute the tasks bottom to top
@@ -2646,19 +2658,19 @@ class BackfillJob(BaseJob):
             # waiting for their upstream to finish
             # 对dag中的任务进行拓扑排序，并遍历任务
             for task in self.dag.topological_sort():
-                # TODO 待优化
-                for key, ti in list(ti_status.to_run.items()):
+                for key, ti in ti_status.to_run.items():
+                    # 判断任务是否属于此dag，有效性验证
                     if task.task_id != ti.task_id:
                         continue
 
-                    # 获得任务关联的任务实例
+                    # 从DB中刷新任务实例
                     ti.refresh_from_db()
 
-                    # TODO 获得任务实例，待优化！上面的拓扑排序已经返回了任务实例
+                    # 获得任务实例
                     task = self.dag.get_task(ti.task_id)
-                    # 给任务实例设置task的原因是，使用ti.task不需要连表查询
                     ti.task = task
 
+                    # 所有补录dagruns的第一个dagrun默认不依赖与上一个dagrun
                     # 是否忽略上一次调度依赖
                     ignore_depends_on_past = (
                         self.ignore_first_depends_on_past and
@@ -2667,6 +2679,7 @@ class BackfillJob(BaseJob):
                         "Task instance to run %s state %s", ti, ti.state)
 
                     # 已经执行完成的任务实例不会被补录
+                    # 标记为跳过的任务实例不会被补录
                     # The task was already marked successful or skipped by a
                     # different Job. Don't rerun it.
                     if ti.state == State.SUCCESS:
@@ -2686,12 +2699,15 @@ class BackfillJob(BaseJob):
 
                     # guard against externally modified tasks instances or
                     # in case max concurrency has been reached at task runtime
+                    # 出现的概率非常小，因为在之前的操作中已经将孤儿任务实例（状态为None）改为了 SCHEDULED
                     elif ti.state == State.NONE:
                         self.log.warning(
                             "FIXME: task instance {} state was set to None "
                             "externally. This should not happen"
                         )
                         ti.set_state(State.SCHEDULED, session=session)
+                    
+                    # 是否重新运行失败的任务，默认不重新运行
                     if self.rerun_failed_tasks:
                         # Rerun failed tasks or upstreamed failed tasks
                         if ti.state in (State.FAILED, State.UPSTREAM_FAILED):
@@ -2721,6 +2737,7 @@ class BackfillJob(BaseJob):
                         ignore_task_deps=self.ignore_task_deps,
                         flag_upstream_failed=True)
 
+                    # 将符合规则的任务实例发给executor执行
                     # Is the task runnable? -- then run it
                     # the dependency checker can change states of tis
                     if ti.are_dependencies_met(
@@ -2748,7 +2765,7 @@ class BackfillJob(BaseJob):
                                                           executors.SequentialExecutor):
                                     cfg_path = tmp_configuration_copy()
 
-                                # 将任务实例加入 executors 中
+                                # 将任务实例加入 executors 中的等待执行队列 queued_tasks
                                 executor.queue_task_instance(
                                     ti,
                                     mark_success=self.mark_success,
@@ -2757,6 +2774,7 @@ class BackfillJob(BaseJob):
                                     ignore_depends_on_past=ignore_depends_on_past,
                                     pool=self.pool,
                                     cfg_path=cfg_path)
+                                # 如果任务放到了executor的等待执行队列，记录此任务实例
                                 ti_status.running[key] = ti
                                 ti_status.to_run.pop(key)
                         session.commit()
@@ -2785,7 +2803,10 @@ class BackfillJob(BaseJob):
                     ti_status.not_ready.add(key)
 
             # execute the tasks in the queue
+            # job心跳
             self.heartbeat()
+            
+            # executor心跳，将queued_tasks中的任务发给celery执行
             executor.heartbeat()
 
             # If the set of tasks that aren't ready ever equals the set of
@@ -2793,7 +2814,7 @@ class BackfillJob(BaseJob):
             # is deadlocked
             if (ti_status.not_ready and
                     ti_status.not_ready == set(ti_status.to_run) and
-                    len(ti_status.running) == 0):
+                    not ti_status.running):
                 self.log.warning(
                     "Deadlock discovered for ti_status.to_run=%s",
                     ti_status.to_run.values()
@@ -2802,6 +2823,7 @@ class BackfillJob(BaseJob):
                 ti_status.to_run.clear()
 
             # check executor state
+            # ti_status.running 存放的是发给executor.queued_tasks的任务实例
             self._manage_executor_state(ti_status.running)
 
             # update the task counters
@@ -2880,18 +2902,24 @@ class BackfillJob(BaseJob):
         :param session: the current session object
         :type session: Session
         """
-        # 遍历需要补录的调度日期
+        # 遍历调度时间，创建需要补录的dagrun和对应的任务实例
+        # 并在状态管理器中记录正在补录的dagrun和对应的任务实例
         for next_run_date in run_dates:
-            # 创建需要补录的 dag_run
+            # 根据调度日期，查找已经存在的dagrun，将其状态改为运行态
+            # 如果dagrun不存在，则创建需要补录的 dag_run
+            # 同时创建对应的任务实例
             dag_run = self._get_dag_run(next_run_date, session=session)
-            # 获得这个dag_run的所有的任务实例
-            tis_map = self._task_instances_for_dag_run(dag_run,
-                                                       session=session)
+            
+            # 如果正在运行的dagrun已经达到最大值，则忽略此补录
             if dag_run is None:
                 continue
-
-            # 确认可以补录的dag_run和任务实例
+                
+            # 获得dag_run关联的所有任务实例：刷新dagrun对象，去掉删除状态的任务实例，去掉None状态的任务实例（孤儿任务实例）
+            tis_map = self._task_instances_for_dag_run(dag_run,
+                                                       session=session)
+            # 记录等待补录的dagrun
             ti_status.active_runs.append(dag_run)
+            # 记录等待补录的任务实例
             ti_status.to_run.update(tis_map or {})
 
         # 补录dag_runs
@@ -2940,25 +2968,26 @@ class BackfillJob(BaseJob):
         executor = self.executor
         executor.start()
 
-        # 获得补录的dag_run的数量
+        # 获得需要补录的dag_run的总量
         ti_status.total_runs = len(run_dates)  # total dag runs in backfill
 
         try:
             remaining_dates = ti_status.total_runs
             while remaining_dates > 0:
-                # 获得需要补录的dag_run，即去掉正在补录的任务
+                # 获得需要补录的dag_run
+                # = 总量 - 正在补录的任务
                 dates_to_process = [run_date for run_date in run_dates
                                     if run_date not in ti_status.executed_dag_run_dates]
 
                 # 补录dag_run，并记录正在补录的dagrun
-                self._execute_for_run_dates(run_dates=dates_to_process,
-                                            ti_status=ti_status,
+                self._execute_for_run_dates(run_dates=dates_to_process,      # 需要补录的execution_time
+                                            ti_status=ti_status,             # BackfillJob状态管理类
                                             executor=executor,
-                                            pickle_id=pickle_id,
-                                            start_date=self.bf_start_date,
+                                            pickle_id=pickle_id,             # dag序列化自增ID
+                                            start_date=self.bf_start_date,   # 参数中的开始时间
                                             session=session)
 
-                # 获得未补录的dag_run
+                # 获得未补录的execution_time
                 remaining_dates = (
                     ti_status.total_runs - len(ti_status.executed_dag_run_dates)
                 )
