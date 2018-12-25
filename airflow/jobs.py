@@ -295,7 +295,7 @@ class BaseJob(Base, LoggingMixin):
                     DR.run_id.notlike(BackfillJob.ID_PREFIX + '%'),  # 不是补录的流程实例
                     TI.state.in_(resettable_states))).all()
         else:
-            # 获得指定dag_run中正在调度（任务状态为 [State.SCHEDULED, State.QUEUED]）的任务实例
+            # 从DB中获得指定dag_run中正在调度（任务状态为 [State.SCHEDULED, State.QUEUED]）的任务实例
             resettable_tis = filter_by_dag_run.get_task_instances(state=resettable_states,
                                                                   session=session)
         # 获得不在执行器队列（待执行队列和运行队列）中的任务实例
@@ -303,7 +303,7 @@ class BaseJob(Base, LoggingMixin):
         # Can't use an update here since it doesn't support joins
         for ti in resettable_tis:
             # 判断任务实例是否在调度器队列中
-            # TODO 不知道什么情况下会发生
+            # 例如：任务状态修改为QUEUED，但是发送给celery队列失败
             if ti.key not in queued_tis and ti.key not in running_tis:
                 tis_to_reset.append(ti)
 
@@ -2414,7 +2414,7 @@ class BackfillJob(BaseJob):
         :param ti_status: the internal status of the backfill job tasks
         :type ti_status: BackfillJob._DagRunTaskStatus
         """
-        for key, ti in list(ti_status.running.items()):
+        for key, ti in ti_status.running.items():
             ti.refresh_from_db()
             if ti.state == State.SUCCESS:
                 ti_status.succeeded.add(key)
@@ -2452,13 +2452,14 @@ class BackfillJob(BaseJob):
                 ti_status.to_run[key] = ti
 
     def _manage_executor_state(self, running):
-        """
+        """验证执行器中任务实例执行完毕后的状态，确认任务实例是否被外部操作kill了
         Checks if the executor agrees with the state of task instances
         that are running
-        :param running: dict of key, task to verify
+        :param running: dict of key, task to verify 存放的是发给executor.queued_tasks的任务实例
         """
         executor = self.executor
 
+        # 遍历celery worker执行完毕的任务实例
         for key, state in list(executor.get_event_buffer().items()):
             if key not in running:
                 self.log.warning(
@@ -2467,17 +2468,23 @@ class BackfillJob(BaseJob):
                 )
                 continue
 
+            # 根据key获得执行完毕的任务实例
             ti = running[key]
             ti.refresh_from_db()
 
             self.log.debug("Executor state: %s task %s", state, ti)
 
+            # state是celery任务的执行状态，通过celery接口获取任务是否执行成功还是失败
             if state == State.FAILED or state == State.SUCCESS:
+                # ti.state是operator的执行状态，如果celery任务执行完成
+                # 任务实例的状态理论上不可能为RUNNING或QUEUED
+                # 如果这种情况发生，有可能是operator被外部操作kill了
                 if ti.state == State.RUNNING or ti.state == State.QUEUED:
                     msg = ("Executor reports task instance {} finished ({}) "
                            "although the task says its {}. Was the task "
                            "killed externally?".format(ti, state, ti.state))
                     self.log.error(msg)
+                    # 发送告警
                     ti.handle_failure(msg)
 
     @provide_session
@@ -2555,7 +2562,9 @@ class BackfillJob(BaseJob):
 
     @provide_session
     def _task_instances_for_dag_run(self, dag_run, session=None):
-        """获得dag_run关联的所有任务实例：刷新dagrun对象，去掉删除状态的任务实例，去掉None状态的任务实例（孤儿任务实例）
+        """获得dag_run关联的所有任务实例：刷新dagrun对象，去掉删除状态的任务实例
+        将孤儿任务实例的状态改为None
+        将所有None状态的任务实例状态变更为 SCHEDULED
         Returns a map of task instance key to task instance object for the tasks to
         run in the given dag run.
         :param dag_run: the dag run to get the tasks from
@@ -2582,8 +2591,7 @@ class BackfillJob(BaseJob):
         for ti in dag_run.get_task_instances():
             # all tasks part of the backfill are scheduled to run
             if ti.state == State.NONE:
-                # 孤儿任务实例不进行补录
-                # 补录任务的状态变更 None -> SCHEDULED
+                # 将任务从初始None状态变更为SCHEDULED，并commit到DB中
                 ti.set_state(State.SCHEDULED, session=session)
             if ti.state != State.REMOVED:
                 tasks_to_run[ti.key] = ti
@@ -2641,7 +2649,13 @@ class BackfillJob(BaseJob):
         :return: the list of execution_dates for the finished dag runs
         :rtype: list
         """
-
+        #########################################################################
+        #                                                     executor.queue_task_instance()
+        # ti.state  #    None    ->    SCHEDULED            -------------------------------->       QUEUED
+        # ti_status #                  ti_status.to_run     -------------------------------->       ti_status.running
+        #                                                                                                                       executor.heartbeat()
+        # executor  #                                                                               executor.queued_tasks   -------------------------------->   executor.running
+        
         executed_run_dates = []
 
         # to_run: 等待补录的任务实例
@@ -2803,7 +2817,7 @@ class BackfillJob(BaseJob):
                     ti_status.not_ready.add(key)
 
             # execute the tasks in the queue
-            # job心跳
+            # job心跳：记录心跳时间
             self.heartbeat()
             
             # executor心跳，将queued_tasks中的任务发给celery执行
@@ -2823,19 +2837,25 @@ class BackfillJob(BaseJob):
                 ti_status.to_run.clear()
 
             # check executor state
+            # 验证执行器中任务实例执行完毕后的状态，确认任务实例是否被外部操作kill了
             # ti_status.running 存放的是发给executor.queued_tasks的任务实例
             self._manage_executor_state(ti_status.running)
 
             # update the task counters
+            # 更新状态管理器
             self._update_counters(ti_status=ti_status)
 
+            # 处理正在补录中的dagrun
             # update dag run state
             _dag_runs = ti_status.active_runs[:]
             for run in _dag_runs:
+                # 根据任务实例的状态更新dagrun的状态
                 run.update_state(session=session)
+                # 标记已经完成的dagrun
                 if run.state in State.finished():
                     ti_status.finished_runs += 1
                     ti_status.active_runs.remove(run)
+                    # 记录已经执行完成的execution_time
                     executed_run_dates.append(run.execution_date)
 
                 if run.dag.is_paused:
@@ -2975,7 +2995,7 @@ class BackfillJob(BaseJob):
             remaining_dates = ti_status.total_runs
             while remaining_dates > 0:
                 # 获得需要补录的dag_run
-                # = 总量 - 正在补录的任务
+                # = 总量 - 正在补录的dagrun
                 dates_to_process = [run_date for run_date in run_dates
                                     if run_date not in ti_status.executed_dag_run_dates]
 

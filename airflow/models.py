@@ -951,6 +951,7 @@ class TaskInstance(Base, LoggingMixin):
         self.unixname = getpass.getuser()
         # 任务设置的执行用户
         self.run_as_user = task.run_as_user
+        # 任务实例的初始状态为None
         if state:
             self.state = state
         self.hostname = ''
@@ -1274,7 +1275,7 @@ class TaskInstance(Base, LoggingMixin):
 
     @provide_session
     def set_state(self, state, session=None):
-        """变更任务实例的状态 ."""
+        """变更任务实例的状态，并提交到DB中 ."""
         self.state = state
         self.start_date = datetime.now()
         self.end_date = datetime.now()
@@ -1837,6 +1838,7 @@ class TaskInstance(Base, LoggingMixin):
 
     @provide_session
     def handle_failure(self, error, test_mode=False, context=None, session=None):
+        """任务实例失败处理函数 ."""
         self.log.exception(error)
         task = self.task
         self.end_date = datetime.now()

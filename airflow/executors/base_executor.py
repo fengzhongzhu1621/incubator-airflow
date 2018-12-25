@@ -176,7 +176,7 @@ class BaseExecutor(LoggingMixin):
         self.change_state(key, State.SUCCESS)
 
     def get_event_buffer(self, dag_ids=None):
-        """
+        """获得celery worker执行完毕的任务实例
         Returns and flush the event buffer. In case dag_ids is specified
         it will only return and flush events for the given dag_ids. Otherwise
         it returns and flushes all
