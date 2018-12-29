@@ -23,12 +23,12 @@ from airflow.task.task_runner.base_task_runner import BaseTaskRunner
 from airflow.utils.helpers import reap_process_group
 
 
-class StandardTaskRunner(BaseTaskRunner):
+class BashTaskRunner(BaseTaskRunner):
     """
     Runs the raw Airflow task by invoking through the Bash shell.
     """
     def __init__(self, local_task_job):
-        super(StandardTaskRunner, self).__init__(local_task_job)
+        super(BashTaskRunner, self).__init__(local_task_job)
 
     def start(self):
         """执行bash命令 .
@@ -38,7 +38,7 @@ class StandardTaskRunner(BaseTaskRunner):
         bash -c "cmd string"
         bash -c "./atest hello world"
         """
-        self.process = self.run_command()
+        self.process = self.run_command(['bash', '-c'], join_args=True)
 
     def return_code(self):
         return self.process.poll()
@@ -49,4 +49,4 @@ class StandardTaskRunner(BaseTaskRunner):
             reap_process_group(self.process.pid, self.log)
 
     def on_finish(self):
-        super(StandardTaskRunner, self).on_finish()
+        super(BashTaskRunner, self).on_finish()
