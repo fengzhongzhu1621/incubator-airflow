@@ -56,8 +56,7 @@ class PrestoHook(DbApiHook):
     def _strip_sql(sql):
         return sql.strip().rstrip(';')
 
-    @staticmethod
-    def _get_pretty_exception_message(e):
+    def _get_pretty_exception_message(self, e):
         """
         Parses some DatabaseError to provide a better error message
         """

@@ -18,7 +18,7 @@
 # under the License.
 
 
-import os
+import os as _os
 import sys
 
 
@@ -67,7 +67,7 @@ _hooks = {
 }
 
 
-if not os.environ.get('AIRFLOW_USE_NEW_IMPORTS', False):
+if not _os.environ.get('AIRFLOW_USE_NEW_IMPORTS', False):
     from airflow.utils.helpers import AirflowImporter
     airflow_importer = AirflowImporter(sys.modules[__name__], _hooks)
 
@@ -82,12 +82,12 @@ def _integrate_plugins():
         ##########################################################
         # TODO FIXME Remove in Airflow 2.0
 
-        if not os.environ.get('AIRFLOW_USE_NEW_IMPORTS', False):
-            from zope.deprecation import deprecated
+        if not _os.environ.get('AIRFLOW_USE_NEW_IMPORTS', False):
+            from zope.deprecation import deprecated as _deprecated
             for _hook in hooks_module._objects:
                 hook_name = _hook.__name__
                 globals()[hook_name] = _hook
-                deprecated(
+                _deprecated(
                     hook_name,
                     "Importing plugin hook '{i}' directly from "
                     "'airflow.hooks' has been deprecated. Please "
