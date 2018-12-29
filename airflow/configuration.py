@@ -61,13 +61,10 @@ def generate_fernet_key():
     try:
         from cryptography.fernet import Fernet
     except ImportError:
-        pass
-    try:
+        return ''
+    else:
         # 产生了一个44字节的随机数，并用base64编码，并解码为unicode编码
-        key = Fernet.generate_key().decode()
-    except NameError:
-        key = "cryptography_not_found_storing_passwords_in_plain_text"
-    return key
+        return Fernet.generate_key().decode()
 
 
 def expand_env_var(env_var):
@@ -140,6 +137,10 @@ class AirflowConfigParser(ConfigParser):
         ('celery', 'result_backend'),
         # Todo: remove this in Airflow 1.11
         ('celery', 'celery_result_backend'),
+        ('atlas', 'password'),
+        ('smtp', 'smtp_password'),
+        ('ldap', 'bind_password'),
+        ('kubernetes', 'git_password'),
     }
 
     # A two-level mapping of (section -> new_name -> old_name). When reading
@@ -149,6 +150,7 @@ class AirflowConfigParser(ConfigParser):
         'celery': {
             # Remove these keys in Airflow 1.11
             'worker_concurrency': 'celeryd_concurrency',
+            'result_backend': 'celery_result_backend',
             'broker_url': 'celery_broker_url',
             'ssl_active': 'celery_ssl_active',
             'ssl_cert': 'celery_ssl_cert',
@@ -163,9 +165,9 @@ class AirflowConfigParser(ConfigParser):
     def __init__(self, default_config=None, *args, **kwargs):
         super(AirflowConfigParser, self).__init__(*args, **kwargs)
         # 读取格式化后的文件
-        self.defaults = ConfigParser(*args, **kwargs)
+        self.airflow_defaults = ConfigParser(*args, **kwargs)
         if default_config is not None:
-            self.defaults.read_string(default_config)
+            self.airflow_defaults.read_string(default_config)
 
         self.is_validated = False
 
@@ -264,9 +266,9 @@ class AirflowConfigParser(ConfigParser):
                 return option
 
         # ...then the default config
-        if self.defaults.has_option(section, key):
+        if self.airflow_defaults.has_option(section, key):
             return expand_env_var(
-                self.defaults.get(section, key, **kwargs))
+                self.airflow_defaults.get(section, key, **kwargs))
 
         else:
             log.warning(
@@ -299,7 +301,11 @@ class AirflowConfigParser(ConfigParser):
 
     def read(self, filenames):
         """读取多个配置文件，并进行校验 ."""
-        super(AirflowConfigParser, self).read(filenames, encoding="utf-8")
+        super(AirflowConfigParser, self).read(filenames)
+        self._validate()
+
+    def read_dict(self, *args, **kwargs):
+        super(AirflowConfigParser, self).read_dict(*args, **kwargs)
         self._validate()
 
     def has_option(self, section, option):
@@ -320,8 +326,8 @@ class AirflowConfigParser(ConfigParser):
         if super(AirflowConfigParser, self).has_option(section, option):
             super(AirflowConfigParser, self).remove_option(section, option)
 
-        if self.defaults.has_option(section, option) and remove_default:
-            self.defaults.remove_option(section, option)
+        if self.airflow_defaults.has_option(section, option) and remove_default:
+            self.airflow_defaults.remove_option(section, option)
 
     def getsection(self, section):
         """
@@ -330,10 +336,11 @@ class AirflowConfigParser(ConfigParser):
         :param section: section from the config
         :return: dict
         """
-        if section not in self._sections and section not in self.defaults._sections:
+        if (section not in self._sections and
+                section not in self.airflow_defaults._sections):
             return None
 
-        _section = copy.deepcopy(self.defaults._sections[section])
+        _section = copy.deepcopy(self.airflow_defaults._sections[section])
 
         if section in self._sections:
             _section.update(copy.deepcopy(self._sections[section]))
@@ -352,30 +359,35 @@ class AirflowConfigParser(ConfigParser):
             _section[key] = val
         return _section
 
-    def as_dict(self, display_source=False, display_sensitive=False):
+    def as_dict(
+            self, display_source=False, display_sensitive=False, raw=False):
         """
         Returns the current configuration as an OrderedDict of OrderedDicts.
         :param display_source: If False, the option value is returned. If True,
             a tuple of (option_value, source) is returned. Source is either
-            'airflow.cfg' or 'default'.
+            'airflow.cfg', 'default', 'env var', or 'cmd'.
         :type display_source: bool
         :param display_sensitive: If True, the values of options set by env
             vars and bash commands will be displayed. If False, those options
             are shown as '< hidden >'
         :type display_sensitive: bool
+        :param raw: Should the values be output as interpolated values, or the
+            "raw" form that can be fed back in to ConfigParser
+        :type raw: bool
         """
-        cfg = copy.deepcopy(self.defaults._sections)
-        cfg.update(copy.deepcopy(self._sections))
+        cfg = {}
+        configs = [
+            ('default', self.airflow_defaults),
+            ('airflow.cfg', self),
+        ]
 
-        # remove __name__ (affects Python 2 only)
-        for options in cfg.values():
-            options.pop('__name__', None)
-
-        # add source
-        if display_source:
-            for section in cfg:
-                for k, v in cfg[section].items():
-                    cfg[section][k] = (v, 'airflow config')
+        for (source_name, config) in configs:
+            for section in config.sections():
+                sect = cfg.setdefault(section, OrderedDict())
+                for (k, val) in config.items(section=section, raw=raw):
+                    if display_source:
+                        val = (val, source_name)
+                    sect[k] = val
 
         # add env vars and overwrite because they have priority
         for ev in [ev for ev in os.environ if ev.startswith('AIRFLOW__')]:
@@ -383,16 +395,15 @@ class AirflowConfigParser(ConfigParser):
                 _, section, key = ev.split('__')
                 opt = self._get_env_var_option(section, key)
             except ValueError:
-                opt = None
-            if opt:
-                if (
-                    not display_sensitive and
-                        ev != 'AIRFLOW__CORE__UNIT_TEST_MODE'):
-                    opt = '< hidden >'
-                if display_source:
-                    opt = (opt, 'env var')
-                cfg.setdefault(section.lower(), OrderedDict()).update(
-                    {key.lower(): opt})
+                continue
+            if (not display_sensitive and ev != 'AIRFLOW__CORE__UNIT_TEST_MODE'):
+                opt = '< hidden >'
+            elif raw:
+                opt = opt.replace('%', '%%')
+            if display_source:
+                opt = (opt, 'env var')
+            cfg.setdefault(section.lower(), OrderedDict()).update(
+                {key.lower(): opt})
 
         # add bash commands
         for (section, key) in self.as_command_stdout:
@@ -401,8 +412,11 @@ class AirflowConfigParser(ConfigParser):
                 if not display_sensitive:
                     opt = '< hidden >'
                 if display_source:
-                    opt = (opt, 'bash cmd')
+                    opt = (opt, 'cmd')
+                elif raw:
+                    opt = opt.replace('%', '%%')
                 cfg.setdefault(section, OrderedDict()).update({key: opt})
+                del cfg[section][key + '_cmd']
 
         return cfg
 
@@ -469,8 +483,10 @@ else:
 # 获得测试目录下dags的目录
 # Set up dags folder for unit tests
 # this directory won't exist if users install via pip
-project_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
-_TEST_DAGS_FOLDER = os.path.join(project_dir, 'tests', 'dags')
+_TEST_DAGS_FOLDER = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.realpath(__file__))),
+    'tests',
+    'dags')
 if os.path.exists(_TEST_DAGS_FOLDER):
     TEST_DAGS_FOLDER = _TEST_DAGS_FOLDER
 else:
@@ -478,7 +494,10 @@ else:
 
 # 获得测试目录下plugins的目录
 # Set up plugins folder for unit tests
-_TEST_PLUGINS_FOLDER = os.path.join(project_dir, 'tests', 'plugins')
+_TEST_PLUGINS_FOLDER = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.realpath(__file__))),
+    'tests',
+    'plugins')
 if os.path.exists(_TEST_PLUGINS_FOLDER):
     TEST_PLUGINS_FOLDER = _TEST_PLUGINS_FOLDER
 else:
@@ -504,9 +523,6 @@ if not os.path.isfile(TEST_CONFIG_FILE) or not os.path.isfile(AIRFLOW_CONFIG):
     FERNET_KEY = generate_fernet_key()
 else:
     FERNET_KEY = ''
-
-# 生成一个16个字节的加密串
-SECRET_KEY = b64encode(os.urandom(16)).decode('utf-8')
 
 # 自动生成单元测试配置文件
 TEMPLATE_START = (
@@ -570,7 +586,7 @@ set = conf.set # noqa
 
 for func in [load_test_config, get, getboolean, getfloat, getint, has_option,
              remove_option, as_dict, set]:
-    deprecated(
+    _deprecated(
         func,
         "Accessing configuration method '{f.__name__}' directly from "
         "the configuration module is deprecated. Please access the "
