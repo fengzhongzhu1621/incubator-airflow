@@ -24,8 +24,6 @@ Revises: 05f30312d566
 Create Date: 2018-06-17 10:16:31.412131
 
 """
-from alembic import op
-from sqlalchemy.dialects import mysql
 
 # revision identifiers, used by Alembic.
 revision = 'f23433877c24'
@@ -33,6 +31,9 @@ down_revision = '05f30312d566'
 branch_labels = None
 depends_on = None
 
+from alembic import op
+import sqlalchemy as sa
+from sqlalchemy.dialects import mysql
 
 def upgrade():
     conn = op.get_bind()

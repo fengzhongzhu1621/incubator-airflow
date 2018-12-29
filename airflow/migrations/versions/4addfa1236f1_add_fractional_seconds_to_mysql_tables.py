@@ -24,16 +24,16 @@ Create Date: 2016-09-11 13:39:18.592072
 
 """
 
-from alembic import op
-from sqlalchemy.dialects import mysql
-from alembic import context
-
 # revision identifiers, used by Alembic.
 revision = '4addfa1236f1'
 down_revision = 'f2ca10b85618'
 branch_labels = None
 depends_on = None
 
+from alembic import op
+import sqlalchemy as sa
+from sqlalchemy.dialects import mysql
+from alembic import context
 
 def upgrade():
     if context.config.get_main_option('sqlalchemy.url').startswith('mysql'):

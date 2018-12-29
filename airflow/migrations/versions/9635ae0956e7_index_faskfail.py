@@ -24,13 +24,15 @@ Revises: 856955da8476
 Create Date: 2018-06-17 21:40:01.963540
 
 """
-from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = '9635ae0956e7'
 down_revision = '856955da8476'
 branch_labels = None
 depends_on = None
+
+from alembic import op
+import sqlalchemy as sa
 
 
 def upgrade():
