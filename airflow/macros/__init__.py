@@ -78,13 +78,13 @@ def _integrate_plugins():
         ##########################################################
         # TODO FIXME Remove in Airflow 2.0
 
-        import os
-        if not os.environ.get('AIRFLOW_USE_NEW_IMPORTS', False):
-            from zope.deprecation import deprecated
+        import os as _os
+        if not _os.environ.get('AIRFLOW_USE_NEW_IMPORTS', False):
+            from zope.deprecation import deprecated as _deprecated
             for _macro in macros_module._objects:
                 macro_name = _macro.__name__
                 globals()[macro_name] = _macro
-                deprecated(
+                _deprecated(
                     macro_name,
                     "Importing plugin macro '{i}' directly from "
                     "'airflow.macros' has been deprecated. Please "
