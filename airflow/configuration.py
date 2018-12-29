@@ -39,7 +39,7 @@ import sys
 import warnings
 
 from backports.configparser import ConfigParser
-from zope.deprecation import deprecated
+from zope.deprecation import deprecated as _deprecated
 
 from airflow.exceptions import AirflowConfigException
 from airflow.utils.log.logging_mixin import LoggingMixin
