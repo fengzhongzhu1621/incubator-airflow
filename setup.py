@@ -24,7 +24,6 @@ import imp
 import logging
 import os
 import sys
-import subprocess
 
 logger = logging.getLogger(__name__)
 
@@ -85,23 +84,6 @@ class CleanCommand(Command):
 
     def run(self):
         os.system('rm -vrf ./build ./dist ./*.pyc ./*.tgz ./*.egg-info')
-
-
-class CompileAssets(Command):
-    """
-    Custom compile assets command to compile and build the frontend
-    assets using npm and webpack.
-    """
-    user_options = []
-
-    def initialize_options(self):
-        pass
-
-    def finalize_options(self):
-        pass
-
-    def run(self):
-        subprocess.call('./airflow/www_rbac/compile_assets.sh')
 
 
 def git_version(version):
@@ -175,7 +157,7 @@ doc = [
     'sphinx-rtd-theme>=0.1.6',
     'Sphinx-PyPI-upload>=0.2.1'
 ]
-docker = ['docker>=2.0.0']
+docker = ['docker~=3.0']
 druid = ['pydruid>=0.4.1']
 elasticsearch = [
     'elasticsearch>=5.0.0,<6.0.0',
@@ -206,7 +188,7 @@ kerberos = ['pykerberos>=1.1.13',
             'snakebite[kerberos]>=2.7.8']
 kubernetes = ['kubernetes>=3.0.0',
               'cryptography>=2.0.0']
-ldap = ['ldap3>=0.9.9.1']
+ldap = ['ldap3>=2.5.1']
 mssql = ['pymssql>=2.1.1']
 mysql = ['mysqlclient>=1.3.6']
 oracle = ['cx_Oracle>=5.1.2']
@@ -239,7 +221,7 @@ all_dbs = postgres + mysql + hive + mssql + hdfs + vertica + cloudant + druid + 
     + cassandra + mongo
 
 devel = [
-    'click',
+    'click==6.7',
     'freezegun',
     'jira',
     'lxml>=4.0.0',
@@ -255,13 +237,8 @@ devel = [
     'pywinrm',
     'qds-sdk>=1.9.6',
     'rednose',
-    'requests_mock',
-    'flake8'
+    'requests_mock'
 ]
-
-if not PY3:
-    devel += ['unittest2']
-
 devel_minreq = devel + kubernetes + mysql + doc + password + s3 + cgroups
 devel_hadoop = devel_minreq + hive + hdfs + webhdfs + kerberos
 devel_all = (sendgrid + devel + all_dbs + doc + samba + s3 + slack + crypto + oracle +
@@ -275,7 +252,7 @@ if PY3:
     devel_ci = [package for package in devel_all if package not in
                 ['snakebite>=2.7.8', 'snakebite[kerberos]>=2.7.8']]
 else:
-    devel_ci = devel_all
+    devel_ci = devel_all + ['unittest2']
 
 
 def do_setup():
@@ -309,12 +286,12 @@ def do_setup():
             'gitpython>=2.0.2',
             'gunicorn>=19.3.0, <20.0',
             'iso8601>=0.1.12',
-            'jinja2>=2.7.3, <=2.10.0',
+            'jinja2>=2.7.3, <2.9.0',
             'lxml>=4.0.0',
             'markdown>=2.5.2, <3.0',
             'pandas>=0.17.1, <1.0.0',
             'pendulum==1.4.4',
-            'psutil>=4.2.0, <6.0.0',
+            'psutil>=4.2.0, <5.0.0',
             'pygments>=2.0.1, <3.0',
             'python-daemon>=2.1.1, <2.2',
             'python-dateutil>=2.3, <3',
@@ -408,7 +385,6 @@ def do_setup():
         cmdclass={
             'test': Tox,
             'extra_clean': CleanCommand,
-            'compile_assets': CompileAssets
         },
         python_requires='>=2.7,!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*',
     )

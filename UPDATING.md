@@ -1,21 +1,69 @@
+<!--
+Licensed to the Apache Software Foundation (ASF) under one
+or more contributor license agreements.  See the NOTICE file
+distributed with this work for additional information
+regarding copyright ownership.  The ASF licenses this file
+to you under the Apache License, Version 2.0 (the
+"License"); you may not use this file except in compliance
+with the License.  You may obtain a copy of the License at
+
+  http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing,
+software distributed under the License is distributed on an
+"AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+KIND, either express or implied.  See the License for the
+specific language governing permissions and limitations
+under the License.
+-->
+
 # Updating Airflow
 
 This file documents any backwards-incompatible changes in Airflow and
 assists users migrating to a new version.
 
-## Airflow Master
+## Airflow 1.10.1
 
-### Rename of BashTaskRunner to StandardTaskRunner
+### StatsD Metrics
 
-BashTaskRunner has been renamed to StandardTaskRunner. It is the default task runner
-so you might need to update your config.
+The `scheduler_heartbeat` metric has been changed from a gauge to a counter. Each loop of the scheduler will increment the counter by 1. This provides a higher degree of visibility and allows for better integration with Prometheus using the [StatsD Exporter](https://github.com/prometheus/statsd_exporter). Scheduler upness can be determined by graphing and alerting using a rate. If the scheduler goes down, the rate will drop to 0.
 
-`task_runner = StandardTaskRunner`
+### Custom auth backends interface change
 
-### min_file_parsing_loop_time config option temporarily disabled
+We have updated the version of flask-login we depend upon, and as a result any
+custom auth backends might need a small change: `is_active`,
+`is_authenticated`, and `is_anonymous` should now be properties. What this means is if
+previously you had this in your user class
 
-The scheduler.min_file_parsing_loop_time config option has been temporarily removed due to
-some bugs.
+    def is_active(self):
+      return self.active
+
+then you need to change it like this
+
+    @property
+    def is_active(self):
+      return self.active
+
+### EMRHook now passes all of connection's extra to CreateJobFlow API
+
+EMRHook.create_job_flow has been changed to pass all keys to the create_job_flow API, rather than
+just specific known keys for greater flexibility.
+
+However prior to this release the "emr_default" sample connection that was created had invalid
+configuration, so creating EMR clusters might fail until your connection is updated. (Ec2KeyName,
+Ec2SubnetId, TerminationProtection and KeepJobFlowAliveWhenNoSteps were all top-level keys when they
+should be inside the "Instances" dict)
+
+### LDAP Auth Backend now requires TLS
+
+Connecting to an LDAP serever over plain text is not supported anymore. The
+certificate presented by the LDAP server must be signed by a trusted
+certificiate, or you must provide the `cacert` option under `[ldap]` in the
+config file.
+
+If you want to use LDAP auth backend without TLS then you will habe to create a
+custom-auth backend based on
+https://github.com/apache/incubator-airflow/blob/1.10.0/airflow/contrib/auth/backends/ldap_auth.py
 
 ## Airflow 1.10
 
@@ -26,14 +74,6 @@ dependency (python-nvd3 -> python-slugify -> unidecode).
 ### Replace DataProcHook.await calls to DataProcHook.wait
 
 The method name was changed to be compatible with the Python 3.7 async/await keywords
-
-### DAG level Access Control for new RBAC UI
-
-Extend and enhance new Airflow RBAC UI to support DAG level ACL. Each dag now has two permissions(one for write, one for read) associated('can_dag_edit', 'can_dag_read').
-The admin will create new role, associate the dag permission with the target dag and assign that role to users. That user can only access / view the certain dags on the UI
-that he has permissions on. If a new role wants to access all the dags, the admin could associate dag permissions on an artificial view(``all_dags``) with that role.
-
-We also provide a new cli command(``sync_perm``) to allow admin to auto sync permissions.
 
 ### Setting UTF-8 as default mime_charset in email utils
 
