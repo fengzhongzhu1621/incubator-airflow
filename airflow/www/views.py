@@ -18,68 +18,76 @@
 # under the License.
 #
 
-import ast
-import codecs
-import copy
-import datetime as dt
-import itertools
-import json
-import logging
-import math
-import os
-import traceback
-from collections import defaultdict
-from datetime import timedelta
-from functools import wraps
-from textwrap import dedent
+from past.builtins import basestring, unicode
 
-import bleach
-import markdown
-import nvd3
-import pendulum
+import ast
+import datetime as dt
+import logging
+import os
 import pkg_resources
+import socket
+from functools import wraps
+from datetime import timedelta
+import copy
+import math
+import json
+import bleach
+import pendulum
+import codecs
+from collections import defaultdict
+
+import inspect
+from textwrap import dedent
+import traceback
+
 import sqlalchemy as sqla
+from sqlalchemy import or_, desc, and_, union_all
+
 from flask import (
     abort, jsonify, redirect, url_for, request, Markup, Response,
     current_app, render_template, make_response)
-from flask import flash
-from flask._compat import PY2
 from flask_admin import BaseView, expose, AdminIndexView
+from flask_admin.contrib.sqla import ModelView
 from flask_admin.actions import action
 from flask_admin.babel import lazy_gettext
-from flask_admin.contrib.sqla import ModelView
-from flask_admin.form.fields import DateTimeField
 from flask_admin.tools import iterdecode
-from jinja2 import escape
+from flask import flash
+from flask._compat import PY2
+
 from jinja2.sandbox import ImmutableSandboxedEnvironment
-from past.builtins import basestring, unicode
-from pygments import highlight, lexers
-from pygments.formatters import HtmlFormatter
-from sqlalchemy import or_, desc, and_, union_all
+from jinja2 import escape
+
+import markdown
+import nvd3
+
 from wtforms import (
     Form, SelectField, TextAreaField, PasswordField,
     StringField, validators)
+from flask_admin.form.fields import DateTimeField
+
+from pygments import highlight, lexers
+from pygments.formatters import HtmlFormatter
 
 import airflow
 from airflow import configuration as conf
 from airflow import models
 from airflow import settings
-from airflow.api.common.experimental.mark_tasks import (set_dag_run_state_to_running,
-                                                        set_dag_run_state_to_success,
-                                                        set_dag_run_state_to_failed)
+from airflow.api.common.experimental.mark_tasks import set_dag_run_state
 from airflow.exceptions import AirflowException
-from airflow.models import BaseOperator
 from airflow.models import XCom, DagRun
-from airflow.operators.subdag_operator import SubDagOperator
 from airflow.ti_deps.dep_context import DepContext, QUEUE_DEPS, SCHEDULER_DEPS
+
+from airflow.models import BaseOperator
+from airflow.operators.subdag_operator import SubDagOperator
+
 from airflow.utils import timezone
-from airflow.utils.dates import infer_time_unit, scale_time_units, parse_execution_date
+from airflow.utils.json import json_ser
+from airflow.utils.state import State
 from airflow.utils.db import create_session, provide_session
 from airflow.utils.helpers import alchemy_to_dict
-from airflow.utils.json import json_ser
-from airflow.utils.net import get_hostname
-from airflow.utils.state import State
+from airflow.utils.dates import infer_time_unit, scale_time_units, parse_execution_date
 from airflow.utils.timezone import datetime
+from airflow.utils.net import get_hostname
 from airflow.www import utils as wwwutils
 from airflow.www.forms import (DateTimeForm, DateTimeWithNumRunsForm,
                                DateTimeWithNumRunsWithDagRunsForm)
@@ -248,9 +256,7 @@ attr_renderer = {
     'doc_yaml': lambda x: render(x, lexers.YamlLexer),
     'doc_md': wrapped_markdown,
     'python_callable': lambda x: render(
-        wwwutils.get_python_source(x),
-        lexers.PythonLexer,
-    ),
+        inspect.getsource(x), lexers.PythonLexer),
 }
 
 
@@ -260,7 +266,7 @@ def data_profiling_required(f):
     def decorated_function(*args, **kwargs):
         if (
                 current_app.config['LOGIN_DISABLED'] or
-                (not current_user.is_anonymous() and current_user.data_profiling())
+                (not current_user.is_anonymous and current_user.data_profiling())
         ):
             return f(*args, **kwargs)
         else:
@@ -363,7 +369,6 @@ def get_date_time_num_runs_dag_runs_form_data(request, session, dag):
         'dr_choices': dr_choices,
         'dr_state': dr_state,
     }
-
 
 class Airflow(BaseView):
     def is_visible(self):
@@ -481,6 +486,8 @@ class Airflow(BaseView):
             else:
                 if chart.sql_layout == 'series':
                     # User provides columns (series, x, y)
+                    xaxis_label = df.columns[1]
+                    yaxis_label = df.columns[2]
                     df[df.columns[2]] = df[df.columns[2]].astype(np.float)
                     df = df.pivot_table(
                         index=df.columns[1],
@@ -488,6 +495,8 @@ class Airflow(BaseView):
                         values=df.columns[2], aggfunc=np.sum)
                 else:
                     # User provides columns (x, y, metric1, metric2, ...)
+                    xaxis_label = df.columns[0]
+                    yaxis_label = 'y'
                     df.index = df[df.columns[0]]
                     df = df.sort(df.columns[0])
                     del df[df.columns[0]]
@@ -570,17 +579,13 @@ class Airflow(BaseView):
         for dag in dagbag.dags.values():
             payload[dag.safe_dag_id] = []
             for state in State.dag_states:
-                try:
-                    count = data[dag.dag_id][state]
-                except Exception:
-                    count = 0
-                d = {
+                count = data.get(dag.dag_id, {}).get(state, 0)
+                payload[dag.safe_dag_id].append({
                     'state': state,
                     'count': count,
                     'dag_id': dag.dag_id,
                     'color': State.color(state)
-                }
-                payload[dag.safe_dag_id].append(d)
+                })
         return wwwutils.json_response(payload)
 
     @expose('/task_stats')
@@ -595,8 +600,8 @@ class Airflow(BaseView):
             session.query(DagRun.dag_id, sqla.func.max(DagRun.execution_date).label('execution_date'))
                 .join(Dag, Dag.dag_id == DagRun.dag_id)
                 .filter(DagRun.state != State.RUNNING)
-                .filter(Dag.is_active == True)  # noqa: E712
-                .filter(Dag.is_subdag == False)  # noqa: E712
+                .filter(Dag.is_active == True)
+                .filter(Dag.is_subdag == False)
                 .group_by(DagRun.dag_id)
                 .subquery('last_dag_run')
         )
@@ -604,8 +609,8 @@ class Airflow(BaseView):
             session.query(DagRun.dag_id, DagRun.execution_date)
                 .join(Dag, Dag.dag_id == DagRun.dag_id)
                 .filter(DagRun.state == State.RUNNING)
-                .filter(Dag.is_active == True)  # noqa: E712
-                .filter(Dag.is_subdag == False)  # noqa: E712
+                .filter(Dag.is_active == True)
+                .filter(Dag.is_subdag == False)
                 .subquery('running_dag_run')
         )
 
@@ -641,17 +646,13 @@ class Airflow(BaseView):
         for dag in dagbag.dags.values():
             payload[dag.safe_dag_id] = []
             for state in State.task_states:
-                try:
-                    count = data[dag.dag_id][state]
-                except Exception:
-                    count = 0
-                d = {
+                count = data.get(dag.dag_id, {}).get(state, 0)
+                payload[dag.safe_dag_id].append({
                     'state': state,
                     'count': count,
                     'dag_id': dag.dag_id,
                     'color': State.color(state)
-                }
-                payload[dag.safe_dag_id].append(d)
+                })
         return wwwutils.json_response(payload)
 
     @expose('/code')
@@ -661,7 +662,7 @@ class Airflow(BaseView):
         dag = dagbag.get_dag(dag_id)
         title = dag_id
         try:
-            with open(dag.fileloc, 'r') as f:
+            with wwwutils.open_maybe_zipped(dag.fileloc, 'r') as f:
                 code = f.read()
             html_code = highlight(
                 code, lexers.PythonLexer(), HtmlFormatter(linenos=True))
@@ -879,7 +880,7 @@ class Airflow(BaseView):
         for attr_name in dir(ti):
             if not attr_name.startswith('_'):
                 attr = getattr(ti, attr_name)
-                if type(attr) != type(self.task):  # noqa: E721
+                if type(attr) != type(self.task):
                     ti_attrs.append((attr_name, str(attr)))
 
         task_attrs = []
@@ -887,7 +888,7 @@ class Airflow(BaseView):
             if not attr_name.startswith('_'):
                 attr = getattr(task, attr_name)
                 if type(attr) != type(self.task) and \
-                        attr_name not in attr_renderer:  # noqa: E721
+                        attr_name not in attr_renderer:
                     task_attrs.append((attr_name, str(attr)))
 
         # Color coding the special attributes that are code
@@ -992,25 +993,16 @@ class Airflow(BaseView):
         ignore_task_deps = request.args.get('ignore_task_deps') == "true"
         ignore_ti_state = request.args.get('ignore_ti_state') == "true"
 
-        from airflow.executors import GetDefaultExecutor
-        executor = GetDefaultExecutor()
-        valid_celery_config = False
-        valid_kubernetes_config = False
-
         try:
+            from airflow.executors import GetDefaultExecutor
             from airflow.executors.celery_executor import CeleryExecutor
-            valid_celery_config = isinstance(executor, CeleryExecutor)
+            executor = GetDefaultExecutor()
+            if not isinstance(executor, CeleryExecutor):
+                flash("Only works with the CeleryExecutor, sorry", "error")
+                return redirect(origin)
         except ImportError:
-            pass
-
-        try:
-            from airflow.contrib.executors.kubernetes_executor import KubernetesExecutor
-            valid_kubernetes_config = isinstance(executor, KubernetesExecutor)
-        except ImportError:
-            pass
-
-        if not valid_celery_config and not valid_kubernetes_config:
-            flash("Only works with the Celery or Kubernetes executors, sorry", "error")
+            # in case CeleryExecutor cannot be imported it is not active either
+            flash("Only works with the CeleryExecutor, sorry", "error")
             return redirect(origin)
 
         ti = models.TaskInstance(task=task, execution_date=execution_date)
@@ -1111,7 +1103,9 @@ class Airflow(BaseView):
             count = dag.clear(
                 start_date=start_date,
                 end_date=end_date,
-                include_subdags=recursive)
+                include_subdags=recursive,
+                include_parentdag=recursive,
+            )
 
             flash("{0} task instances have been cleared".format(count))
             return redirect(origin)
@@ -1120,7 +1114,9 @@ class Airflow(BaseView):
             start_date=start_date,
             end_date=end_date,
             include_subdags=recursive,
-            dry_run=True)
+            dry_run=True,
+            include_parentdag=recursive,
+        )
         if not tis:
             flash("No task instances to clear", 'error')
             response = redirect(origin)
@@ -1171,6 +1167,7 @@ class Airflow(BaseView):
     @wwwutils.notify_owner
     def dagrun_clear(self):
         dag_id = request.args.get('dag_id')
+        task_id = request.args.get('task_id')
         origin = request.args.get('origin')
         execution_date = request.args.get('execution_date')
         confirmed = request.args.get('confirmed') == "true"
@@ -1206,7 +1203,16 @@ class Airflow(BaseView):
             })
         return wwwutils.json_response(payload)
 
-    def _mark_dagrun_state_as_failed(self, dag_id, execution_date, confirmed, origin):
+    @expose('/dagrun_success')
+    @login_required
+    @wwwutils.action_logging
+    @wwwutils.notify_owner
+    def dagrun_success(self):
+        dag_id = request.args.get('dag_id')
+        execution_date = request.args.get('execution_date')
+        confirmed = request.args.get('confirmed') == 'true'
+        origin = request.args.get('origin')
+
         if not execution_date:
             flash('Invalid execution date', 'error')
             return redirect(origin)
@@ -1218,36 +1224,8 @@ class Airflow(BaseView):
             flash('Cannot find DAG: {}'.format(dag_id), 'error')
             return redirect(origin)
 
-        new_dag_state = set_dag_run_state_to_failed(dag, execution_date, commit=confirmed)
-
-        if confirmed:
-            flash('Marked failed on {} task instances'.format(len(new_dag_state)))
-            return redirect(origin)
-
-        else:
-            details = '\n'.join([str(t) for t in new_dag_state])
-
-            response = self.render('airflow/confirm.html',
-                                   message=("Here's the list of task instances you are "
-                                            "about to mark as failed"),
-                                   details=details)
-
-            return response
-
-    def _mark_dagrun_state_as_success(self, dag_id, execution_date, confirmed, origin):
-        if not execution_date:
-            flash('Invalid execution date', 'error')
-            return redirect(origin)
-
-        execution_date = parse_execution_date(execution_date)
-        dag = dagbag.get_dag(dag_id)
-
-        if not dag:
-            flash('Cannot find DAG: {}'.format(dag_id), 'error')
-            return redirect(origin)
-
-        new_dag_state = set_dag_run_state_to_success(dag, execution_date,
-                                                     commit=confirmed)
+        new_dag_state = set_dag_run_state(dag, execution_date, state=State.SUCCESS,
+                                          commit=confirmed)
 
         if confirmed:
             flash('Marked success on {} task instances'.format(len(new_dag_state)))
@@ -1258,43 +1236,30 @@ class Airflow(BaseView):
 
             response = self.render('airflow/confirm.html',
                                    message=("Here's the list of task instances you are "
-                                            "about to mark as success"),
+                                            "about to mark as successful:"),
                                    details=details)
 
             return response
 
-    @expose('/dagrun_failed')
+    @expose('/success')
     @login_required
     @wwwutils.action_logging
     @wwwutils.notify_owner
-    def dagrun_failed(self):
+    def success(self):
         dag_id = request.args.get('dag_id')
-        execution_date = request.args.get('execution_date')
-        confirmed = request.args.get('confirmed') == 'true'
+        task_id = request.args.get('task_id')
         origin = request.args.get('origin')
-        return self._mark_dagrun_state_as_failed(dag_id, execution_date,
-                                                 confirmed, origin)
-
-    @expose('/dagrun_success')
-    @login_required
-    @wwwutils.action_logging
-    @wwwutils.notify_owner
-    def dagrun_success(self):
-        dag_id = request.args.get('dag_id')
-        execution_date = request.args.get('execution_date')
-        confirmed = request.args.get('confirmed') == 'true'
-        origin = request.args.get('origin')
-        return self._mark_dagrun_state_as_success(dag_id, execution_date,
-                                                  confirmed, origin)
-
-    def _mark_task_instance_state(self, dag_id, task_id, origin, execution_date,
-                                  confirmed, upstream, downstream,
-                                  future, past, state):
         dag = dagbag.get_dag(dag_id)
         task = dag.get_task(task_id)
         task.dag = dag
 
+        execution_date = request.args.get('execution_date')
         execution_date = parse_execution_date(execution_date)
+        confirmed = request.args.get('confirmed') == "true"
+        upstream = request.args.get('upstream') == "true"
+        downstream = request.args.get('downstream') == "true"
+        future = request.args.get('future') == "true"
+        past = request.args.get('past') == "true"
 
         if not dag:
             flash("Cannot find DAG: {}".format(dag_id))
@@ -1309,65 +1274,25 @@ class Airflow(BaseView):
         if confirmed:
             altered = set_state(task=task, execution_date=execution_date,
                                 upstream=upstream, downstream=downstream,
-                                future=future, past=past, state=state,
+                                future=future, past=past, state=State.SUCCESS,
                                 commit=True)
 
-            flash("Marked {} on {} task instances".format(state, len(altered)))
+            flash("Marked success on {} task instances".format(len(altered)))
             return redirect(origin)
 
         to_be_altered = set_state(task=task, execution_date=execution_date,
                                   upstream=upstream, downstream=downstream,
-                                  future=future, past=past, state=state,
+                                  future=future, past=past, state=State.SUCCESS,
                                   commit=False)
 
         details = "\n".join([str(t) for t in to_be_altered])
 
         response = self.render("airflow/confirm.html",
                                message=("Here's the list of task instances you are "
-                                        "about to mark as {}:".format(state)),
+                                        "about to mark as successful:"),
                                details=details)
 
         return response
-
-    @expose('/failed')
-    @login_required
-    @wwwutils.action_logging
-    @wwwutils.notify_owner
-    def failed(self):
-        dag_id = request.args.get('dag_id')
-        task_id = request.args.get('task_id')
-        origin = request.args.get('origin')
-        execution_date = request.args.get('execution_date')
-
-        confirmed = request.args.get('confirmed') == "true"
-        upstream = request.args.get('upstream') == "true"
-        downstream = request.args.get('downstream') == "true"
-        future = request.args.get('future') == "true"
-        past = request.args.get('past') == "true"
-
-        return self._mark_task_instance_state(dag_id, task_id, origin, execution_date,
-                                              confirmed, upstream, downstream,
-                                              future, past, State.FAILED)
-
-    @expose('/success')
-    @login_required
-    @wwwutils.action_logging
-    @wwwutils.notify_owner
-    def success(self):
-        dag_id = request.args.get('dag_id')
-        task_id = request.args.get('task_id')
-        origin = request.args.get('origin')
-        execution_date = request.args.get('execution_date')
-
-        confirmed = request.args.get('confirmed') == "true"
-        upstream = request.args.get('upstream') == "true"
-        downstream = request.args.get('downstream') == "true"
-        future = request.args.get('future') == "true"
-        past = request.args.get('past') == "true"
-
-        return self._mark_task_instance_state(dag_id, task_id, origin, execution_date,
-                                              confirmed, upstream, downstream,
-                                              future, past, State.SUCCESS)
 
     @expose('/tree')
     @login_required
@@ -1483,8 +1408,7 @@ class Airflow(BaseView):
                 for d in dates],
         }
 
-        # minimize whitespace as this can be huge for bigger dags
-        data = json.dumps(data, default=json_ser, separators=(',', ':'))
+        data = json.dumps(data, indent=4, default=json_ser)
         session.commit()
 
         form = DateTimeWithNumRunsForm(data={'base_date': max_date,
@@ -1918,21 +1842,10 @@ class Airflow(BaseView):
             ti for ti in dag.get_task_instances(session, dttm, dttm)
             if ti.start_date]
         tis = sorted(tis, key=lambda ti: ti.start_date)
-        TF = models.TaskFail
-        ti_fails = list(itertools.chain(*[(
-            session
-            .query(TF)
-            .filter(TF.dag_id == ti.dag_id,
-                    TF.task_id == ti.task_id,
-                    TF.execution_date == ti.execution_date)
-            .all()
-        ) for ti in tis]))
-        tis_with_fails = sorted(tis + ti_fails, key=lambda ti: ti.start_date)
 
         tasks = []
-        for ti in tis_with_fails:
+        for ti in tis:
             end_date = ti.end_date if ti.end_date else dt.datetime.now()
-            state = ti.state if type(ti) == models.TaskInstance else State.FAILED
             tasks.append({
                 'startDate': wwwutils.epoch(ti.start_date),
                 'endDate': wwwutils.epoch(end_date),
@@ -1940,10 +1853,10 @@ class Airflow(BaseView):
                 'isoEnd': end_date.isoformat()[:-4],
                 'taskName': ti.task_id,
                 'duration': "{}".format(end_date - ti.start_date)[:-4],
-                'status': state,
+                'status': ti.state,
                 'executionDate': ti.execution_date.isoformat(),
             })
-        states = {task['status']: task['status'] for task in tasks}
+        states = {ti.state: ti.state for ti in tis}
         data = {
             'taskNames': [ti.task_id for ti in tis],
             'tasks': tasks,
@@ -2535,7 +2448,7 @@ class VariableView(wwwutils.DataProfilingMixin, AirflowModelView):
     )
     column_list = ('key', 'val', 'is_encrypted',)
     column_filters = ('key', 'val')
-    column_searchable_list = ('key', 'val', 'is_encrypted',)
+    column_searchable_list = ('key', 'val')
     column_default_sort = ('key', False)
     form_widget_args = {
         'is_encrypted': {'disabled': True},
@@ -2678,8 +2591,19 @@ class DagRunModelView(ModelViewOnly):
         models.DagStat.update(dirty_ids, dirty_only=False, session=session)
 
     @action('set_running', "Set state to 'running'", None)
+    def action_set_running(self, ids):
+        self.set_dagrun_state(ids, State.RUNNING)
+
+    @action('set_failed', "Set state to 'failed'", None)
+    def action_set_failed(self, ids):
+        self.set_dagrun_state(ids, State.FAILED)
+
+    @action('set_success', "Set state to 'success'", None)
+    def action_set_success(self, ids):
+        self.set_dagrun_state(ids, State.SUCCESS)
+
     @provide_session
-    def action_set_running(self, ids, session=None):
+    def set_dagrun_state(self, ids, target_state, session=None):
         try:
             DR = models.DagRun
             count = 0
@@ -2687,98 +2611,19 @@ class DagRunModelView(ModelViewOnly):
             for dr in session.query(DR).filter(DR.id.in_(ids)).all():
                 dirty_ids.append(dr.dag_id)
                 count += 1
-                dr.state = State.RUNNING
-                dr.start_date = dt.datetime.now()
+                dr.state = target_state
+                if target_state == State.RUNNING:
+                    dr.start_date = dt.datetime.now()
+                else:
+                    dr.end_date = dt.datetime.now()
+            session.commit()
             models.DagStat.update(dirty_ids, session=session)
             flash(
-                "{count} dag runs were set to running".format(**locals()))
+                "{count} dag runs were set to '{target_state}'".format(**locals()))
         except Exception as ex:
             if not self.handle_view_exception(ex):
                 raise Exception("Ooops")
             flash('Failed to set state', 'error')
-
-    @action('set_failed', "Set state to 'failed'",
-            "All running task instances would also be marked as failed, are you sure?")
-    @provide_session
-    def action_set_failed(self, ids, session=None):
-        try:
-            DR = models.DagRun
-            count = 0
-            dirty_ids = []
-            altered_tis = []
-            for dr in session.query(DR).filter(DR.id.in_(ids)).all():
-                dirty_ids.append(dr.dag_id)
-                count += 1
-                altered_tis += \
-                    set_dag_run_state_to_failed(dagbag.get_dag(dr.dag_id),
-                                                dr.execution_date,
-                                                commit=True,
-                                                session=session)
-            models.DagStat.update(dirty_ids, session=session)
-            altered_ti_count = len(altered_tis)
-            flash(
-                "{count} dag runs and {altered_ti_count} task instances "
-                "were set to failed".format(**locals()))
-        except Exception as ex:
-            if not self.handle_view_exception(ex):
-                raise Exception("Ooops")
-            flash('Failed to set state', 'error')
-
-    @action('set_success', "Set state to 'success'",
-            "All task instances would also be marked as success, are you sure?")
-    @provide_session
-    def action_set_success(self, ids, session=None):
-        try:
-            DR = models.DagRun
-            count = 0
-            dirty_ids = []
-            altered_tis = []
-            for dr in session.query(DR).filter(DR.id.in_(ids)).all():
-                dirty_ids.append(dr.dag_id)
-                count += 1
-                altered_tis += \
-                    set_dag_run_state_to_success(dagbag.get_dag(dr.dag_id),
-                                                 dr.execution_date,
-                                                 commit=True,
-                                                 session=session)
-            models.DagStat.update(dirty_ids, session=session)
-            altered_ti_count = len(altered_tis)
-            flash(
-                "{count} dag runs and {altered_ti_count} task instances "
-                "were set to success".format(**locals()))
-        except Exception as ex:
-            if not self.handle_view_exception(ex):
-                raise Exception("Ooops")
-            flash('Failed to set state', 'error')
-
-    # Called after editing DagRun model in the UI.
-    @provide_session
-    def after_model_change(self, form, dagrun, is_created, session=None):
-        altered_tis = []
-        if dagrun.state == State.SUCCESS:
-            altered_tis = set_dag_run_state_to_success(
-                dagbag.get_dag(dagrun.dag_id),
-                dagrun.execution_date,
-                commit=True,
-                session=session)
-        elif dagrun.state == State.FAILED:
-            altered_tis = set_dag_run_state_to_failed(
-                dagbag.get_dag(dagrun.dag_id),
-                dagrun.execution_date,
-                commit=True,
-                session=session)
-        elif dagrun.state == State.RUNNING:
-            altered_tis = set_dag_run_state_to_running(
-                dagbag.get_dag(dagrun.dag_id),
-                dagrun.execution_date,
-                commit=True,
-                session=session)
-
-        altered_ti_count = len(altered_tis)
-        models.DagStat.update([dagrun.dag_id], session=session)
-        flash(
-            "1 dag run and {altered_ti_count} task instances "
-            "were set to '{dagrun.state}'".format(**locals()))
 
 
 class LogModelView(ModelViewOnly):
@@ -3022,7 +2867,7 @@ class VersionView(wwwutils.SuperUserMixin, BaseView):
     def version(self):
         # Look at the version from setup.py
         try:
-            airflow_version = pkg_resources.require("apache-airflow")[0].version
+            airflow_version = airflow.__version__
         except Exception as e:
             airflow_version = None
             logging.error(e)

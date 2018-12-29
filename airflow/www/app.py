@@ -43,11 +43,11 @@ csrf = CSRFProtect()
 
 
 def create_app(config=None, testing=False):
-
     log = LoggingMixin().log
 
     app = Flask(__name__)
-    app.wsgi_app = ProxyFix(app.wsgi_app)
+    if configuration.conf.getboolean('webserver', 'ENABLE_PROXY_FIX'):
+        app.wsgi_app = ProxyFix(app.wsgi_app)
     app.secret_key = configuration.conf.get('webserver', 'SECRET_KEY')
     app.config['LOGIN_DISABLED'] = not configuration.conf.getboolean(
         'webserver', 'AUTHENTICATE')
@@ -132,6 +132,7 @@ def create_app(config=None, testing=False):
 
         def integrate_plugins():
             """Integrate plugins to the context"""
+            log = LoggingMixin().log
             from airflow.plugins_manager import (
                 admin_views, flask_blueprints, menu_links)
             for v in admin_views:
