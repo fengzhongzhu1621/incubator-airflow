@@ -17,22 +17,21 @@
 # specific language governing permissions and limitations
 # under the License.
 
+from builtins import str
+import dill
 import inspect
 import os
 import pickle
 import subprocess
 import sys
 import types
-from textwrap import dedent
-
-import dill
-from builtins import str
 
 from airflow.exceptions import AirflowException
 from airflow.models import BaseOperator, SkipMixin
 from airflow.utils.decorators import apply_defaults
 from airflow.utils.file import TemporaryDirectory
-from airflow.utils.operator_helpers import context_to_airflow_vars
+
+from textwrap import dedent
 
 
 class PythonOperator(BaseOperator):
@@ -66,10 +65,6 @@ class PythonOperator(BaseOperator):
     template_ext = tuple()
     ui_color = '#ffefeb'
 
-    # since we won't mutate the arguments, we should just do the shallow copy
-    # there are some cases we can't deepcopy the objects(e.g protobuf).
-    shallow_copy_attrs = ('python_callable', 'op_kwargs',)
-
     @apply_defaults
     def __init__(
             self,
@@ -92,13 +87,6 @@ class PythonOperator(BaseOperator):
             self.template_ext = templates_exts
 
     def execute(self, context):
-        # Export context to make it available for callables to use.
-        airflow_context_vars = context_to_airflow_vars(context, in_env_var_format=True)
-        self.log.info("Exporting the following env vars:\n" +
-                      '\n'.join(["{}={}".format(k, v)
-                                 for k, v in airflow_context_vars.items()]))
-        os.environ.update(airflow_context_vars)
-
         if self.provide_context:
             context.update(self.op_kwargs)
             context['templates_dict'] = self.templates_dict
@@ -188,8 +176,10 @@ class PythonVirtualenvOperator(PythonOperator):
     variable named virtualenv_string_args will be available (populated by
     string_args). In addition, one can pass stuff through op_args and op_kwargs, and one
     can use a return value.
+
     Note that if your virtualenv runs in a different Python major version than Airflow,
     you cannot use return values, op_args, or op_kwargs. You can use string_args though.
+
     :param python_callable: A python function with no references to outside variables,
         defined with def, which will be run in a virtualenv
     :type python_callable: function
@@ -361,8 +351,7 @@ class PythonVirtualenvOperator(PythonOperator):
             cmd = ['{}/bin/pip'.format(tmp_dir), 'install']
             return cmd + self.requirements
 
-    @staticmethod
-    def _generate_python_cmd(tmp_dir, script_filename,
+    def _generate_python_cmd(self, tmp_dir, script_filename,
                              input_filename, output_filename, string_args_filename):
         # direct path alleviates need to activate
         return ['{}/bin/python'.format(tmp_dir), script_filename,

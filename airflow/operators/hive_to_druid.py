@@ -55,8 +55,6 @@ class HiveToDruidTransfer(BaseOperator):
     :param hive_tblproperties: additional properties for tblproperties in
         hive for the staging table
     :type hive_tblproperties: dict
-    :param job_properties: additional properties for job
-    :type job_properties: dict
     """
 
     template_fields = ('sql', 'intervals')
@@ -79,7 +77,6 @@ class HiveToDruidTransfer(BaseOperator):
             query_granularity="NONE",
             segment_granularity="DAY",
             hive_tblproperties=None,
-            job_properties=None,
             *args, **kwargs):
         super(HiveToDruidTransfer, self).__init__(*args, **kwargs)
         self.sql = sql
@@ -98,7 +95,6 @@ class HiveToDruidTransfer(BaseOperator):
         self.druid_ingest_conn_id = druid_ingest_conn_id
         self.metastore_conn_id = metastore_conn_id
         self.hive_tblproperties = hive_tblproperties
-        self.job_properties = job_properties
 
     def execute(self, context):
         hive = HiveCliHook(hive_cli_conn_id=self.hive_cli_conn_id)
@@ -129,7 +125,9 @@ class HiveToDruidTransfer(BaseOperator):
         columns = [col.name for col in t.sd.cols]
 
         # Get the path on hdfs
-        static_path = m.get_table(hive_table).sd.location
+        hdfs_uri = m.get_table(hive_table).sd.location
+        pos = hdfs_uri.find('/user')
+        static_path = hdfs_uri[pos:]
 
         schema, table = hive_table.split('.')
 
@@ -164,7 +162,7 @@ class HiveToDruidTransfer(BaseOperator):
         :type columns: list
         """
 
-        # backward compatibility for num_shards,
+        # backward compatibilty for num_shards,
         # but target_partition_size is the default setting
         # and overwrites the num_shards
         num_shards = self.num_shards
@@ -232,10 +230,6 @@ class HiveToDruidTransfer(BaseOperator):
                 }
             }
         }
-
-        if self.job_properties:
-            ingest_query_dict['spec']['tuningConfig']['jobProperties'] \
-                .update(self.job_properties)
 
         if self.hadoop_dependency_coordinates:
             ingest_query_dict['hadoopDependencyCoordinates'] \

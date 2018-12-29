@@ -91,7 +91,8 @@ class HiveStatsCollectionOperator(BaseOperator):
     def get_default_exprs(self, col, col_type):
         if col in self.col_blacklist:
             return {}
-        d = {(col, 'non_null'): "COUNT({col})"}
+        d = {}
+        d[(col, 'non_null')] = "COUNT({col})"
         if col_type in ['double', 'int', 'bigint', 'float', 'double']:
             d[(col, 'sum')] = 'SUM({col})'
             d[(col, 'min')] = 'MIN({col})'
