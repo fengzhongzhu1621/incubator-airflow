@@ -51,6 +51,7 @@ class State(object):
         RUNNING,
         FAILED,
         UPSTREAM_FAILED,
+        SKIPPED,
         UP_FOR_RETRY,
         QUEUED,
         NONE,
@@ -87,8 +88,7 @@ class State(object):
         color = cls.color(state)
         if color in ['green', 'red']:
             return 'white'
-        else:
-            return 'black'
+        return 'black'
 
     @classmethod
     def finished(cls):
@@ -99,7 +99,6 @@ class State(object):
         """
         return [
             cls.SUCCESS,
-            cls.SHUTDOWN,
             cls.FAILED,
             cls.SKIPPED,
         ]
@@ -115,5 +114,6 @@ class State(object):
             cls.SCHEDULED,
             cls.QUEUED,
             cls.RUNNING,
+            cls.SHUTDOWN,
             cls.UP_FOR_RETRY
         ]

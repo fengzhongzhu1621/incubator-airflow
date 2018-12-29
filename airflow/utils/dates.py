@@ -168,8 +168,8 @@ def round_time(dt, delta, start_date=datetime.min):
             # Check if start_date + (lower + 1)*delta or
             # start_date + lower*delta is closer to dt and return the solution
             if (
-                (start_date + (lower + 1) * delta) - dt <=
-                dt - (start_date + lower * delta)):
+                    (start_date + (lower + 1) * delta) - dt <=
+                    dt - (start_date + lower * delta)):
                 return start_date + (lower + 1) * delta
             else:
                 return start_date + lower * delta

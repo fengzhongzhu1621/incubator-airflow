@@ -98,8 +98,10 @@ def _build_metrics(func_name, namespace):
     :return: dict with metrics
     """
 
-    metrics = {'sub_command': func_name, 'start_datetime': datetime.now(),
-               'full_command': '{}'.format(list(sys.argv)), 'user': getpass.getuser()}
+    metrics = {'sub_command': func_name}
+    metrics['start_datetime'] = datetime.now()
+    metrics['full_command'] = '{}'.format(list(sys.argv))
+    metrics['user'] = getpass.getuser()
 
     assert isinstance(namespace, Namespace)
     tmp_dic = vars(namespace)

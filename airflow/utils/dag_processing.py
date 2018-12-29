@@ -662,7 +662,7 @@ class DagFileProcessorManager(LoggingMixin):
             return False
         # 如果有任意一个文件都没有达到执行次数，也认为没有到达最大阈值
         #for file_path in self._file_paths:
-        #    if self._run_count[file_path] != self._max_runs:
+        #    if self._run_count[file_path] < self._max_runs:
         #        return False
         # 心跳总数大于等于最大运行次数时，也会停止调度
         if self._run_count[self._heart_beat_key] < self._max_runs:

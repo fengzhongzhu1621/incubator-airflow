@@ -32,11 +32,11 @@ import imp
 import os
 import re
 import signal
+import subprocess
 import sys
 import warnings
 
 from jinja2 import Template
-from six import iteritems
 
 from airflow import configuration
 from airflow.exceptions import AirflowException

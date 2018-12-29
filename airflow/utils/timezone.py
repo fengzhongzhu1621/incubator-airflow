@@ -177,9 +177,9 @@ def datetime(*args, **kwargs):
     return dt.datetime(*args, **kwargs)
 
 
-def parse(string):
+def parse(string, timezone=None):
     """将日期字符串转化为datetime对象（带有时区信息）
     Parse a time string and return an aware datetime
     :param string: time string
     """
-    return pendulum.parse(string, tz=TIMEZONE)
+    return pendulum.parse(string, tz=timezone or TIMEZONE)
