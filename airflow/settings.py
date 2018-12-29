@@ -26,7 +26,6 @@ import atexit
 import logging
 import os
 import pendulum
-import socket
 
 from sqlalchemy import create_engine, exc
 from sqlalchemy.orm import scoped_session, sessionmaker
@@ -74,17 +73,16 @@ class DummyStatsLogger(object):
 Stats = DummyStatsLogger
 
 # 采集到的数据会走 UDP 协议发给 StatsD，由 StatsD 解析、提取、计算处理后，周期性地发送给 Graphite。
-try:
-    if conf.getboolean('scheduler', 'statsd_on'):
-        from statsd import StatsClient
+if conf.getboolean('scheduler', 'statsd_on'):
+    from statsd import StatsClient
 
-        statsd = StatsClient(
-            host=conf.get('scheduler', 'statsd_host'),
-            port=conf.getint('scheduler', 'statsd_port'),
-            prefix=conf.get('scheduler', 'statsd_prefix'))
-        Stats = statsd
-except (socket.gaierror, ImportError):
-    log.warning("Could not configure StatsClient, using DummyStatsLogger instead.")
+    statsd = StatsClient(
+        host=conf.get('scheduler', 'statsd_host'),
+        port=conf.getint('scheduler', 'statsd_port'),
+        prefix=conf.get('scheduler', 'statsd_prefix'))
+    Stats = statsd
+else:
+    Stats = DummyStatsLogger
 
 HEADER = """\
   ____________       _____________
@@ -158,7 +156,7 @@ def configure_orm(disable_connection_pool=False):
         engine_args['poolclass'] = NullPool
         log.debug("settings.configure_orm(): Using NullPool")
     elif 'sqlite' not in SQL_ALCHEMY_CONN:
-        # Engine args not supported by sqlite.
+        # Pool size engine args not supported by sqlite.
         # If no config value is defined for the pool size, select a reasonable value.
         # 0 means no limit, which could lead to exceeding the Database connection limit.
         try:
@@ -180,6 +178,15 @@ def configure_orm(disable_connection_pool=False):
         engine_args['pool_size'] = pool_size
         engine_args['pool_recycle'] = pool_recycle
 
+    try:
+        # Allow the user to specify an encoding for their DB otherwise default
+        # to utf-8 so jobs & users with non-latin1 characters can still use
+        # us.
+        engine_args['encoding'] = conf.get('core', 'SQL_ENGINE_ENCODING')
+    except conf.AirflowConfigException:
+        engine_args['encoding'] = 'utf-8'
+    # For Python2 we get back a newstr and need a str
+    engine_args['encoding'] = engine_args['encoding'].__str__()
     engine_args['echo'] = conf.getboolean('core', 'SQL_ALCHEMY_ECHO')
 
     # 连接数据库
@@ -189,10 +196,7 @@ def configure_orm(disable_connection_pool=False):
     setup_event_handlers(engine, reconnect_timeout)
 
     Session = scoped_session(
-        sessionmaker(autocommit=False,
-                     autoflush=False,
-                     bind=engine,
-                     expire_on_commit=False))
+        sessionmaker(autocommit=False, autoflush=False, bind=engine))
 
 
 def dispose_orm():
@@ -210,7 +214,6 @@ def dispose_orm():
 
 
 def configure_adapters():
-    return
     from pendulum import Pendulum
     try:
         from sqlite3 import register_adapter
