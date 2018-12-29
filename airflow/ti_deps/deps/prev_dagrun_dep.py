@@ -59,7 +59,7 @@ class PrevDagrunDep(BaseTIDep):
                 )
                 return
             # 如果上一次调度早于任务的开始时间，则直接通过
-            if last_execution_date < ti.task.start_date:
+            if dag.previous_schedule(ti.execution_date) < ti.task.start_date:
                 yield self._passing_status(
                     reason="This task instance was the first task instance for its task.")
                 return
