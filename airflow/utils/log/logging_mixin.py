@@ -37,7 +37,6 @@ class LoggingMixin(object):
     """
     Convenience super-class to have a logger configured with the class name
     """
-
     def __init__(self, context=None):
         self._set_context(context)
 
@@ -75,7 +74,6 @@ class StreamLogWriter(object):
     """
     Allows to redirect stdout and stderr to logger
     """
-
     def __init__(self, logger, level):
         """
         :param log: The log level method to write to, ie. log.debug, log.warning
@@ -94,7 +92,7 @@ class StreamLogWriter(object):
             self._buffer += message
         else:
             self._buffer += message
-            self.logger.log(self.level, self._buffer)
+            self.logger.log(self.level, self._buffer.rstrip())
             self._buffer = str()
 
     def flush(self):
@@ -119,7 +117,6 @@ class RedirectStdHandler(StreamHandler):
     whatever sys.stderr/stderr is currently set to rather than the value of
     sys.stderr/stdout at handler construction time.
     """
-
     def __init__(self, stream):
         # stream是必填的，且必须是字符串，不能使用文件对象
         if not isinstance(stream, six.string_types):
