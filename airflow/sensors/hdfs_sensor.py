@@ -39,15 +39,13 @@ class HdfsSensor(BaseSensorOperator):
     def __init__(self,
                  filepath,
                  hdfs_conn_id='hdfs_default',
-                 ignored_ext=None,
+                 ignored_ext=['_COPYING_'],
                  ignore_copying=True,
                  file_size=None,
                  hook=HDFSHook,
                  *args,
                  **kwargs):
         super(HdfsSensor, self).__init__(*args, **kwargs)
-        if ignored_ext is None:
-            ignored_ext = ['_COPYING_']
         self.filepath = filepath
         self.hdfs_conn_id = hdfs_conn_id
         self.file_size = file_size
@@ -88,12 +86,12 @@ class HdfsSensor(BaseSensorOperator):
         if ignore_copying:
             log = LoggingMixin().log
             regex_builder = "^.*\.(%s$)$" % '$|'.join(ignored_ext)
-            ignored_extensions_regex = re.compile(regex_builder)
+            ignored_extentions_regex = re.compile(regex_builder)
             log.debug(
                 'Filtering result for ignored extensions: %s in files %s',
-                ignored_extensions_regex.pattern, map(lambda x: x['path'], result)
+                ignored_extentions_regex.pattern, map(lambda x: x['path'], result)
             )
-            result = [x for x in result if not ignored_extensions_regex.match(x['path'])]
+            result = [x for x in result if not ignored_extentions_regex.match(x['path'])]
             log.debug('HdfsSensor.poke: after ext filter result is %s', result)
         return result
 
