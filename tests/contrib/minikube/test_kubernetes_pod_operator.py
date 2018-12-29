@@ -20,6 +20,7 @@ import os
 import shutil
 from airflow.contrib.operators.kubernetes_pod_operator import KubernetesPodOperator
 from airflow import AirflowException
+from kubernetes.client.rest import ApiException
 from subprocess import check_call
 import mock
 import json
@@ -38,8 +39,7 @@ except Exception as e:
 
 class KubernetesPodOperatorTest(unittest.TestCase):
 
-    @staticmethod
-    def test_config_path_move():
+    def test_config_path_move(self):
         new_config_path = '/tmp/kube_config'
         old_config_path = os.path.expanduser('~/.kube/config')
         shutil.copy(old_config_path, new_config_path)
@@ -80,8 +80,7 @@ class KubernetesPodOperatorTest(unittest.TestCase):
                                        cluster_context='default',
                                        config_file=file_path)
 
-    @staticmethod
-    def test_working_pod():
+    def test_working_pod(self):
         k = KubernetesPodOperator(
             namespace='default',
             image="ubuntu:16.04",
@@ -90,6 +89,34 @@ class KubernetesPodOperatorTest(unittest.TestCase):
             labels={"foo": "bar"},
             name="test",
             task_id="task"
+        )
+        k.execute(None)
+
+    @staticmethod
+    def test_delete_operator_pod():
+        k = KubernetesPodOperator(
+            namespace='default',
+            image="ubuntu:16.04",
+            cmds=["bash", "-cx"],
+            arguments=["echo 10"],
+            labels={"foo": "bar"},
+            name="test",
+            task_id="task",
+            is_delete_operator_pod=True
+        )
+        k.execute(None)
+
+    @staticmethod
+    def test_pod_hostnetwork():
+        k = KubernetesPodOperator(
+            namespace='default',
+            image="ubuntu:16.04",
+            cmds=["bash", "-cx"],
+            arguments=["echo 10"],
+            labels={"foo": "bar"},
+            name="test",
+            task_id="task",
+            hostnetwork=True
         )
         k.execute(None)
 
@@ -111,8 +138,7 @@ class KubernetesPodOperatorTest(unittest.TestCase):
         )
         k.execute(None)
 
-    @staticmethod
-    def test_pod_affinity():
+    def test_pod_affinity(self):
         affinity = {
             'nodeAffinity': {
                 'requiredDuringSchedulingIgnoredDuringExecution': {
@@ -143,8 +169,7 @@ class KubernetesPodOperatorTest(unittest.TestCase):
         )
         k.execute(None)
 
-    @staticmethod
-    def test_logging():
+    def test_logging(self):
         with mock.patch.object(PodLauncher, 'log') as mock_logger:
             k = KubernetesPodOperator(
                 namespace='default',
@@ -159,8 +184,7 @@ class KubernetesPodOperatorTest(unittest.TestCase):
             k.execute(None)
             mock_logger.info.assert_any_call(b"+ echo 10\n")
 
-    @staticmethod
-    def test_volume_mount():
+    def test_volume_mount(self):
         with mock.patch.object(PodLauncher, 'log') as mock_logger:
             volume_mount = VolumeMount('test-volume',
                                        mount_path='/root/mount_file',
@@ -200,10 +224,24 @@ class KubernetesPodOperatorTest(unittest.TestCase):
             task_id="task",
             startup_timeout_seconds=5
         )
-        with self.assertRaises(AirflowException) as cm:
-            k.execute(None),
+        with self.assertRaises(AirflowException):
+            k.execute(None)
 
-        print("exception: {}".format(cm))
+    def test_faulty_service_account(self):
+        bad_service_account_name = "foobar"
+        k = KubernetesPodOperator(
+            namespace='default',
+            image="ubuntu:16.04",
+            cmds=["bash", "-cx"],
+            arguments=["echo 10"],
+            labels={"foo": "bar"},
+            name="test",
+            task_id="task",
+            startup_timeout_seconds=5,
+            service_account_name=bad_service_account_name
+        )
+        with self.assertRaises(ApiException):
+            k.execute(None)
 
     def test_pod_failure(self):
         """

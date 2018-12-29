@@ -52,8 +52,7 @@ class HiveToDynamoDBTransferOperatorTest(unittest.TestCase):
         self.hook = AwsDynamoDBHook(
             aws_conn_id='aws_default', region_name='us-east-1')
 
-    @staticmethod
-    def process_data(data, *args, **kwargs):
+    def process_data(self, data, *args, **kwargs):
         return json.loads(data.to_json(orient='records'))
 
     @unittest.skipIf(mock_dynamodb2 is None, 'mock_dynamodb2 package not present')

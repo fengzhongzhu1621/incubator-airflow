@@ -1,3 +1,22 @@
+<!--
+Licensed to the Apache Software Foundation (ASF) under one
+or more contributor license agreements.  See the NOTICE file
+distributed with this work for additional information
+regarding copyright ownership.  The ASF licenses this file
+to you under the Apache License, Version 2.0 (the
+"License"); you may not use this file except in compliance
+with the License.  You may obtain a copy of the License at
+
+  http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing,
+software distributed under the License is distributed on an
+"AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+KIND, either express or implied.  See the License for the
+specific language governing permissions and limitations
+under the License.
+-->
+
 # Development Tools
 
 ## Airflow Pull Request Tool
@@ -8,10 +27,9 @@ It is very important that PRs reference a JIRA issue. The preferred way to do th
 
 __Please note:__ this tool will restore your current branch when it finishes, but you will lose any uncommitted changes. Make sure you commit any changes you wish to keep before proceeding.
 
+
 ### Execution
-
 Simply execute the `airflow-pr` tool:
-
 ```
 $ ./airflow-pr
 Usage: airflow-pr [OPTIONS] COMMAND [ARGS]...
@@ -50,15 +68,12 @@ Execute `airflow-pr setup_git_remotes` to configure the default (expected) git r
 ### Configuration
 
 #### Python Libraries
-
 The merge tool requires the `click` and `jira` libraries to be installed. If the libraries are not found, the user will be prompted to install them:
-
 ```bash
 pip install click jira
 ```
 
 #### git Remotes
-
 tl;dr run `airflow-pr setup_git_remotes` before using the tool for the first time.
 
 Before using the merge tool, users need to make sure their git remotes are configured. By default, the tool assumes a setup like the one below, where the github repo remote is named `github` and the Apache repo remote is named `apache`. If users have other remote names, they can be supplied by setting environment variables `GITHUB_REMOTE_NAME` and `APACHE_REMOTE_NAME`, respectively.
@@ -76,33 +91,14 @@ origin	https://github.com/<USER>/airflow (push)
 ```
 
 #### JIRA
-
 Users should set environment variables `JIRA_USERNAME` and `JIRA_PASSWORD` corresponding to their ASF JIRA login. This will allow the tool to automatically close issues. If they are not set, the user will be prompted every time.
 
 #### GitHub OAuth Token
-
 Unauthenticated users can only make 60 requests/hour to the Github API. If you get an error about exceeding the rate, you will need to set a `GITHUB_OAUTH_KEY` environment variable that contains a token value. Users can generate tokens from their GitHub profile.
 
 ## Airflow release signing tool
-
 The release signing tool can be used to create the SHA512/MD5 and ASC files that required for Apache releases.
 
 ### Execution
-
-To create a release tarball execute following command from Airflow's root.
-
-```bash
-python setup.py compile_assets sdist --formats=gztar
-```
-
-*Note: `compile_assets` command build the frontend assets (JS and CSS) files for the
-Web UI using webpack and npm. Please make sure you have `npm` installed on your local machine globally.
-Details on how to install `npm` can be found in CONTRIBUTING.md file.*
-
-After that navigate to relative directory i.e., `cd dist` and sign the release files.
-
-```bash
-../dev/sign.sh <the_created_tar_ball.tar.gz
-```
-
-Signing files will be created in the same directory.
+To create a release tar ball execute `python setup.py sdist --formats=gztar` from Airflow's root. After that `cd dist` and
+execute `../dev/sign.sh <the_created_tar_ball.tar.gz`. Signing files will be created in the same directory.

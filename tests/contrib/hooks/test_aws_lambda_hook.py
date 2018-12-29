@@ -42,8 +42,7 @@ class TestAwsLambdaHook(unittest.TestCase):
                              function_name="test_function", region_name="us-east-1")
         self.assertIsNotNone(hook.get_conn())
 
-    @staticmethod
-    def lambda_function():
+    def lambda_function(self):
         code = textwrap.dedent("""
 def lambda_handler(event, context):
     return event

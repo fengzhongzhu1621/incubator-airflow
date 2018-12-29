@@ -19,7 +19,8 @@
 
 import unittest
 
-from airflow.contrib.hooks import gcs_hook
+import airflow.contrib.hooks.gcs_hook as gcs_hook
+
 from airflow.exceptions import AirflowException
 from apiclient.errors import HttpError
 

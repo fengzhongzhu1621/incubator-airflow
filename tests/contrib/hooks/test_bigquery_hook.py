@@ -52,12 +52,12 @@ class TestBigQueryDataframeResults(unittest.TestCase):
         self.assertIn('Reason: ', str(context.exception), "")
 
     @unittest.skipIf(not bq_available, 'BQ is not available to run tests')
-    def test_succeeds_with_explicit_legacy_query(self):
+    def test_suceeds_with_explicit_legacy_query(self):
         df = self.instance.get_pandas_df('select 1', dialect='legacy')
         self.assertEqual(df.iloc(0)[0][0], 1)
 
     @unittest.skipIf(not bq_available, 'BQ is not available to run tests')
-    def test_succeeds_with_explicit_std_query(self):
+    def test_suceeds_with_explicit_std_query(self):
         df = self.instance.get_pandas_df(
             'select * except(b) from (select 1 a, 2 b)', dialect='standard')
         self.assertEqual(df.iloc(0)[0][0], 1)
@@ -412,13 +412,6 @@ class TestTimePartitioningInRunJob(unittest.TestCase):
             'expirationMs': 1000
         }
         self.assertEqual(tp_out, expect)
-
-    def test_cant_add_dollar_and_field_name(self):
-        with self.assertRaises(ValueError):
-            _cleanse_time_partitioning(
-                'test.teast$20170101',
-                {'type': 'DAY', 'field': 'test_field', 'expirationMs': 1000}
-            )
 
 
 class TestBigQueryHookLegacySql(unittest.TestCase):

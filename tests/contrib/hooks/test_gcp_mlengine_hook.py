@@ -61,8 +61,7 @@ class _TestMLEngineHook(object):
             for x in expected_requests]
         self._actual_requests = []
 
-    @staticmethod
-    def _normalize_requests_for_comparison(uri, http_method, body):
+    def _normalize_requests_for_comparison(self, uri, http_method, body):
         parts = urlparse(uri)
         return (
             parts._replace(query=set(parse_qsl(parts.query))),

@@ -33,15 +33,13 @@ class TestEmrBaseSensor(unittest.TestCase):
             NON_TERMINAL_STATES = ['PENDING', 'RUNNING', 'CONTINUE']
             FAILED_STATE = ['FAILED']
 
-            @staticmethod
-            def get_emr_response():
+            def get_emr_response(self):
                 return {
                     'SomeKey': {'State': 'COMPLETED'},
                     'ResponseMetadata': {'HTTPStatusCode': 200}
                 }
 
-            @staticmethod
-            def state_from_response(response):
+            def state_from_response(self, response):
                 return response['SomeKey']['State']
 
         operator = EmrBaseSensorSubclass(
@@ -58,15 +56,13 @@ class TestEmrBaseSensor(unittest.TestCase):
             NON_TERMINAL_STATES = ['PENDING', 'RUNNING', 'CONTINUE']
             FAILED_STATE = ['FAILED']
 
-            @staticmethod
-            def get_emr_response():
+            def get_emr_response(self):
                 return {
                     'SomeKey': {'State': 'PENDING'},
                     'ResponseMetadata': {'HTTPStatusCode': 200}
                 }
 
-            @staticmethod
-            def state_from_response(response):
+            def state_from_response(self, response):
                 return response['SomeKey']['State']
 
         operator = EmrBaseSensorSubclass(
@@ -83,15 +79,13 @@ class TestEmrBaseSensor(unittest.TestCase):
             NON_TERMINAL_STATES = ['PENDING', 'RUNNING', 'CONTINUE']
             FAILED_STATE = ['FAILED']
 
-            @staticmethod
-            def get_emr_response():
+            def get_emr_response(self):
                 return {
                     'SomeKey': {'State': 'COMPLETED'},
                     'ResponseMetadata': {'HTTPStatusCode': 400}
                 }
 
-            @staticmethod
-            def state_from_response(response):
+            def state_from_response(self, response):
                 return response['SomeKey']['State']
 
         operator = EmrBaseSensorSubclass(
@@ -108,15 +102,13 @@ class TestEmrBaseSensor(unittest.TestCase):
             NON_TERMINAL_STATES = ['PENDING', 'RUNNING', 'CONTINUE']
             FAILED_STATE = ['FAILED']
 
-            @staticmethod
-            def get_emr_response():
+            def get_emr_response(self):
                 return {
                     'SomeKey': {'State': 'FAILED'},
                     'ResponseMetadata': {'HTTPStatusCode': 200}
                 }
 
-            @staticmethod
-            def state_from_response(response):
+            def state_from_response(self, response):
                 return response['SomeKey']['State']
 
         operator = EmrBaseSensorSubclass(

@@ -156,6 +156,8 @@ class TestVariableView(unittest.TestCase):
         response = self.app.get('/admin/variable', follow_redirects=True)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(self.session.query(models.Variable).count(), 1)
+        self.assertIn('<span class="label label-danger">Invalid</span>',
+                      response.data.decode('utf-8'))
 
     def test_xss_prevention(self):
         xss = "/admin/airflow/variables/asdf<img%20src=''%20onerror='alert(1);'>"
@@ -768,6 +770,24 @@ class TestGanttView(unittest.TestCase):
 
     def test_dt_nr_dr_form_with_base_date_and_num_runs_and_execution_date_within(self):
         self.tester.test_with_base_date_and_num_runs_and_execution_date_within()
+
+
+class TestTaskInstanceView(unittest.TestCase):
+    TI_ENDPOINT = '/admin/taskinstance/?flt2_execution_date_greater_than={}'
+
+    def setUp(self):
+        super(TestTaskInstanceView, self).setUp()
+        configuration.load_test_config()
+        app = application.create_app(testing=True)
+        app.config['WTF_CSRF_METHODS'] = []
+        self.app = app.test_client()
+
+    def test_start_date_filter(self):
+        resp = self.app.get(self.TI_ENDPOINT.format('2018-10-09+22:44:31'))
+        # We aren't checking the logic of the date filter itself (that is built
+        # in to flask-admin) but simply that our UTC conversion was run - i.e. it
+        # doesn't blow up!
+        self.assertEqual(resp.status_code, 200)
 
 
 if __name__ == '__main__':

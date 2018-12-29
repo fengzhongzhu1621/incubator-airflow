@@ -27,8 +27,7 @@ from airflow.contrib.operators.mysql_to_gcs import \
 
 class MySqlToGoogleCloudStorageOperatorTest(unittest.TestCase):
 
-    @staticmethod
-    def test_write_local_data_files():
+    def test_write_local_data_files(self):
 
         # Configure
         task_id = "some_test_id"
@@ -36,15 +35,17 @@ class MySqlToGoogleCloudStorageOperatorTest(unittest.TestCase):
         bucket = "some_bucket"
         filename = "some_filename"
         row_iter = [[1, b'byte_str_1'], [2, b'byte_str_2']]
-        schema = [{
+        schema = []
+        schema.append({
             'name': 'location',
             'type': 'STRING',
             'mode': 'nullable',
-        }, {
+        })
+        schema.append({
             'name': 'uuid',
             'type': 'BYTES',
             'mode': 'nullable',
-        }]
+        })
         schema_str = json.dumps(schema)
 
         op = MySqlToGoogleCloudStorageOperator(
