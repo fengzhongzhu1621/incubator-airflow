@@ -24,7 +24,6 @@ from __future__ import print_function
 # 把你当前模块所有的字符串（string literals）转为unicode
 from __future__ import unicode_literals
 
-from base64 import b64encode
 from builtins import str
 from collections import OrderedDict
 import copy

@@ -86,6 +86,11 @@ api_client = api_module.Client(api_base_url=conf.get('cli', 'endpoint_url'),
 
 log = LoggingMixin().log
 
+DAGS_FOLDER = settings.DAGS_FOLDER
+
+if "BUILDING_AIRFLOW_DOCS" in os.environ:
+    DAGS_FOLDER = '[AIRFLOW_HOME]/dags'
+
 
 def sigint_handler(sig, frame):
     sys.exit(0)
@@ -145,7 +150,7 @@ def setup_locations(process, pid=None, stdout=None, stderr=None, log=None):
 def process_subdir(subdir):
     """将子dag路径中的DAGS_FOLDER常量替换 ."""
     if subdir:
-        subdir = subdir.replace('DAGS_FOLDER', settings.DAGS_FOLDER)
+        subdir = subdir.replace('DAGS_FOLDER', DAGS_FOLDER)
         subdir = os.path.abspath(os.path.expanduser(subdir))
         return subdir
 
@@ -166,7 +171,7 @@ def get_dags(args):
         return [get_dag(args)]
     dagbag = DagBag(process_subdir(args.subdir))
     # 获得dag_id名称匹配的dag对象
-    matched_dags = [dag for dag in itervalues(dagbag.dags) if re.search(
+    matched_dags = [dag for dag in dagbag.dags.values() if re.search(
         args.dag_id, dag.dag_id)]
     if not matched_dags:
         raise AirflowException(
@@ -229,7 +234,7 @@ def backfill(args, dag=None):
                 start_date=args.start_date,
                 end_date=args.end_date,
                 confirm_prompt=True,
-                include_subdags=True,
+                include_subdags=False,
             )
 
         # 调用 BackfillJob.run()
@@ -520,19 +525,7 @@ def run(args, dag=None):
         if os.path.exists(args.cfg_path):
             os.remove(args.cfg_path)
 
-        # Do not log these properties since some may contain passwords.
-        # This may also set default values for database properties like
-        # core.sql_alchemy_pool_size
-        # core.sql_alchemy_pool_recycle
-        for section, config in conf_dict.items():
-            for option, value in config.items():
-                try:
-                    conf.set(section, option, value)
-                except NoSectionError:
-                    log.error('Section {section} Option {option} '
-                              'does not exist in the config!'.format(section=section,
-                                                                     option=option))
-
+        conf.conf.read_dict(conf_dict, source=args.cfg_path)
         settings.configure_vars()
 
     # IMPORTANT, have to use the NullPool, otherwise, each "run" command may leave
@@ -664,6 +657,11 @@ def list_tasks(args, dag=None):
 
 @cli_utils.action_logging
 def test(args, dag=None):
+    # We want log outout from operators etc to show up here. Normally
+    # airflow.task would redirect to a file, but here we want it to propagate
+    # up to the normal airflow handler.
+    logging.getLogger('airflow.task').propagate = True
+
     dag = dag or get_dag(args)
 
     # 获得任务
@@ -723,7 +721,9 @@ def clear(args):
         only_failed=args.only_failed,
         only_running=args.only_running,
         confirm_prompt=not args.no_confirm,
-        include_subdags=not args.exclude_subdags)
+        include_subdags=not args.exclude_subdags,
+        include_parentdag=not args.exclude_parentdag,
+    )
 
 
 def get_num_ready_workers_running(gunicorn_master_proc):
@@ -893,15 +893,17 @@ def webserver(args):
         print(
             "Starting the web server on port {0} and host {1}.".format(
                 args.port, args.hostname))
-        app = create_app_rbac(conf) if settings.RBAC else create_app(conf)
-        app.run(debug=True, port=args.port, host=args.hostname,
+        if settings.RBAC:
+            app, _ = create_app_rbac(conf, testing=conf.get('core', 'unit_test_mode'))
+        else:
+            app = create_app(conf, testing=conf.get('core', 'unit_test_mode'))
+        app.run(debug=True, use_reloader=False if app.config['TESTING'] else True,
+                port=args.port, host=args.hostname,
                 ssl_context=(ssl_cert, ssl_key) if ssl_cert and ssl_key else None)
     else:
-        os.environ['SKIP_DAGS_PARSING'] = 'True'
         app = cached_app_rbac(conf) if settings.RBAC else cached_app(conf)
         pid, stdout, stderr, log_file = setup_locations(
             "webserver", args.pid, args.stdout, args.stderr, args.log_file)
-        os.environ.pop('SKIP_DAGS_PARSING')
         if args.daemon:
             handle = setup_logging(log_file)
             stdout = open(stdout, 'w+')
@@ -991,10 +993,8 @@ def webserver(args):
                 master_timeout = conf.getint('webserver', 'web_server_master_timeout')
                 restart_workers(gunicorn_master_proc, num_workers, master_timeout)
             else:
-                while gunicorn_master_proc.poll() is None:
+                while True:
                     time.sleep(1)
-
-                sys.exit(gunicorn_master_proc.returncode)
 
         if args.daemon:
             base, ext = os.path.splitext(pid)
@@ -1123,6 +1123,7 @@ def worker(args):
         'queues': args.queues,
         'concurrency': args.concurrency,
         'hostname': args.celery_hostname,
+        'loglevel': conf.get('core', 'LOGGING_LEVEL'),
     }
 
     if args.daemon:
@@ -1440,108 +1441,12 @@ def create_user(args):
         if password != password_confirmation:
             raise SystemExit('Passwords did not match!')
 
-    if appbuilder.sm.find_user(args.username):
-        print('{} already exist in the db'.format(args.username))
-        return
     user = appbuilder.sm.add_user(args.username, args.firstname, args.lastname,
                                   args.email, role, password)
     if user:
         print('{} user {} created.'.format(args.role, args.username))
     else:
         raise SystemExit('Failed to create user.')
-
-
-@cli_utils.action_logging
-def delete_user(args):
-    if not args.username:
-        raise SystemExit('Required arguments are missing: username')
-
-    appbuilder = cached_appbuilder()
-
-    try:
-        u = next(u for u in appbuilder.sm.get_all_users() if u.username == args.username)
-    except StopIteration:
-        raise SystemExit('{} is not a valid user.'.format(args.username))
-
-    if appbuilder.sm.del_register_user(u):
-        print('User {} deleted.'.format(args.username))
-    else:
-        raise SystemExit('Failed to delete user.')
-
-
-@cli_utils.action_logging
-def list_users(args):
-    appbuilder = cached_appbuilder()
-    users = appbuilder.sm.get_all_users()
-    fields = ['id', 'username', 'email', 'first_name', 'last_name', 'roles']
-    users = [[user.__getattribute__(field) for field in fields] for user in users]
-    msg = tabulate(users, [field.capitalize().replace('_', ' ') for field in fields],
-                   tablefmt="fancy_grid")
-    if sys.version_info[0] < 3:
-        msg = msg.encode('utf-8')
-    print(msg)
-
-
-@cli_utils.action_logging
-def list_dag_runs(args, dag=None):
-    if dag:
-        args.dag_id = dag.dag_id
-
-    dagbag = DagBag()
-
-    if args.dag_id not in dagbag.dags:
-        error_message = "Dag id {} not found".format(args.dag_id)
-        raise AirflowException(error_message)
-
-    dag_runs = list()
-    state = args.state.lower() if args.state else None
-    for run in DagRun.find(dag_id=args.dag_id,
-                           state=state,
-                           no_backfills=args.no_backfill):
-        dag_runs.append({
-            'id': run.id,
-            'run_id': run.run_id,
-            'state': run.state,
-            'dag_id': run.dag_id,
-            'execution_date': run.execution_date.isoformat(),
-            'start_date': ((run.start_date or '') and
-                           run.start_date.isoformat()),
-        })
-    if not dag_runs:
-        print('No dag runs for {dag_id}'.format(dag_id=args.dag_id))
-
-    s = textwrap.dedent("""\n
-    {line}
-    DAG RUNS
-    {line}
-    {dag_run_header}
-    """)
-
-    dag_runs.sort(key=lambda x: x['execution_date'], reverse=True)
-    dag_run_header = '%-3s | %-20s | %-10s | %-20s | %-20s |' % ('id',
-                                                                 'run_id',
-                                                                 'state',
-                                                                 'execution_date',
-                                                                 'state_date')
-    print(s.format(dag_run_header=dag_run_header,
-                   line='-' * 120))
-    for dag_run in dag_runs:
-        record = '%-3s | %-20s | %-10s | %-20s | %-20s |' % (dag_run['id'],
-                                                             dag_run['run_id'],
-                                                             dag_run['state'],
-                                                             dag_run['execution_date'],
-                                                             dag_run['start_date'])
-        print(record)
-
-
-@cli_utils.action_logging
-def sync_perm(args): # noqa
-    if settings.RBAC:
-        appbuilder = cached_appbuilder()
-        print('Update permission, view-menu for all existing roles')
-        appbuilder.sm.sync_roles()
-    else:
-        print('The sync_perm command only works for rbac UI.')
 
 
 Arg = namedtuple(
@@ -1562,8 +1467,10 @@ class CLIFactory(object):
             "The regex to filter specific task_ids to backfill (optional)"),
         'subdir': Arg(
             ("-sd", "--subdir"),
-            "File location or directory from which to look for the dag",
-            default=settings.DAGS_FOLDER),
+            "File location or directory from which to look for the dag. "
+            "Defaults to '[AIRFLOW_HOME]/dags' where [AIRFLOW_HOME] is the "
+            "value you set for 'AIRFLOW_HOME' config you set in 'airflow.cfg' ",
+            default=DAGS_FOLDER),
         'start_date': Arg(
             ("-s", "--start_date"), "Override start_date YYYY-MM-DD",
             type=parse_execution_date),
@@ -1590,19 +1497,6 @@ class CLIFactory(object):
             "Do not prompt to confirm reset. Use with care!",
             "store_true",
             default=False),
-        'username': Arg(
-            ('-u', '--username',),
-            help='Username of the user',
-            type=str),
-
-        # list_dag_runs
-        'no_backfill': Arg(
-            ("--no_backfill",),
-            "filter all the backfill dagruns given the dag id", "store_true"),
-        'state': Arg(
-            ("--state",),
-            "Only list the dag runs corresponding to the state"
-        ),
 
         # backfill
         'mark_success': Arg(
@@ -1678,6 +1572,10 @@ class CLIFactory(object):
         'exclude_subdags': Arg(
             ("-x", "--exclude_subdags"),
             "Exclude subdags", "store_true"),
+        'exclude_parentdag': Arg(
+            ("-xp", "--exclude_parentdag"),
+            "Exclude ParentDAGS if the task cleared is a part of a SubDAG",
+            "store_true"),
         'dag_regex': Arg(
             ("-dx", "--dag_regex"),
             "Search dag_id as regex instead of exact string", "store_true"),
@@ -1955,6 +1853,10 @@ class CLIFactory(object):
             ('-e', '--email',),
             help='Email of the user',
             type=str),
+        'username': Arg(
+            ('-u', '--username',),
+            help='Username of the user',
+            type=str),
         'password': Arg(
             ('-p', '--password',),
             help='Password of the user',
@@ -1972,7 +1874,7 @@ class CLIFactory(object):
                     "If reset_dag_run option is used,"
                     " backfill will first prompt users whether airflow "
                     "should clear all the previous dag_run and task_instances "
-                    "within the backfill date range."
+                    "within the backfill date range. "
                     "If rerun_failed_tasks is used, backfill "
                     "will auto re-run the previous failed task instances"
                     " within the backfill date range.",
@@ -1984,15 +1886,6 @@ class CLIFactory(object):
                 'reset_dag_run', 'rerun_failed_tasks',
             )
         }, {
-            'func': list_dag_runs,
-            'help': "List dag runs given a DAG id. If state option is given, it will only"
-                    "search for all the dagruns with the given state. "
-                    "If no_backfill option is given, it will filter out"
-                    "all backfill dagruns for given dag id.",
-            'args': (
-                'dag_id', 'no_backfill', 'state'
-            )
-        }, {
             'func': list_tasks,
             'help': "List the tasks within a DAG",
             'args': ('dag_id', 'tree', 'subdir'),
@@ -2002,7 +1895,7 @@ class CLIFactory(object):
             'args': (
                 'dag_id', 'task_regex', 'start_date', 'end_date', 'subdir',
                 'upstream', 'downstream', 'no_confirm', 'only_failed',
-                'only_running', 'exclude_subdags', 'dag_regex'),
+                'only_running', 'exclude_subdags', 'exclude_parentdag', 'dag_regex'),
         }, {
             'func': pause,
             'help': "Pause a DAG",
@@ -2122,27 +2015,14 @@ class CLIFactory(object):
                      'conn_id', 'conn_uri', 'conn_extra') + tuple(alternative_conn_specs),
         }, {
             'func': create_user,
-            'help': "Create an account for the Web UI",
+            'help': "Create an admin account",
             'args': ('role', 'username', 'email', 'firstname', 'lastname',
                      'password', 'use_random_password'),
-        }, {
-            'func': delete_user,
-            'help': "Delete an account for the Web UI",
-            'args': ('username',),
-        }, {
-            'func': list_users,
-            'help': "List accounts for the Web UI",
-            'args': tuple(),
         },
-        {
-            'func': sync_perm,
-            'help': "Update existing role's permissions.",
-            'args': tuple(),
-        }
     )
     subparsers_dict = {sp['func'].__name__: sp for sp in subparsers}
     dag_subparsers = (
-        'list_tasks', 'backfill', 'test', 'run', 'pause', 'unpause', 'list_dag_runs')
+        'list_tasks', 'backfill', 'test', 'run', 'pause', 'unpause')
 
     @classmethod
     def get_parser(cls, dag_parser=False):

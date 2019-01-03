@@ -26,7 +26,7 @@ from future.standard_library import install_aliases
 
 from builtins import str, object, bytes, ImportError as BuiltinImportError
 import copy
-from collections import namedtuple, defaultdict, Hashable
+from collections import namedtuple, defaultdict
 from datetime import timedelta
 
 import dill
@@ -143,6 +143,8 @@ def get_fernet():
     :raises: AirflowException if there's a problem trying to load Fernet
     """
     global _fernet
+    log = LoggingMixin().log
+
     if _fernet:
         return _fernet
     try:
@@ -151,18 +153,26 @@ def get_fernet():
         InvalidFernetToken = InvalidToken
 
     except BuiltinImportError:
-        LoggingMixin().log.warn("cryptography not found - values will not be stored "
-                                "encrypted.",
-                                exc_info=1)
+        log.warning(
+            "cryptography not found - values will not be stored encrypted."
+        )
         _fernet = NullFernet()
         return _fernet
 
     try:
-        _fernet = Fernet(configuration.conf.get('core', 'FERNET_KEY').encode('utf-8'))
-        _fernet.is_encrypted = True
-        return _fernet
+        fernet_key = configuration.conf.get('core', 'FERNET_KEY')
+        if not fernet_key:
+            log.warning(
+                "empty cryptography key - values will not be stored encrypted."
+            )
+            _fernet = NullFernet()
+        else:
+            _fernet = Fernet(fernet_key.encode('utf-8'))
+            _fernet.is_encrypted = True
     except (ValueError, TypeError) as ve:
         raise AirflowException("Could not create Fernet object: {}".format(ve))
+
+    return _fernet
 
 
 # Used by DAG context_managers
@@ -358,7 +368,8 @@ class DagBag(BaseDagBag, LoggingMixin):
             return found_dags
 
         mods = []
-        if not zipfile.is_zipfile(filepath):
+        is_zipfile = zipfile.is_zipfile(filepath)
+        if not is_zipfile:
             # 判断文件是否是可解析的DAG文件
             if safe_mode and os.path.isfile(filepath):
                 with open(filepath, 'rb') as f:
@@ -434,7 +445,7 @@ class DagBag(BaseDagBag, LoggingMixin):
                 if isinstance(dag, DAG):
                     if not dag.full_filepath:
                         dag.full_filepath = filepath
-                        if dag.fileloc != filepath:
+                        if dag.fileloc != filepath and not is_zipfile:
                             dag.fileloc = filepath
                     try:
                         # 将dag重新加入到self.dags中
@@ -552,10 +563,12 @@ class DagBag(BaseDagBag, LoggingMixin):
         Given a file path or a folder, this method looks for python modules,
         imports them and adds them to the dagbag collection.
 
-        Note that if a .airflowignore file is found while processing,
-        the directory, it will behaves much like a .gitignore does,
+        Note that if a ``.airflowignore`` file is found while processing
+        the directory, it will behave much like a ``.gitignore``,
         ignoring files that match any of the regex patterns specified
-        in the file. **Note**: The patterns in .airflowignore are treated as
+        in the file.
+
+        **Note**: The patterns in .airflowignore are treated as
         un-anchored regexes, not shell-like glob patterns.
         """
         start_dttm = datetime.now()
@@ -969,7 +982,7 @@ class TaskInstance(Base, LoggingMixin):
     @property
     def try_number(self):
         """
-        Return the try number that this task number will be when it is actually
+        Return the try number that this task number will be when it is acutally
         run.
 
         If the TI is currently running, this will match the column in the
@@ -1150,10 +1163,10 @@ class TaskInstance(Base, LoggingMixin):
         BASE_URL = configuration.conf.get('webserver', 'BASE_URL')
         if settings.RBAC:
             return BASE_URL + (
-                "/log/list/"
-                "?_flt_3_dag_id={self.dag_id}"
-                "&_flt_3_task_id={self.task_id}"
-                "&_flt_3_execution_date={iso}"
+                "/log?"
+                "execution_date={iso}"
+                "&task_id={self.task_id}"
+                "&dag_id={self.dag_id}"
             ).format(**locals())
         else:
             return BASE_URL + (
@@ -1271,7 +1284,7 @@ class TaskInstance(Base, LoggingMixin):
         """返回唯一键
         Returns a tuple that identifies the task instance uniquely
         """
-        return self.dag_id, self.task_id, self.execution_date
+        return self.dag_id, self.task_id, self.execution_date, self.try_number
 
     @provide_session
     def set_state(self, state, session=None):
@@ -1757,10 +1770,10 @@ class TaskInstance(Base, LoggingMixin):
             self.state = State.SKIPPED
         except AirflowException as e:
             self.refresh_from_db()
-            # for case when task is marked as success/failed externally
+            # for case when task is marked as success externally
             # current behavior doesn't hit the success callback
             # 如果任务执行失败，但是用户在页面上强行标记了任务为成功
-            if self.state in {State.SUCCESS, State.FAILED}:
+            if self.state == State.SUCCESS:
                 return
             else:
                 # 任务执行失败，发送通知，并执行失败回调函数
@@ -1771,15 +1784,6 @@ class TaskInstance(Base, LoggingMixin):
             self.handle_failure(e, test_mode, context)
             raise
 
-        # Recording SUCCESS
-        # 记录任务执行完成后的时间
-        self.end_date = datetime.now()
-        self.set_duration()
-        if not test_mode:
-            session.add(Log(self.state, self))
-            session.merge(self)
-        session.commit()
-
         # Success callback
         # 执行成功回调函数
         try:
@@ -1789,6 +1793,13 @@ class TaskInstance(Base, LoggingMixin):
             self.log.error("Failed when executing success callback")
             self.log.exception(e3)
 
+        # Recording SUCCESS
+        # 记录任务执行完成后的时间
+        self.end_date = datetime.now()
+        self.set_duration()
+        if not test_mode:
+            session.add(Log(self.state, self))
+            session.merge(self)
         session.commit()
 
     @provide_session
@@ -1852,6 +1863,9 @@ class TaskInstance(Base, LoggingMixin):
         # 记录失败的任务实例
         session.add(TaskFail(task, self.execution_date, self.start_date, self.end_date))
 
+        if context is not None:
+            context['exception'] = error
+
         # Let's go deeper
         try:
             # Since this function is called only when the TI state is running,
@@ -1863,7 +1877,7 @@ class TaskInstance(Base, LoggingMixin):
                 self.log.info('Marking task as UP_FOR_RETRY')
                 # 重试时发送邮件
                 if task.email_on_retry and task.email:
-                    self.email_alert(error)
+                    self.email_alert(error, is_retry=True)
             else:
                 self.state = State.FAILED
                 if task.retries:
@@ -1872,7 +1886,7 @@ class TaskInstance(Base, LoggingMixin):
                     self.log.info('Marking task as FAILED.')
                 # 任务失败时发送邮件
                 if task.email_on_failure and task.email:
-                    self.email_alert(error)
+                    self.email_alert(error, is_retry=False)
         except Exception as e2:
             self.log.error('Failed to send email to: %s', task.email)
             self.log.exception(e2)
@@ -2044,7 +2058,7 @@ class TaskInstance(Base, LoggingMixin):
                 rendered_content = rt(attr, content, jinja_context)
                 setattr(task, attr, rendered_content)
 
-    def email_alert(self, exception):
+    def email_alert(self, exception, is_retry=False):
         task = self.task
         title = "Airflow alert: {self}".format(**locals())
         exception = str(exception).replace('\n', '<br>')
@@ -2362,8 +2376,7 @@ class BaseOperator(LoggingMixin):
     :type dag: DAG
     :param priority_weight: priority weight of this task against other task.
         This allows the executor to trigger higher priority tasks before
-        others when things get backed up. Set priority_weight as a higher
-        number for more important tasks.
+        others when things get backed up.
     :type priority_weight: int
     :param weight_rule: weighting method used for the effective total
         priority weight of the task. Options are:
@@ -2414,6 +2427,7 @@ class BaseOperator(LoggingMixin):
     :type on_failure_callback: callable
     :param on_retry_callback: much like the ``on_failure_callback`` except
         that it is executed when retries occur.
+    :type on_retry_callback: callable
     :param on_success_callback: much like the ``on_failure_callback`` except
         that it is executed when the task succeeds.
     :type on_success_callback: callable
@@ -2436,14 +2450,17 @@ class BaseOperator(LoggingMixin):
     :param executor_config: Additional task-level configuration parameters that are
         interpreted by a specific executor. Parameters are namespaced by the name of
         executor.
-        ``example: to run this task in a specific docker container through
-        the KubernetesExecutor
-        MyOperator(...,
-            executor_config={
-            "KubernetesExecutor":
-                {"image": "myCustomDockerImage"}
-                }
-        )``
+
+        **Example**: to run this task in a specific docker container through
+        the KubernetesExecutor ::
+
+            MyOperator(...,
+                executor_config={
+                "KubernetesExecutor":
+                    {"image": "myCustomDockerImage"}
+                    }
+            )
+
     :type executor_config: dict
     """
 
@@ -2454,15 +2471,6 @@ class BaseOperator(LoggingMixin):
     # Defines the color in the UI
     ui_color = '#fff'
     ui_fgcolor = '#000'
-
-    # base list which includes all the attrs that don't need deep copy.
-    _base_operator_shallow_copy_attrs = ('user_defined_macros',
-                                         'user_defined_filters',
-                                         'params',
-                                         '_log',)
-
-    # each operator should override this class attr for shallow copy attrs.
-    shallow_copy_attrs = ()
 
     @apply_defaults
     def __init__(
@@ -2857,13 +2865,17 @@ class BaseOperator(LoggingMixin):
         result = cls.__new__(cls)
         memo[id(self)] = result
 
-        shallow_copy = cls.shallow_copy_attrs + cls._base_operator_shallow_copy_attrs
-
         for k, v in list(self.__dict__.items()):
-            if k not in shallow_copy:
+            if k not in ('user_defined_macros', 'user_defined_filters',
+                         'params', '_log'):
                 setattr(result, k, copy.deepcopy(v, memo))
-            else:
-                setattr(result, k, copy.copy(v))
+        result.params = self.params
+        if hasattr(self, 'user_defined_macros'):
+            result.user_defined_macros = self.user_defined_macros
+        if hasattr(self, 'user_defined_filters'):
+            result.user_defined_filters = self.user_defined_filters
+        if hasattr(self, '_log'):
+            result._log = self._log
         return result
 
     def __getstate__(self):
@@ -3404,7 +3416,7 @@ class DAG(BaseDag, LoggingMixin):
         # crontab标准格式
         self.schedule_interval = schedule_interval
         # 将调度缩写转换为crontab标准格式
-        if isinstance(schedule_interval, Hashable) and schedule_interval in cron_presets:
+        if schedule_interval in cron_presets:
             self._schedule_interval = cron_presets.get(schedule_interval)
         elif schedule_interval == '@once':
             self._schedule_interval = None
@@ -3512,6 +3524,23 @@ class DAG(BaseDag, LoggingMixin):
             start_date=start_date, end_date=end_date,
             num=num, delta=self._schedule_interval)
 
+    def is_fixed_time_schedule(self):
+        """
+        Figures out if the DAG schedule has a fixed time (e.g. 3 AM).
+
+        :return: True if the schedule has a fixed time, False if not.
+        """
+        now = datetime.now()
+        cron = croniter(self._schedule_interval, now)
+
+        start = cron.get_next(datetime)
+        cron_next = cron.get_next(datetime)
+
+        if cron_next.minute == start.minute and cron_next.hour == start.hour:
+            return True
+
+        return False
+
     def following_schedule(self, dttm):
         """获得下一次调度时间，如果是单次调度，因为self._schedule_interval为None，所以函数默认返回None
         Calculates the following schedule for this dag in local time
@@ -3524,7 +3553,7 @@ class DAG(BaseDag, LoggingMixin):
             cron = croniter(self._schedule_interval, dttm)
             # 获得下一次调度时间，添加时区信息
             return cron.get_next(datetime)
-        elif self._schedule_interval is not None:
+        elif isinstance(self._schedule_interval, timedelta):
             return dttm + self._schedule_interval
 
     def previous_schedule(self, dttm):
@@ -4004,9 +4033,11 @@ class DAG(BaseDag, LoggingMixin):
             only_running=False,
             confirm_prompt=False,
             include_subdags=True,
+            include_parentdag=True,
             reset_dag_runs=True,
             dry_run=False,
             session=None,
+            get_tis=False,
     ):
         """在dag中，删除任务实例，重置dagruns，返回重置成功的任务实例的数量
         清除正在运行的任务实例和job，将dag_run设置为运行态
@@ -4036,6 +4067,25 @@ class DAG(BaseDag, LoggingMixin):
             tis = session.query(TI).filter(TI.dag_id == self.dag_id)
             tis = tis.filter(TI.task_id.in_(self.task_ids))
 
+        if include_parentdag and self.is_subdag:
+
+            p_dag = self.parent_dag.sub_dag(
+                task_regex=self.dag_id.split('.')[1],
+                include_upstream=False,
+                include_downstream=True)
+
+            tis = tis.union(p_dag.clear(
+                start_date=start_date, end_date=end_date,
+                only_failed=only_failed,
+                only_running=only_running,
+                confirm_prompt=confirm_prompt,
+                include_subdags=include_subdags,
+                include_parentdag=False,
+                reset_dag_runs=reset_dag_runs,
+                get_tis=True,
+                session=session,
+            ))
+
         if start_date:
             tis = tis.filter(TI.execution_date >= start_date)
         if end_date:
@@ -4044,6 +4094,9 @@ class DAG(BaseDag, LoggingMixin):
             tis = tis.filter(TI.state == State.FAILED)
         if only_running:
             tis = tis.filter(TI.state == State.RUNNING)
+
+        if get_tis:
+            return tis
 
         # 模拟运行，用于判断是否存在任务实例
         if dry_run:
@@ -4102,6 +4155,7 @@ class DAG(BaseDag, LoggingMixin):
             only_running=False,     # 是否仅删除运行多个任务
             confirm_prompt=False,   # 是否需要用户确认
             include_subdags=True,   # 包含子dag
+            include_parentdag=False,
             reset_dag_runs=True,    # 重置dagrun
             dry_run=False,
     ):
@@ -4116,6 +4170,7 @@ class DAG(BaseDag, LoggingMixin):
                 only_running=only_running,
                 confirm_prompt=False,
                 include_subdags=include_subdags,
+                include_parentdag=include_parentdag,
                 reset_dag_runs=reset_dag_runs,
                 dry_run=True)
             all_tis.extend(tis)
@@ -4180,18 +4235,11 @@ class DAG(BaseDag, LoggingMixin):
         upstream and downstream neighbours based on the flag passed.
         """
         # 拷贝dag，新的dag的任务列表为空
-        # deep-copying self.task_dict takes a long time, and we don't want all
-        # the tasks anyway, so we copy the tasks manually later
-        task_dict = self.task_dict
-        self.task_dict = {}
         dag = copy.deepcopy(self)
-        self.task_dict = task_dict
 
         # 根据任务ID模糊匹配，获得匹配的任务
         regex_match = [
-            t for t in self.tasks if re.findall(task_regex, t.task_id)]
-
-        # 遍历匹配的任务，获取关联的上下级任务
+            t for t in dag.tasks if re.findall(task_regex, t.task_id)]
         also_include = []
         for t in regex_match:
             # 包含匹配任务的所有下游任务
@@ -4202,9 +4250,7 @@ class DAG(BaseDag, LoggingMixin):
                 also_include += t.get_flat_relatives(upstream=True)
 
         # Compiling the unique list of tasks that made the cut
-        # Make sure to not recursively deepcopy the dag while copying the task
-        dag.task_dict = {t.task_id: copy.deepcopy(t, {id(t.dag): t.dag})
-                         for t in regex_match + also_include}
+        dag.task_dict = {t.task_id: t for t in regex_match + also_include}
         # dag.tasks 其实就是 regex_match + also_include
         for t in dag.tasks:
             # Removing upstream/downstream references to tasks that did not
@@ -4544,6 +4590,7 @@ class DAG(BaseDag, LoggingMixin):
                 DagModel).filter(~DagModel.dag_id.in_(active_dag_ids)).all():
             dag.is_active = False
             session.merge(dag)
+        session.commit()
 
     @staticmethod
     @provide_session
@@ -5106,7 +5153,7 @@ class DagStat(Base):
         """
         # unfortunately sqlalchemy does not know upsert
         qry = session.query(DagStat).filter(DagStat.dag_id == dag_id).all()
-        states = [dag_stat.state for dag_stat in qry]
+        states = {dag_stat.state for dag_stat in qry}
         for state in State.dag_states:
             if state not in states:
                 try:
@@ -5166,6 +5213,8 @@ class DagRun(Base, LoggingMixin):
     def set_state(self, state):
         if self._state != state:
             self._state = state
+            self.end_date = datetime.now() if self._state in State.finished() else None
+
             if self.dag_id is not None:
                 # FIXME: Due to the scoped_session factor we we don't get a clean
                 # session here, so something really weird goes on:
@@ -5413,7 +5462,7 @@ class DagRun(Base, LoggingMixin):
             if (not unfinished_tasks and
                     any(r.state in (State.FAILED, State.UPSTREAM_FAILED) for r in roots)):
                 self.log.info('Marking run %s failed', self)
-                self.state = State.FAILED
+                self.set_state(State.FAILED)
                 dag.handle_callback(self, success=False, reason='task_failure',
                                     session=session)
 
@@ -5422,7 +5471,7 @@ class DagRun(Base, LoggingMixin):
             elif not unfinished_tasks and all(r.state in (State.SUCCESS, State.SKIPPED)
                                               for r in roots):
                 self.log.info('Marking run %s successful', self)
-                self.state = State.SUCCESS
+                self.set_state(State.SUCCESS)
                 dag.handle_callback(self, success=True, reason='success', session=session)
 
             # 如果任务实例没有完成，且任务实例依赖不满足，则dagrun标记为失败，是一种死锁的情况
@@ -5430,13 +5479,13 @@ class DagRun(Base, LoggingMixin):
             elif (unfinished_tasks and none_depends_on_past and
                   none_task_concurrency and no_dependencies_met):
                 self.log.info('Deadlock; marking run %s failed', self)
-                self.state = State.FAILED
+                self.set_state(State.FAILED)
                 dag.handle_callback(self, success=False, reason='all_tasks_deadlocked',
                                     session=session)
 
             # finally, if the roots aren't done, the dag is still running
             else:
-                self.state = State.RUNNING
+                self.set_state(State.RUNNING)
 
         # todo: determine we want to use with_for_update to make sure to lock the run
         session.merge(self)
@@ -5499,7 +5548,8 @@ class DagRun(Base, LoggingMixin):
             # 如果任务类型是即席查询，则不会创建任务实例
             if task.adhoc:
                 continue
-
+            if task.start_date > self.execution_date and not self.is_backfill:
+                continue
             # 补齐确实的任务实例
             if task.task_id not in task_ids:
                 ti = TaskInstance(task, self.execution_date)
@@ -5528,10 +5578,7 @@ class DagRun(Base, LoggingMixin):
     @property
     def is_backfill(self):
         from airflow.jobs import BackfillJob
-        return (
-            self.run_id is not None and
-            self.run_id.startswith(BackfillJob.ID_PREFIX)
-        )
+        return self.run_id.startswith(BackfillJob.ID_PREFIX)
 
     @classmethod
     @provide_session

@@ -58,7 +58,7 @@ from airflow.utils.dag_processing import (AbstractDagFileProcessor,
                                           SimpleDagBag,
                                           list_py_file_paths)
 from airflow.utils.db import create_session, provide_session
-from airflow.utils.email import send_email
+from airflow.utils.email import send_email, get_email_address_list
 from airflow.utils.log.logging_mixin import LoggingMixin, set_context, StreamLogWriter
 from airflow.utils.net import get_hostname
 from airflow.utils.state import State
@@ -307,7 +307,7 @@ class BaseJob(Base, LoggingMixin):
             if ti.key not in queued_tis and ti.key not in running_tis:
                 tis_to_reset.append(ti)
 
-        if not tis_to_reset:
+        if len(tis_to_reset) == 0:
             return []
 
         # 如果存在这种异常情况
@@ -831,11 +831,11 @@ class SchedulerJob(BaseJob):
             for task in dag.tasks:
                 if task.email:
                     if isinstance(task.email, basestring):
-                        emails.add(task.email)
+                        emails |= set(get_email_address_list(task.email))
                     elif isinstance(task.email, (list, tuple)):
                         emails |= set(task.email)
             # 发送邮件通知失效任务实例，所在的dag所有的任务负责人
-            if emails and slas:
+            if emails and len(slas):
                 try:
                     send_email(
                         emails,
@@ -1370,25 +1370,23 @@ class SchedulerJob(BaseJob):
                 and_(DR.dag_id == TI.dag_id, DR.execution_date == TI.execution_date)
             )
             # dagrun是非补录的
-            .filter(or_(DR.run_id == None,  # noqa: E711
+            .filter(or_(DR.run_id == None,  # noqa E711
                     not_(DR.run_id.like(BackfillJob.ID_PREFIX + '%'))))
             .outerjoin(DM, DM.dag_id == TI.dag_id)
             # DAG是开启的
-            .filter(or_(DM.dag_id == None,  # noqa: E711
+            .filter(or_(DM.dag_id == None,  # noqa E711
                     not_(DM.is_paused)))
         )
         # 过滤状态，默认为 SCHEDULED
         if None in states:
-            ti_query = ti_query.filter(
-                or_(TI.state == None, TI.state.in_(states))  # noqa: E711
-            )
+            ti_query = ti_query.filter(or_(TI.state == None, TI.state.in_(states))) # noqa E711
         else:
             ti_query = ti_query.filter(TI.state.in_(states))
 
         task_instances_to_examine = ti_query.all()
 
         if len(task_instances_to_examine) == 0:
-            self.log.info("No tasks to consider for execution.")
+            self.log.debug("No tasks to consider for execution.")
             return executable_tis
 
         # Put one task instance on each line
@@ -1469,6 +1467,7 @@ class SchedulerJob(BaseJob):
                             simple_dag_bag.get_dag(dag_id).task_ids,
                             states=states_to_count_as_running,
                             session=session)
+
                 current_task_concurrency = dag_id_to_possibly_running_task_count[dag_id]
 
                 # 每个dag同时执行的任务实例的数量
@@ -1480,8 +1479,8 @@ class SchedulerJob(BaseJob):
                 # 判断任务实例是否超出了dag任务实例并发数限制
                 if current_task_concurrency >= task_concurrency_limit:
                     self.log.info(
-                        "Not executing %s since the number of tasks running or queued "
-                        "from DAG %s is >= to the DAG's task concurrency limit of %s",
+                        "Not executing %s since the number of tasks running or queued from DAG %s"
+                        " is >= to the DAG's task concurrency limit of %s",
                         task_instance, dag_id, task_concurrency_limit
                     )
                     continue
@@ -1492,7 +1491,7 @@ class SchedulerJob(BaseJob):
                     'task_concurrency')
                 if task_concurrency is not None:
                     num_running = task_concurrency_map[
-                        (task_instance.dag_id, task_instance.task_id)
+                        ((task_instance.dag_id, task_instance.task_id))
                     ]
 
                     if num_running >= task_concurrency:
@@ -1564,7 +1563,7 @@ class SchedulerJob(BaseJob):
 
         if None in acceptable_states:
             ti_query = ti_query.filter(
-                or_(TI.state == None, TI.state.in_(acceptable_states))  # noqa: E711
+                or_(TI.state == None, TI.state.in_(acceptable_states)) # noqa E711
             )
         else:
             ti_query = ti_query.filter(TI.state.in_(acceptable_states))
@@ -1634,7 +1633,7 @@ class SchedulerJob(BaseJob):
         for task_instance in task_instances:
             simple_dag = simple_dag_bag.get_dag(task_instance.dag_id)
             # 创建可执行指令，需要发送给执行器队列
-            command = TI.generate_command(
+            command = " ".join(TI.generate_command(
                 task_instance.dag_id,
                 task_instance.task_id,
                 task_instance.execution_date,
@@ -1646,7 +1645,7 @@ class SchedulerJob(BaseJob):
                 ignore_ti_state=False,
                 pool=task_instance.pool,
                 file_path=simple_dag.full_filepath,
-                pickle_id=simple_dag.pickle_id)
+                pickle_id=simple_dag.pickle_id))
 
             priority = task_instance.priority_weight
             queue = task_instance.queue
@@ -1760,10 +1759,10 @@ class SchedulerJob(BaseJob):
         TI = models.TaskInstance
         for key, state in list(self.executor.get_event_buffer(simple_dag_bag.dag_ids)
                                    .items()):
-            dag_id, task_id, execution_date = key
+            dag_id, task_id, execution_date, try_number = key
             self.log.info(
-                "Executor reports %s.%s execution_date=%s as %s",
-                dag_id, task_id, execution_date, state
+                "Executor reports %s.%s execution_date=%s as %s for try_number %s",
+                dag_id, task_id, execution_date, state, try_number
             )
             if state == State.FAILED or state == State.SUCCESS:
                 qry = session.query(TI).filter(TI.dag_id == dag_id,
@@ -1775,7 +1774,7 @@ class SchedulerJob(BaseJob):
                     continue
 
                 # TODO: should we fail RUNNING as well, as we do in Backfills?
-                if ti.state == State.QUEUED:
+                if ti.try_number == try_number and ti.state == State.QUEUED:
                     msg = ("Executor reports task instance {} finished ({}) "
                            "although the task says its {}. Was the task "
                            "killed externally?".format(ti, state, ti.state))
@@ -2024,7 +2023,7 @@ class SchedulerJob(BaseJob):
 
             # Send tasks for execution if available
             simple_dag_bag = SimpleDagBag(simple_dags)
-            if simple_dags:
+            if len(simple_dags) > 0:
 
                 # Handle cases where a DAG run state is set (perhaps manually) to
                 # a non-running state. Handle task instances that belong to
@@ -2185,7 +2184,7 @@ class SchedulerJob(BaseJob):
                 simple_dags.append(SimpleDag(dag, pickle_id=pickle_id))
 
         # 白名单过滤
-        if self.dag_ids:
+        if len(self.dag_ids) > 0:
             dags = [dag for dag in dagbag.dags.values()
                     if dag.dag_id in self.dag_ids and
                     dag.dag_id not in paused_dag_ids]
@@ -2251,7 +2250,7 @@ class SchedulerJob(BaseJob):
 
     @provide_session
     def heartbeat_callback(self, session=None):
-        Stats.gauge('scheduler_heartbeat', 1, 1)
+        Stats.incr('scheduler_heartbeat', 1, 1)
 
 
 class BackfillJob(BaseJob):
@@ -2414,7 +2413,7 @@ class BackfillJob(BaseJob):
         :param ti_status: the internal status of the backfill job tasks
         :type ti_status: BackfillJob._DagRunTaskStatus
         """
-        for key, ti in ti_status.running.items():
+        for key, ti in list(ti_status.running.items()):
             ti.refresh_from_db()
             if ti.state == State.SUCCESS:
                 ti_status.succeeded.add(key)
@@ -2510,18 +2509,18 @@ class BackfillJob(BaseJob):
                                         else False)
 
         # 根据dagid，获得正在运行的dagrun的数量，用于判断dagrun的最大阈值
-        current_active_dag_count = self.dag.get_num_active_runs(external_trigger=False) 
+        current_active_dag_count = self.dag.get_num_active_runs(external_trigger=False)
         
         # 根据调度日期，获取dagrun，可能正在运行，也可能运行失败或成功
         # check if we are scheduling on top of a already existing dag_run
         # we could find a "scheduled" run instead of a "backfill"
-        runs = DagRun.find(dag_id=self.dag.dag_id,
+        run = DagRun.find(dag_id=self.dag.dag_id,
                           execution_date=run_date,
                           session=session)
 
         # 判断需要补录的指定的调度时间的dag_run是否存在
-        if runs:
-            run = runs[0]
+        if run is not None and len(run) > 0:
+            run = run[0]
             # 如果需要补录的dag_run已经存在，则忽略dag_run的最大阈值限制
             if run.state == State.RUNNING:
                 respect_dag_max_active_limit = False
@@ -2660,8 +2659,8 @@ class BackfillJob(BaseJob):
 
         # to_run: 等待补录的任务实例
         # running: 正在运行的任务实例
-        while ((ti_status.to_run or ti_status.running) and
-                not ti_status.deadlocked):
+        while ((len(ti_status.to_run) > 0 or len(ti_status.running) > 0) and
+                len(ti_status.deadlocked) == 0):
             self.log.debug("*** Clearing out not_ready list ***")
             # 每次补录前先清空：未准备的任务实例
             ti_status.not_ready.clear()
@@ -2672,7 +2671,7 @@ class BackfillJob(BaseJob):
             # waiting for their upstream to finish
             # 对dag中的任务进行拓扑排序，并遍历任务
             for task in self.dag.topological_sort():
-                for key, ti in ti_status.to_run.items():
+                for key, ti in list(ti_status.to_run.items()):
                     # 判断任务是否属于此dag，有效性验证
                     if task.task_id != ti.task_id:
                         continue
@@ -2828,7 +2827,7 @@ class BackfillJob(BaseJob):
             # is deadlocked
             if (ti_status.not_ready and
                     ti_status.not_ready == set(ti_status.to_run) and
-                    not ti_status.running):
+                    len(ti_status.running) == 0):
                 self.log.warning(
                     "Deadlock discovered for ti_status.to_run=%s",
                     ti_status.to_run.values()
@@ -2961,10 +2960,11 @@ class BackfillJob(BaseJob):
         """
         # 获得BackfillJob状态管理类
         ti_status = BackfillJob._DagRunTaskStatus()
-        
+
+        start_date = self.bf_start_date
         # 获得指定范围内的execution_time，用于确定哪些dagrun需要补录
         # Get intervals between the start/end dates, which will turn into dag runs
-        run_dates = self.dag.get_run_dates(start_date=self.bf_start_date,
+        run_dates = self.dag.get_run_dates(start_date=start_date,
                                            end_date=self.bf_end_date)
                                            
         # 没有补录的任务直接返回，job状态设置为SUCCESS
@@ -3004,7 +3004,7 @@ class BackfillJob(BaseJob):
                                             ti_status=ti_status,             # BackfillJob状态管理类
                                             executor=executor,
                                             pickle_id=pickle_id,             # dag序列化自增ID
-                                            start_date=self.bf_start_date,   # 参数中的开始时间
+                                            start_date=start_date,           # 参数中的开始时间
                                             session=session)
 
                 # 获得未补录的execution_time

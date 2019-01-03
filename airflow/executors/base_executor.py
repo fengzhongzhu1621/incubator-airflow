@@ -80,7 +80,7 @@ class BaseExecutor(LoggingMixin):
         # (run_as_user), given that there are different code paths running tasks.
         # For a long term solution we need to address AIRFLOW-1986
         # 构造任务实例命令
-        command = task_instance.command_as_list(
+        command = task_instance.command(
             local=True,
             mark_success=mark_success,
             ignore_all_deps=ignore_all_deps,
@@ -191,7 +191,7 @@ class BaseExecutor(LoggingMixin):
         else:
             for key in list(self.event_buffer.keys()):
                 # 任务实例的唯一key是由3部分组成的
-                dag_id, _, _ = key
+                dag_id, _, _, _ = key
                 if dag_id in dag_ids:
                     cleared_events[key] = self.event_buffer.pop(key)
 
@@ -209,7 +209,7 @@ class BaseExecutor(LoggingMixin):
 
     def end(self):  # pragma: no cover
         """
-        This method is called when the caller is done submitting job and
+        This method is called when the caller is done submitting job and is
         wants to wait synchronously for the job submitted previously to be
         all done.
         """

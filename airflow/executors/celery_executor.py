@@ -56,7 +56,7 @@ def execute_command(command):
     log.info("Executing command in Celery: %s", command)
     env = os.environ.copy()
     try:
-        subprocess.check_call(command, stderr=subprocess.STDOUT,
+        subprocess.check_call(command, shell=True, stderr=subprocess.STDOUT,
                               close_fds=True, env=env)
     except subprocess.CalledProcessError as e:
         log.exception('execute_command encountered a CalledProcessError')
