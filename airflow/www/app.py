@@ -43,8 +43,6 @@ csrf = CSRFProtect()
 
 
 def create_app(config=None, testing=False):
-    log = LoggingMixin().log
-
     app = Flask(__name__)
     if configuration.conf.getboolean('webserver', 'ENABLE_PROXY_FIX'):
         app.wsgi_app = ProxyFix(app.wsgi_app)

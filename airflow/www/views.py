@@ -179,7 +179,6 @@ def parse_datetime_f(value):
     if not isinstance(value, dt.datetime):
         return value
     return value
-    # return timezone.make_aware(value)
 
 
 def state_f(v, c, m, p):
@@ -1889,7 +1888,7 @@ class Airflow(BaseView):
         if dttm:
             dttm = parse_execution_date(dttm)
         else:
-            return "Error: Invalid execution_date"
+            return ("Error: Invalid execution_date")
 
         task_instances = {
             ti.task_id: alchemy_to_dict(ti)
