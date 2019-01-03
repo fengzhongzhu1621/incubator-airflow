@@ -28,28 +28,25 @@ import textwrap
 import random
 import string
 from importlib import import_module
+
+import getpass
+import reprlib
+import argparse
+from builtins import input
+from collections import namedtuple
+import json
+from tabulate import tabulate
+
+import daemon
+from daemon.pidfile import TimeoutPIDLockFile
 import signal
 import sys
 import threading
 import traceback
 import time
-import getpass
-import argparse
-from collections import namedtuple
-import json
+import psutil
 import re
 from urllib.parse import urlunparse
-
-from builtins import input
-from builtins import itervalues
-from backports.configparser import NoSectionError
-
-import reprlib
-from tabulate import tabulate
-
-import daemon
-from daemon.pidfile import TimeoutPIDLockFile
-import psutil
 
 import airflow
 from airflow import api
@@ -960,7 +957,7 @@ def webserver(args):
             '-b', args.hostname + ':' + str(args.port),
             '-n', 'airflow-webserver',
             '-p', str(pid),
-            '-c', 'airflow.www.gunicorn_config'
+            '-c', 'python:airflow.www.gunicorn_config',
         ]
 
         if args.access_logfile:

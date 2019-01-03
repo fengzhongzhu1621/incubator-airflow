@@ -18,7 +18,7 @@
 # under the License.
 from airflow.contrib.hooks.emr_hook import EmrHook
 from airflow.contrib.sensors.emr_base_sensor import EmrBaseSensor
-from airflow.utils.decorators import apply_defaults
+from airflow.utils import apply_defaults
 
 
 class EmrStepSensor(EmrBaseSensor):
@@ -32,8 +32,8 @@ class EmrStepSensor(EmrBaseSensor):
     :type step_id: string
     """
 
-    NON_TERMINAL_STATES = ['PENDING', 'RUNNING', 'CONTINUE']
-    FAILED_STATE = ['CANCELLED', 'FAILED']
+    NON_TERMINAL_STATES = ['PENDING', 'RUNNING', 'CONTINUE', 'CANCEL_PENDING']
+    FAILED_STATE = ['CANCELLED', 'FAILED', 'INTERRUPTED']
     template_fields = ['job_flow_id', 'step_id']
     template_ext = ()
 
@@ -53,6 +53,5 @@ class EmrStepSensor(EmrBaseSensor):
         self.log.info('Poking step %s on cluster %s', self.step_id, self.job_flow_id)
         return emr.describe_step(ClusterId=self.job_flow_id, StepId=self.step_id)
 
-    @staticmethod
-    def state_from_response(response):
+    def state_from_response(self, response):
         return response['Step']['Status']['State']

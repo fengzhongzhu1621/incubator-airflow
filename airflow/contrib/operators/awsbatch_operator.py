@@ -24,7 +24,7 @@ from time import sleep
 
 from airflow.exceptions import AirflowException
 from airflow.models import BaseOperator
-from airflow.utils.decorators import apply_defaults
+from airflow.utils import apply_defaults
 
 from airflow.contrib.hooks.aws_hook import AwsHook
 
@@ -36,30 +36,32 @@ class AWSBatchOperator(BaseOperator):
     .. warning: the queue parameter was renamed to job_queue to segreggate the
                 internal CeleryExecutor queue from the AWS Batch internal queue.
 
-    :param job_name: the name for the job that will run on AWS Batch (templated)
+    :param job_name: the name for the job that will run on AWS Batch
     :type job_name: str
     :param job_definition: the job definition name on AWS Batch
     :type job_definition: str
     :param job_queue: the queue name on AWS Batch
     :type job_queue: str
-    :param: overrides: the same parameter that boto3 will receive on
-            containerOverrides (templated):
-            http://boto3.readthedocs.io/en/latest/reference/services/batch.html#submit_job
-    :type: overrides: dict
-    :param max_retries: exponential backoff retries while waiter is not merged, 4200 = 48 hours
+    :param overrides: the same parameter that boto3 will receive on
+        containerOverrides (templated).
+        http://boto3.readthedocs.io/en/latest/reference/services/batch.html#submit_job
+    :type overrides: dict
+    :param max_retries: exponential backoff retries while waiter is not merged,
+        4200 = 48 hours
     :type max_retries: int
     :param aws_conn_id: connection id of AWS credentials / region name. If None,
-            credential boto3 strategy will be used
-            (http://boto3.readthedocs.io/en/latest/guide/configuration.html).
+        credential boto3 strategy will be used
+        (http://boto3.readthedocs.io/en/latest/guide/configuration.html).
     :type aws_conn_id: str
     :param region_name: region name to use in AWS Hook.
         Override the region_name in connection (if provided)
+    :type region_name: str
     """
 
     ui_color = '#c3dae0'
     client = None
     arn = None
-    template_fields = ('job_name', 'overrides',)
+    template_fields = ('overrides',)
 
     @apply_defaults
     def __init__(self, job_name, job_definition, job_queue, overrides, max_retries=4200,
@@ -152,19 +154,17 @@ class AWSBatchOperator(BaseOperator):
             raise AirflowException('No job found for {}'.format(response))
 
         for job in response['jobs']:
-            job_status = job['status']
-            if job_status == 'FAILED':
-                reason = job['statusReason']
-                raise AirflowException('Job failed with status {}'.format(reason))
-            elif job_status in [
-                'SUBMITTED',
-                'PENDING',
-                'RUNNABLE',
-                'STARTING',
-                'RUNNING'
-            ]:
+            if 'attempts' in job:
+                containers = job['attempts']
+                for container in containers:
+                    if (job['status'] == 'FAILED' or
+                            container['container']['exitCode'] != 0):
+                        raise AirflowException(
+                            'This containers encounter an error during '
+                            'execution {}'.format(job))
+            elif job['status'] is not 'SUCCEEDED':
                 raise AirflowException(
-                    'This task is still pending {}'.format(job_status))
+                    'This task is still pending {}'.format(job['status']))
 
     def get_hook(self):
         return AwsHook(

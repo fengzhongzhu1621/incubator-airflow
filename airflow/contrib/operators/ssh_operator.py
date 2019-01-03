@@ -35,7 +35,7 @@ class SSHOperator(BaseOperator):
     :type ssh_hook: :class:`SSHHook`
     :param ssh_conn_id: connection id from airflow Connections
     :type ssh_conn_id: str
-    :param remote_host: remote host to connect (templated)
+    :param remote_host: remote host to connect
     :type remote_host: str
     :param command: command to execute on remote host. (templated)
     :type command: str
@@ -45,7 +45,7 @@ class SSHOperator(BaseOperator):
     :type do_xcom_push: bool
     """
 
-    template_fields = ('command', 'remote_host')
+    template_fields = ('command',)
     template_ext = ('.sh',)
 
     @apply_defaults
@@ -69,17 +69,16 @@ class SSHOperator(BaseOperator):
     def execute(self, context):
         try:
             if self.ssh_conn_id and not self.ssh_hook:
-                self.ssh_hook = SSHHook(ssh_conn_id=self.ssh_conn_id,
-                                        timeout=self.timeout)
+                self.ssh_hook = SSHHook(ssh_conn_id=self.ssh_conn_id)
 
             if not self.ssh_hook:
-                raise AirflowException("Cannot operate without ssh_hook or ssh_conn_id.")
+                raise AirflowException("can not operate without ssh_hook or ssh_conn_id")
 
             if self.remote_host is not None:
                 self.ssh_hook.remote_host = self.remote_host
 
             if not self.command:
-                raise AirflowException("SSH command not specified. Aborting.")
+                raise AirflowException("no command specified so nothing to execute here.")
 
             with self.ssh_hook.get_conn() as ssh_client:
                 # Auto apply tty when its required in case of sudo

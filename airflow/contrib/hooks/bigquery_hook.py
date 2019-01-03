@@ -206,7 +206,7 @@ class BigQueryBaseCursor(LoggingMixin):
                            dataset_id,
                            table_id,
                            schema_fields=None,
-                           time_partitioning=None,
+                           time_partitioning={},
                            labels=None
                            ):
         """
@@ -238,8 +238,6 @@ class BigQueryBaseCursor(LoggingMixin):
 
         :return:
         """
-        if time_partitioning is None:
-            time_partitioning = dict()
         project_id = project_id if project_id is not None else self.project_id
 
         table_resource = {
@@ -288,7 +286,7 @@ class BigQueryBaseCursor(LoggingMixin):
                               quote_character=None,
                               allow_quoted_newlines=False,
                               allow_jagged_rows=False,
-                              src_fmt_configs=None,
+                              src_fmt_configs={},
                               labels=None
                               ):
         """
@@ -354,8 +352,6 @@ class BigQueryBaseCursor(LoggingMixin):
         :type labels: dict
         """
 
-        if src_fmt_configs is None:
-            src_fmt_configs = {}
         project_id, dataset_id, external_table_id = \
             _split_tablename(table_input=external_project_dataset_table,
                              default_project_id=self.project_id,
@@ -476,7 +472,7 @@ class BigQueryBaseCursor(LoggingMixin):
                   destination_dataset_table=False,
                   write_disposition='WRITE_EMPTY',
                   allow_large_results=False,
-                  flatten_results=False,
+                  flatten_results=None,
                   udf_config=False,
                   use_legacy_sql=None,
                   maximum_billing_tier=None,
@@ -486,7 +482,7 @@ class BigQueryBaseCursor(LoggingMixin):
                   labels=None,
                   schema_update_options=(),
                   priority='INTERACTIVE',
-                  time_partitioning=None):
+                  time_partitioning={}):
         """
         Executes a BigQuery SQL query. Optionally persists results in a BigQuery
         table. See here:
@@ -544,16 +540,12 @@ class BigQueryBaseCursor(LoggingMixin):
             The default value is INTERACTIVE.
         :type priority: string
         :param time_partitioning: configure optional time partitioning fields i.e.
-            partition by field, type and
-            expiration as per API specifications. Note that 'field' is not available in
-            conjunction with dataset.table$partition.
+            partition by field, type and expiration as per API specifications.
         :type time_partitioning: dict
 
         """
 
         # TODO remove `bql` in Airflow 2.0 - Jira: [AIRFLOW-2513]
-        if time_partitioning is None:
-            time_partitioning = {}
         sql = bql if sql is None else sql
 
         if bql:
@@ -627,7 +619,7 @@ class BigQueryBaseCursor(LoggingMixin):
 
         if query_params:
             if self.use_legacy_sql:
-                raise ValueError("Query parameters are not allowed when using "
+                raise ValueError("Query paramaters are not allowed when using "
                                  "legacy SQL")
             else:
                 configuration['query']['queryParameters'] = query_params
@@ -814,8 +806,8 @@ class BigQueryBaseCursor(LoggingMixin):
                  allow_quoted_newlines=False,
                  allow_jagged_rows=False,
                  schema_update_options=(),
-                 src_fmt_configs=None,
-                 time_partitioning=None):
+                 src_fmt_configs={},
+                 time_partitioning={}):
         """
         Executes a BigQuery load command to load data from Google Cloud Storage
         to BigQuery. See here:
@@ -875,9 +867,7 @@ class BigQueryBaseCursor(LoggingMixin):
         :param src_fmt_configs: configure optional fields specific to the source format
         :type src_fmt_configs: dict
         :param time_partitioning: configure optional time partitioning fields i.e.
-            partition by field, type and
-            expiration as per API specifications. Note that 'field' is not available in
-            conjunction with dataset.table$partition.
+            partition by field, type and  expiration as per API specifications.
         :type time_partitioning: dict
         """
 
@@ -886,10 +876,6 @@ class BigQueryBaseCursor(LoggingMixin):
         # if it's not, we raise a ValueError
         # Refer to this link for more details:
         #   https://cloud.google.com/bigquery/docs/reference/rest/v2/jobs#configuration.query.tableDefinitions.(key).sourceFormat
-        if src_fmt_configs is None:
-            src_fmt_configs = {}
-        if time_partitioning is None:
-            time_partitioning = {}
         source_format = source_format.upper()
         allowed_formats = [
             "CSV", "NEWLINE_DELIMITED_JSON", "AVRO", "GOOGLE_SHEETS",
@@ -1021,12 +1007,12 @@ class BigQueryBaseCursor(LoggingMixin):
 
         # Wait for query to finish.
         keep_polling_job = True
-        while keep_polling_job:
+        while (keep_polling_job):
             try:
                 job = jobs.get(
                     projectId=self.project_id,
                     jobId=self.running_job_id).execute()
-                if job['status']['state'] == 'DONE':
+                if (job['status']['state'] == 'DONE'):
                     keep_polling_job = False
                     # Check if job had errors.
                     if 'errorResult' in job['status']:
@@ -1055,7 +1041,7 @@ class BigQueryBaseCursor(LoggingMixin):
         jobs = self.service.jobs()
         try:
             job = jobs.get(projectId=self.project_id, jobId=job_id).execute()
-            if job['status']['state'] == 'DONE':
+            if (job['status']['state'] == 'DONE'):
                 return True
         except HttpError as err:
             if err.resp.status in [500, 503]:
@@ -1089,13 +1075,13 @@ class BigQueryBaseCursor(LoggingMixin):
         polling_attempts = 0
 
         job_complete = False
-        while polling_attempts < max_polling_attempts and not job_complete:
+        while (polling_attempts < max_polling_attempts and not job_complete):
             polling_attempts = polling_attempts + 1
             job_complete = self.poll_job_complete(self.running_job_id)
-            if job_complete:
+            if (job_complete):
                 self.log.info('Job successfully canceled: %s, %s',
                               self.project_id, self.running_job_id)
-            elif polling_attempts == max_polling_attempts:
+            elif (polling_attempts == max_polling_attempts):
                 self.log.info(
                     "Stopping polling due to timeout. Job with id %s "
                     "has not completed cancel and may or may not finish.",
@@ -1599,11 +1585,6 @@ def _cleanse_time_partitioning(destination_dataset_table, time_partitioning_in):
     # if it is a partitioned table ($ is in the table name) add partition load option
     time_partitioning_out = {}
     if destination_dataset_table and '$' in destination_dataset_table:
-        if time_partitioning_in.get('field'):
-            raise ValueError(
-                "Cannot specify field partition and partition name"
-                "(dataset.table$partition) at the same time")
         time_partitioning_out['type'] = 'DAY'
-
     time_partitioning_out.update(time_partitioning_in)
     return time_partitioning_out

@@ -24,7 +24,7 @@
 
 
 import sys
-import os
+import os as _os
 
 # ------------------------------------------------------------------------
 #
@@ -48,6 +48,6 @@ _operators = {
     'hive_to_dynamodb': ['HiveToDynamoDBTransferOperator']
 }
 
-if not os.environ.get('AIRFLOW_USE_NEW_IMPORTS', False):
+if not _os.environ.get('AIRFLOW_USE_NEW_IMPORTS', False):
     from airflow.utils.helpers import AirflowImporter
     airflow_importer = AirflowImporter(sys.modules[__name__], _operators)

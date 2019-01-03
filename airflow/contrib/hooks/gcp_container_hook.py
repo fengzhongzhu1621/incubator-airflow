@@ -23,7 +23,7 @@ import time
 from airflow import AirflowException, version
 from airflow.hooks.base_hook import BaseHook
 
-from google.api_core.exceptions import AlreadyExists, NotFound
+from google.api_core.exceptions import AlreadyExists
 from google.api_core.gapic_v1.method import DEFAULT
 from google.cloud import container_v1, exceptions
 from google.cloud.container_v1.gapic.enums import Operation
@@ -44,10 +44,10 @@ class GKEClusterHook(BaseHook):
         client_info = ClientInfo(client_library_version='airflow_v' + version.version)
         self.client = container_v1.ClusterManagerClient(client_info=client_info)
 
-    @staticmethod
-    def _dict_to_proto(py_dict, proto):
+    def _dict_to_proto(self, py_dict, proto):
         """
         Converts a python dictionary to the proto supplied
+
         :param py_dict: The dictionary to convert
         :type py_dict: dict
         :param proto: The proto object to merge with dictionary
@@ -63,6 +63,7 @@ class GKEClusterHook(BaseHook):
         """
         Given an operation, continuously fetches the status from Google Cloud until either
         completion or an error occurring
+
         :param operation: The Operation to wait for
         :type operation: A google.cloud.container_V1.gapic.enums.Operator
         :return: A new, updated operation fetched from Google Cloud
@@ -83,6 +84,7 @@ class GKEClusterHook(BaseHook):
     def get_operation(self, operation_name):
         """
         Fetches the operation from Google Cloud
+
         :param operation_name: Name of operation to fetch
         :type operation_name: str
         :return: The new, updated operation from Google Cloud
@@ -91,8 +93,7 @@ class GKEClusterHook(BaseHook):
                                          zone=self.location,
                                          operation_id=operation_name)
 
-    @staticmethod
-    def _append_label(cluster_proto, key, val):
+    def _append_label(self, cluster_proto, key, val):
         """
         Append labels to provided Cluster Protobuf
 
@@ -143,7 +144,7 @@ class GKEClusterHook(BaseHook):
             op = self.wait_for_operation(op)
             # Returns server-defined url for the resource
             return op.self_link
-        except NotFound as error:
+        except exceptions.NotFound as error:
             self.log.info('Assuming Success: ' + error.message)
 
     def create_cluster(self, cluster, retry=DEFAULT, timeout=DEFAULT):
@@ -196,6 +197,7 @@ class GKEClusterHook(BaseHook):
     def get_cluster(self, name, retry=DEFAULT, timeout=DEFAULT):
         """
         Gets details of specified cluster
+
         :param name: The name of the cluster to retrieve
         :type name: str
         :param retry: A retry object used to retry requests. If None is specified,

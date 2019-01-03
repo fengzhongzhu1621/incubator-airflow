@@ -19,7 +19,6 @@ import copy
 import os
 import six
 
-from airflow.configuration import conf
 from airflow.contrib.kubernetes.pod import Pod, Resources
 from airflow.contrib.kubernetes.secret import Secret
 from airflow.utils.log.logging_mixin import LoggingMixin
@@ -81,16 +80,11 @@ class WorkerConfiguration(LoggingMixin):
     def _get_environment(self):
         """Defines any necessary environment variables for the pod executor"""
         env = {
-            "AIRFLOW__CORE__EXECUTOR": "LocalExecutor",
+            'AIRFLOW__CORE__DAGS_FOLDER': '/tmp/dags',
+            'AIRFLOW__CORE__EXECUTOR': 'LocalExecutor'
         }
-
         if self.kube_config.airflow_configmap:
             env['AIRFLOW__CORE__AIRFLOW_HOME'] = self.worker_airflow_home
-        if self.kube_config.worker_dags_folder:
-            env['AIRFLOW__CORE__DAGS_FOLDER'] = self.kube_config.worker_dags_folder
-        if (not self.kube_config.airflow_configmap and
-                'AIRFLOW__CORE__SQL_ALCHEMY_CONN' not in self.kube_config.kube_secrets):
-            env['AIRFLOW__CORE__SQL_ALCHEMY_CONN'] = conf.get("core", "SQL_ALCHEMY_CONN")
         return env
 
     def _get_secrets(self):
@@ -112,31 +106,34 @@ class WorkerConfiguration(LoggingMixin):
         dags_volume_name = 'airflow-dags'
         logs_volume_name = 'airflow-logs'
 
-        def _construct_volume(name, claim):
-            volume = {
+        def _construct_volume(name, claim, subpath=None):
+            vo = {
                 'name': name
             }
             if claim:
-                volume['persistentVolumeClaim'] = {
+                vo['persistentVolumeClaim'] = {
                     'claimName': claim
                 }
+                if subpath:
+                    vo['subPath'] = subpath
             else:
-                volume['emptyDir'] = {}
-            return volume
+                vo['emptyDir'] = {}
+            return vo
 
         volumes = [
             _construct_volume(
                 dags_volume_name,
-                self.kube_config.dags_volume_claim
+                self.kube_config.dags_volume_claim,
+                self.kube_config.dags_volume_subpath
             ),
             _construct_volume(
                 logs_volume_name,
-                self.kube_config.logs_volume_claim
+                self.kube_config.logs_volume_claim,
+                self.kube_config.logs_volume_subpath
             )
         ]
 
         dag_volume_mount_path = ""
-
         if self.kube_config.dags_volume_claim:
             dag_volume_mount_path = self.worker_airflow_dags
         else:
@@ -144,25 +141,15 @@ class WorkerConfiguration(LoggingMixin):
                 self.worker_airflow_dags,
                 self.kube_config.git_subpath
             )
-        dags_volume_mount = {
+
+        volume_mounts = [{
             'name': dags_volume_name,
             'mountPath': dag_volume_mount_path,
-            'readOnly': True,
-        }
-        if self.kube_config.dags_volume_subpath:
-            dags_volume_mount['subPath'] = self.kube_config.dags_volume_subpath
-
-        logs_volume_mount = {
+            'readOnly': True
+        }, {
             'name': logs_volume_name,
-            'mountPath': self.worker_airflow_logs,
-        }
-        if self.kube_config.logs_volume_subpath:
-            logs_volume_mount['subPath'] = self.kube_config.logs_volume_subpath
-
-        volume_mounts = [
-            dags_volume_mount,
-            logs_volume_mount
-        ]
+            'mountPath': self.worker_airflow_logs
+        }]
 
         # Mount the airflow.cfg file via a configmap the user has specified
         if self.kube_config.airflow_configmap:
@@ -195,9 +182,9 @@ class WorkerConfiguration(LoggingMixin):
             limit_cpu=kube_executor_config.limit_cpu
         )
         gcp_sa_key = kube_executor_config.gcp_service_account_key
-        annotations = kube_executor_config.annotations.copy()
-        if gcp_sa_key:
-            annotations['iam.cloud.google.com/service-account'] = gcp_sa_key
+        annotations = {
+            'iam.cloud.google.com/service-account': gcp_sa_key
+        } if gcp_sa_key else {}
 
         return Pod(
             namespace=namespace,
@@ -205,7 +192,8 @@ class WorkerConfiguration(LoggingMixin):
             image=kube_executor_config.image or self.kube_config.kube_image,
             image_pull_policy=(kube_executor_config.image_pull_policy or
                                self.kube_config.kube_image_pull_policy),
-            cmds=airflow_command,
+            cmds=['bash', '-cx', '--'],
+            args=[airflow_command],
             labels={
                 'airflow-worker': worker_uuid,
                 'dag_id': dag_id,

@@ -1,4 +1,3 @@
-# flake8: noqa: F841
 #
 # Licensed to the Apache Software Foundation (ASF) under one or more
 # contributor license agreements.  See the NOTICE file distributed with
@@ -103,12 +102,10 @@ import dill
 
 
 class JsonCoder(object):
-    @staticmethod
-    def encode(x):
+    def encode(self, x):
         return json.dumps(x)
 
-    @staticmethod
-    def decode(x):
+    def decode(self, x):
         return json.loads(x)
 
 

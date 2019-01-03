@@ -66,12 +66,10 @@ COMMAND_ARGS = {
                  'user_program_arguments'],
     'dbexportcmd': ['mode', 'hive_table', 'partition_spec', 'dbtap_id', 'db_table',
                     'db_update_mode', 'db_update_keys', 'export_dir',
-                    'fields_terminated_by', 'tags', 'name', 'customer_cluster_label',
-                    'use_customer_cluster', 'additional_options'],
+                    'fields_terminated_by', 'tags', 'name'],
     'dbimportcmd': ['mode', 'hive_table', 'dbtap_id', 'db_table', 'where_clause',
                     'parallelism', 'extract_query', 'boundary_query', 'split_column',
-                    'tags', 'name', 'hive_serde', 'customer_cluster_label',
-                    'use_customer_cluster', 'schema', 'additional_options']
+                    'tags', 'name']
 }
 
 
@@ -125,7 +123,7 @@ class QuboleHook(BaseHook, LoggingMixin):
 
     def kill(self, ti):
         """
-        Kill (cancel) a Qubole command
+        Kill (cancel) a Qubole commmand
         :param ti: Task Instance of the dag, used to determine the Quboles command id
         :return: response from Qubole
         """
@@ -147,7 +145,7 @@ class QuboleHook(BaseHook, LoggingMixin):
         :return: file location containing actual results or s3 locations of results
         """
         if fp is None:
-            iso = datetime.datetime.now().isoformat()
+            iso = datetime.datetime.utcnow().isoformat()
             logpath = os.path.expanduser(
                 configuration.conf.get('core', 'BASE_LOG_FOLDER')
             )

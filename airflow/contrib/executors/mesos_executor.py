@@ -162,7 +162,7 @@ class AirflowMesosScheduler(mesos.interface.Scheduler, LoggingMixin):
 
                 command = mesos_pb2.CommandInfo()
                 command.shell = True
-                command.value = " ".join(cmd)
+                command.value = cmd
                 task.command.MergeFrom(command)
 
                 # If docker image for airflow is specified in config then pull that

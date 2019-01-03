@@ -158,21 +158,6 @@ class CassandraHook(BaseHook, LoggingMixin):
                                                            child_policy_args)
                 return TokenAwarePolicy(child_policy)
 
-    def table_exists(self, table):
-        """
-        Checks if a table exists in Cassandra
-
-        :param table: Target Cassandra table.
-                      Use dot notation to target a specific keyspace.
-        :type table: string
-        """
-        keyspace = self.keyspace
-        if '.' in table:
-            keyspace, table = table.split('.', 1)
-        cluster_metadata = self.get_conn().cluster.metadata
-        return (keyspace in cluster_metadata.keyspaces and
-                table in cluster_metadata.keyspaces[keyspace].tables)
-
     def record_exists(self, table, keys):
         """
         Checks if a record exists in Cassandra
@@ -183,12 +168,12 @@ class CassandraHook(BaseHook, LoggingMixin):
         :param keys: The keys and their values to check the existence.
         :type keys: dict
         """
-        keyspace = self.keyspace
+        keyspace = None
         if '.' in table:
             keyspace, table = table.split('.', 1)
         ks = " AND ".join("{}=%({})s".format(key, key) for key in keys.keys())
         cql = "SELECT * FROM {keyspace}.{table} WHERE {keys}".format(
-            keyspace=keyspace, table=table, keys=ks)
+            keyspace=(keyspace or self.keyspace), table=table, keys=ks)
 
         try:
             rs = self.get_conn().execute(cql, keys)

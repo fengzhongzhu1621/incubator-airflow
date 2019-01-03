@@ -117,11 +117,11 @@ class CgroupTaskRunner(BaseTaskRunner):
                 "creating another one",
                 cgroups.get("cpu"), cgroups.get("memory")
             )
-            self.process = self.run_command()
+            self.process = self.run_command(['bash', '-c'], join_args=True)
             return
 
         # Create a unique cgroup name
-        cgroup_name = "airflow/{}/{}".format(datetime.datetime.now().
+        cgroup_name = "airflow/{}/{}".format(datetime.datetime.utcnow().
                                              strftime("%Y-%m-%d"),
                                              str(uuid.uuid1()))
 
@@ -193,8 +193,7 @@ class CgroupTaskRunner(BaseTaskRunner):
         if self._created_cpu_cgroup:
             self._delete_cgroup(self.cpu_cgroup_name)
 
-    @staticmethod
-    def _get_cgroup_names():
+    def _get_cgroup_names(self):
         """
         :return: a mapping between the subsystem name to the cgroup name
         :rtype: dict[str, str]

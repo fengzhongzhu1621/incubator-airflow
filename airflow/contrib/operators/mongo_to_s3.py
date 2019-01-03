@@ -96,8 +96,7 @@ class MongoToS3Operator(BaseOperator):
 
         return True
 
-    @staticmethod
-    def _stringify(iterable, joinable='\n'):
+    def _stringify(self, iterable, joinable='\n'):
         """
         Takes an iterable (pymongo Cursor or Array) containing dictionaries and
         returns a stringified version using python join
@@ -106,8 +105,7 @@ class MongoToS3Operator(BaseOperator):
             [json.dumps(doc, default=json_util.default) for doc in iterable]
         )
 
-    @staticmethod
-    def transform(docs):
+    def transform(self, docs):
         """
         Processes pyMongo cursor and returns an iterable with each element being
                 a JSON serializable dictionary
