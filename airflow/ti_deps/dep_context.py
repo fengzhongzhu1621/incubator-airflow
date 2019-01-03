@@ -106,8 +106,7 @@ QUEUE_DEPS = {
 }
 
 # Dependencies that need to be met for a given task instance to be able to get run by an
-# executor. This class just extends QueueContext by adding dependencies
-# for resources.
+# executor. This class just extends QueueContext by adding dependencies for resources.
 RUN_DEPS = QUEUE_DEPS | {
     DagTISlotsAvailableDep(),   # 每个dag能并发执行的最大任务数依赖
     TaskConcurrencyDep(),       # 每个任务的任务实例有最大限制
