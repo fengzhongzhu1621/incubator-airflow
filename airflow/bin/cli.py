@@ -37,8 +37,6 @@ from collections import namedtuple
 import json
 from tabulate import tabulate
 
-import daemon
-from daemon.pidfile import TimeoutPIDLockFile
 import signal
 import sys
 import threading
@@ -47,6 +45,11 @@ import time
 import psutil
 import re
 from urllib.parse import urlunparse
+import platform
+
+if platform.system() == 'Linux':
+    import daemon
+    from daemon.pidfile import TimeoutPIDLockFile
 
 import airflow
 from airflow import api
@@ -72,6 +75,7 @@ from airflow.www_rbac.app import cached_appbuilder
 
 from sqlalchemy import func
 from sqlalchemy.orm import exc
+
 
 # 加载认证模块， 设置 api.api_auth.client_auth 全局变量
 api.load_auth()
@@ -2040,7 +2044,7 @@ class CLIFactory(object):
             sp = subparsers.add_parser(subparser_conf['func'].__name__,
                                        help=subparser_conf['help'])
             # 遍历子命令参数
-            for arg in sub['args']:
+            for arg in subparser_conf['args']:
                 if 'dag_id' in arg and dag_parser:
                     continue
                 # 根据参数名，从全局参数表中获取参数的详细配置

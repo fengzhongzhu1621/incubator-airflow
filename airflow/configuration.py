@@ -549,9 +549,9 @@ if not os.path.isfile(AIRFLOW_CONFIG):
 
 log.info("Reading the config from %s", AIRFLOW_CONFIG)
 
-# 创建配置对象
+# 创建配置对象，读取默认配置
 conf = AirflowConfigParser(default_config=parameterized_config(DEFAULT_CONFIG))
-# 读取正式环境配置文件
+# 读取正式环境配置文件，覆盖默认配置
 conf.read(AIRFLOW_CONFIG)
 
 # 自动生成rbac webserver配置文件
