@@ -30,7 +30,9 @@ import sys
 from argparse import Namespace
 from datetime import datetime
 
-from xTool.utils.cli import on_pre_execution, on_post_execution, register_pre_exec_callback
+from xTool.utils.cli import (on_pre_execution,
+                             on_post_execution,
+                             register_pre_exec_callback)
 from xTool.misc import get_local_host_ip
 
 import airflow.models
