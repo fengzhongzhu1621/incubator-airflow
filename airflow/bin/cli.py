@@ -2019,8 +2019,6 @@ class CLIFactory(BaseCLIFactory):
         },
     )
     subparsers_dict = {sp['func'].__name__: sp for sp in subparsers}
-    dag_subparsers = (
-        'list_tasks', 'backfill', 'test', 'run', 'pause', 'unpause')
 
 
 def get_parser():

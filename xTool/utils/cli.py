@@ -14,39 +14,102 @@ import functools
 import json
 from argparse import Namespace
 
+from six import iteritems
 
+
+# 自定义命令行配置参数元组
 Arg = namedtuple(
     'Arg', ['flags', 'help', 'action', 'default', 'nargs', 'type', 'choices', 'metavar'])
 Arg.__new__.__defaults__ = (None, None, None, None, None, None, None)
 
 
 class BaseCLIFactory(object):
+    """支持子命令的命令行工厂函数
+
+    Examples:
+        args = {
+            # Shared
+            'dag_id': Arg(("dag_id",), "The id of the dag"),
+            'task_id': Arg(("task_id",), "The id of the task"),
+            'execution_date': Arg(
+                ("execution_date",), help="The execution date of the DAG",
+                type=parse_execution_date),
+            'task_regex': Arg(
+                ("-t", "--task_regex"),
+                "The regex to filter specific task_ids to backfill (optional)"),
+            'subdir': Arg(
+                ("-sd", "--subdir"),
+                "File location or directory from which to look for the dag. "
+                "Defaults to '[AIRFLOW_HOME]/dags' where [AIRFLOW_HOME] is the "
+                "value you set for 'AIRFLOW_HOME' config you set in 'airflow.cfg' ",
+                default=DAGS_FOLDER),
+            'start_date': Arg(
+                ("-s", "--start_date"), "Override start_date YYYY-MM-DD",
+                type=parse_execution_date),
+
+
+        subparsers = (
+            {
+                'func': backfill,
+                'help': "Run subsections of a DAG for a specified date range. "
+                        "If reset_dag_run option is used,"
+                        " backfill will first prompt users whether airflow "
+                        "should clear all the previous dag_run and task_instances "
+                        "within the backfill date range. "
+                        "If rerun_failed_tasks is used, backfill "
+                        "will auto re-run the previous failed task instances"
+                        " within the backfill date range.",
+                'args': (
+                    'dag_id', 'task_regex', 'start_date', 'end_date',
+                    'mark_success', 'local', 'donot_pickle',
+                    'bf_ignore_dependencies', 'bf_ignore_first_depends_on_past',
+                    'subdir', 'pool', 'delay_on_limit', 'dry_run', 'verbose', 'conf',
+                    'reset_dag_run', 'rerun_failed_tasks',
+                )
+            })
+    """
+    # 全局命令行参数配置，包含了Arg命名元组
     args = {}
+
+    # 子查询器配置
     subparsers = tuple()
 
+    # 获得子查询器的函数名
     subparsers_dict = {sp['func'].__name__: sp for sp in subparsers}
 
     @classmethod
-    def get_parser(cls, dag_parser=False):
+    def get_parser(cls):
+        # 创建命令行解析器
         parser = argparse.ArgumentParser()
+        # 添加子解析器
         subparsers = parser.add_subparsers(
             help='sub-command help', dest='subcommand')
         subparsers.required = True
 
-        subparser_list = cls.dag_subparsers if dag_parser else cls.subparsers_dict.keys()
-        for sub in subparser_list:
-            sub = cls.subparsers_dict[sub]
-            sp = subparsers.add_parser(sub['func'].__name__, help=sub['help'])
-            for arg in sub['args']:
-                if 'dag_id' in arg and dag_parser:
-                    continue
-                arg = cls.args[arg]
+        # 遍历子解析器配置
+        for subparser_name, subparser_conf in iteritems(cls.subparsers_dict):
+            # 根据子命令名创建子解析器
+            sp = subparsers.add_parser(subparser_name,
+                                       help=subparser_conf['help'])
+            # 遍历子命令参数
+            for arg in subparser_conf['args']:
+                # 根据参数名，从全局参数表中获取参数的详细配置
+                arg_namedtuple = cls.args[arg]
+                # 将命令元组参数转换为字典，去掉flag参数
                 kwargs = {
-                    f: getattr(arg, f)
-                    for f in arg._fields if f != 'flags' and getattr(arg, f)}
-                sp.add_argument(*arg.flags, **kwargs)
-            sp.set_defaults(func=sub['func'])
+                    f: getattr(arg_namedtuple, f)
+                    for f in arg_namedtuple._fields if f != 'flags' and getattr(arg_namedtuple, f)}
+                # 子解析器添加参数
+                # flags：参数的短写和长写
+                sp.add_argument(*arg_namedtuple.flags, **kwargs)
+
+            # 设置参数的动作
+            sp.set_defaults(func=subparser_conf['func'])
         return parser
+
+
+def get_parser():
+    return CLIFactory.get_parser()
 
 
 def action_logging(f):
