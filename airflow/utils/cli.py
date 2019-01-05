@@ -30,8 +30,29 @@ import sys
 from argparse import Namespace
 from datetime import datetime
 
+from xTool.utils.cli import on_pre_execution, on_post_execution, register_pre_exec_callback
+from xTool.misc import get_local_host_ip
+
 import airflow.models
-from airflow.utils import cli_action_loggers
+import airflow.settings
+
+
+def default_action_log(log, **_):
+    """
+    A default action logger callback that behave same as www.utils.action_logging
+    which uses global session and pushes log ORM object.
+    :param log: An log ORM instance
+    :param **_: other keyword arguments that is not being used by this function
+    :return: None
+    """
+    # 将日志记录到数据库中
+    session = airflow.settings.Session()
+    session.add(log)
+    session.commit()
+
+
+# By default, register default action log into pre-execution callback
+register_pre_exec_callback(default_action_log)
 
 
 def action_logging(f):
@@ -71,7 +92,7 @@ def action_logging(f):
             "but {}".format(args[0])
         # 创建命令行参数的上下文
         metrics = _build_metrics(f.__name__, args[0])
-        cli_action_loggers.on_pre_execution(**metrics)
+        on_pre_execution(**metrics)
         # 执行命令行
         try:
             return f(*args, **kwargs)
@@ -81,7 +102,7 @@ def action_logging(f):
         finally:
             # 记录命令行结束时间
             metrics['end_datetime'] = datetime.now()
-            cli_action_loggers.on_post_execution(**metrics)
+            on_post_execution(**metrics)
 
     return wrapper
 
@@ -109,7 +130,7 @@ def _build_metrics(func_name, namespace):
     metrics['task_id'] = tmp_dic.get('task_id')
     metrics['execution_date'] = tmp_dic.get('execution_date')
     # TODO 记录IP地址
-    metrics['host_name'] = socket.gethostname()
+    metrics['host_name'] = get_local_host_ip()
 
     extra = json.dumps(dict((k, metrics[k]) for k in ('host_name', 'full_command')))
 
