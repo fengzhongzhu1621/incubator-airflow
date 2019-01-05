@@ -23,14 +23,10 @@ from airflow.bin.cli import CLIFactory
 
 if __name__ == '__main__':
 
-    # 如果使用kerberos认证服务，则需要配置文件中设置相关的环境变量
     if configuration.conf.get("core", "security") == 'kerberos':
         os.environ['KRB5CCNAME'] = configuration.conf.get('kerberos', 'ccache')
         os.environ['KRB5_KTNAME'] = configuration.conf.get('kerberos', 'keytab')
 
-    # 创建命令行解析器
     parser = CLIFactory.get_parser()
     args = parser.parse_args()
-
-    # 解析命令行参数
     args.func(args)
