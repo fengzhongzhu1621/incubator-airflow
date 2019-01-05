@@ -256,7 +256,7 @@ else:
 
 
 def do_setup():
-    verify_gpl_dependency()
+    # verify_gpl_dependency()
     write_version()
     setup(
         name='apache-airflow',
@@ -302,7 +302,7 @@ def do_setup():
             'tabulate>=0.7.5, <=0.8.2',
             'tenacity==4.8.0',
             'thrift>=0.9.2',
-            'tzlocal>=1.4',
+            'tzlocal>=1.4, <=1.5.1',
             'unicodecsv>=0.14.1',
             'werkzeug>=0.14.1, <0.15.0',
             'zope.deprecation>=4.0, <5.0',
