@@ -77,6 +77,8 @@ from sqlalchemy import func
 from sqlalchemy.orm import exc
 
 from xTool.utils.cli import BaseCLIFactory, Arg
+from xTool.utils.signal_handler import sigint_handler, sigquit_handler
+from xTool.utils.processes import get_num_ready_workers_running, get_num_workers_running
 
 
 # 加载认证模块， 设置 api.api_auth.client_auth 全局变量
@@ -93,31 +95,6 @@ DAGS_FOLDER = settings.DAGS_FOLDER
 
 if "BUILDING_AIRFLOW_DOCS" in os.environ:
     DAGS_FOLDER = '[AIRFLOW_HOME]/dags'
-
-
-def sigint_handler(sig, frame):
-    sys.exit(0)
-
-
-def sigquit_handler(sig, frame):
-    """Helps debug deadlocks by printing stacktraces when this gets a SIGQUIT
-    e.g. kill -s QUIT <PID> or CTRL+\
-    """
-    # 获得主线程
-    print("Dumping stack traces for all threads in PID {}".format(os.getpid()))
-    # 获得活动子线程的线程ID和名称的映射关系
-    id_to_name = dict([(th.ident, th.name) for th in threading.enumerate()])
-    code = []
-    # 获得线程栈
-    for thread_id, stack in sys._current_frames().items():
-        code.append("\n# Thread: {}({})"
-                    .format(id_to_name.get(thread_id, ""), thread_id))
-        for filename, line_number, name, line in traceback.extract_stack(stack):
-            code.append('File: "{}", line {}, in {}'
-                        .format(filename, line_number, name))
-            if line:
-                code.append("  {}".format(line.strip()))
-    print("\n".join(code))
 
 
 def setup_logging(filename):
@@ -727,32 +704,6 @@ def clear(args):
         include_subdags=not args.exclude_subdags,
         include_parentdag=not args.exclude_parentdag,
     )
-
-
-def get_num_ready_workers_running(gunicorn_master_proc):
-    """获得进程状态为ready的gunicorn的子进程的数量 ."""
-    # 获得进程的所有子进程
-    workers = psutil.Process(gunicorn_master_proc.pid).children()
-
-    def ready_prefix_on_cmdline(proc):
-        try:
-            # 获得启动进程的命令行
-            cmdline = proc.cmdline()
-            # 判断是用gunicorn启动的进程，且进程状态为ready
-            if len(cmdline) > 0:
-                return settings.GUNICORN_WORKER_READY_PREFIX in cmdline[0]
-        except psutil.NoSuchProcess:
-            pass
-        return False
-
-    ready_workers = [proc for proc in workers if ready_prefix_on_cmdline(proc)]
-    return len(ready_workers)
-
-
-def get_num_workers_running(gunicorn_master_proc):
-    """获得gunicorn的子进程的数量 ."""
-    workers = psutil.Process(gunicorn_master_proc.pid).children()
-    return len(workers)
 
 
 def restart_workers(gunicorn_master_proc, num_workers_expected, master_timeout):
