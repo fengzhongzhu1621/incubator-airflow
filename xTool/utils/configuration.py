@@ -31,22 +31,6 @@ standard_library.install_aliases()
 log = LoggingMixin().log
 
 
-def tmp_configuration_copy(conf):
-    """将配置转换为json写入到临时文件
-    Returns a path for a temporary file including a full copy of the configuration
-    settings.
-    :return: a path to a temporary file
-    """
-    cfg_dict = conf.as_dict(display_sensitive=True)
-    temp_fd, cfg_path = mkstemp()
-
-    # fdopen用于在一个已经打开的文件描述符上打开一个流，返回文件指针
-    with os.fdopen(temp_fd, 'w') as temp_file:
-        json.dump(cfg_dict, temp_file)
-
-    return cfg_path
-
-
 def read_config_file(file_path):
     """读取默认配置 ."""
     if six.PY2:
@@ -69,7 +53,7 @@ def parameterized_config(template):
 
 
 def read_default_config_file(file_path):
-    """读取默认配置 ."""
+    """根据文件路径，读取文件内容 ."""
     # 获得配置文件路径名
     if six.PY2:
         with open(file_path) as f:
@@ -81,6 +65,17 @@ def read_default_config_file(file_path):
 
 
 class XToolConfigParser(ConfigParser):
+    """通用配置文件解析器 .
+    
+    Args:
+        default_config: 默认.ini格式配置文件的内容
+
+    examples:
+        # 创建配置对象，读取默认配置
+        conf = AirflowConfigParser(default_config=parameterized_config(DEFAULT_CONFIG))
+        # 读取正式环境配置文件，覆盖默认配置
+        conf.read(AIRFLOW_CONFIG)
+    """
     env_prefix = "XTOOL"
 	
     # These configuration elements can be fetched as the stdout of commands
@@ -97,8 +92,9 @@ class XToolConfigParser(ConfigParser):
 
     def __init__(self, default_config=None, *args, **kwargs):
         super(XToolConfigParser, self).__init__(*args, **kwargs)
+        # 创建配置文件解析器
         self.defaults = ConfigParser(*args, **kwargs)
-        # 读取配置字符串
+        # 读取默认配置
         if default_config is not None:
             self.defaults.read_string(default_config)
 
@@ -133,17 +129,18 @@ class XToolConfigParser(ConfigParser):
         section = str(section).lower()
         key = str(key).lower()
 
-        deprecated_name = self.deprecated_options.get(section, {}).get(key, None)
         # 首先从环境变量中获取配置值，如果环境变量中存在，则不再从配置文件中获取
         option = self._get_env_var_option(section, key)
         if option is not None:
             return option
+        # 判断是否是过期配置
+        deprecated_name = self.deprecated_options.get(section, {}).get(key, None)
         if deprecated_name:
             option = self._get_env_var_option(section, deprecated_name)
             if option is not None:
                 self._warn_deprecate(section, key, deprecated_name)
                 return option
-        # 然后从配置文件中获取
+        # 然后从最新的配置文件中获取
         if super(XToolConfigParser, self).has_option(section, key):
             # Use the parent's methods to get the actual config here to be able to
             # separate the config from default config.
@@ -158,6 +155,7 @@ class XToolConfigParser(ConfigParser):
                     **kwargs
                 ))
 
+        # 获得带有_cmd后缀的配置
         # 执行表达式，获取结果
         option = self._get_cmd_option(section, key)
         if option:
@@ -168,7 +166,7 @@ class XToolConfigParser(ConfigParser):
                 self._warn_deprecate(section, key, deprecated_name)
                 return option
 
-        # ...then the default config
+        # 从默认配置文件中获取
         if self.defaults.has_option(section, key):
             return expand_env_var(
                 self.defaults.get(section, key, **kwargs))
@@ -202,7 +200,7 @@ class XToolConfigParser(ConfigParser):
         return float(self.get(section, key))
 
     def read(self, filenames):
-        """读取多个配置文件，并进行校验 ."""
+        """读取多个最新的配置文件，进行校验，并覆盖默认配置."""
         super(XToolConfigParser, self).read(filenames)
         self._validate()
 

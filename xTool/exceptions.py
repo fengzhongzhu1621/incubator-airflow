@@ -41,3 +41,14 @@ class XToolSkipException(XToolException):
 
 class XToolDagCycleException(XToolException):
     pass
+
+
+class XToolTimeoutError(AssertionError):
+
+    """Thrown when a timeout occurs in the `timeout` context manager."""
+
+    def __init__(self, value="Timed Out"):
+        self.value = value
+
+    def __str__(self):
+        return repr(self.value)

@@ -65,12 +65,14 @@ from croniter import (
     croniter, CroniterBadCronError, CroniterBadDateError, CroniterNotAlphaError
 )
 import six
+from xTool.utils.timeout import timeout
+from xTool.exceptions import XToolTimeoutError
 
 from airflow import settings, utils
 from airflow.executors import GetDefaultExecutor, LocalExecutor
 from airflow import configuration
 from airflow.exceptions import (
-    AirflowDagCycleException, AirflowException, AirflowSkipException, AirflowTaskTimeout
+    AirflowDagCycleException, AirflowException, AirflowSkipException
 )
 from airflow.dag.base_dag import BaseDag, BaseDagBag
 from airflow.lineage import apply_lineage, prepare_lineage
@@ -88,7 +90,6 @@ from airflow.utils.helpers import (
     as_tuple, is_container, validate_key, pprinttable)
 from airflow.utils.operator_resources import Resources
 from airflow.utils.state import State
-from airflow.utils.timeout import timeout
 from airflow.utils.trigger_rule import TriggerRule
 from airflow.utils.weight_rule import WeightRule
 from airflow.utils.net import get_hostname
@@ -1730,7 +1731,7 @@ class TaskInstance(Base, LoggingMixin):
                                 task_copy.execution_timeout.total_seconds())):
                             # 执行任务
                             result = task_copy.execute(context=context)
-                    except AirflowTaskTimeout:
+                    except XToolTimeoutError:
                         # 任务超时后执行on_kill()
                         task_copy.on_kill()
                         raise
@@ -2566,7 +2567,7 @@ class BaseOperator(LoggingMixin):
         self.queue = queue
         self.pool = pool
         self.sla = sla
-        # 任务实例的执行超时时间，如果超时则抛出异常AirflowTaskTimeout
+        # 任务实例的执行超时时间，如果超时则抛出异常XToolTaskTimeout
         self.execution_timeout = execution_timeout
         # 成功或失败回调
         self.on_failure_callback = on_failure_callback
