@@ -3643,10 +3643,13 @@ class DAG(BaseDag, LoggingMixin):
 
     @provide_session
     def get_last_dagrun(self, session=None, include_externally_triggered=False):
-        """获得最近的dagrun
+        """根据dagid，获得最近的一个dagrun
         Returns the last dag run for this dag, None if there was none.
         Last dag run can be any type of run eg. scheduled or backfilled.
         Overridden DagRuns are ignored
+        
+        Args:
+            include_externally_triggered: 是否包含外部触发的dagrun
         """
         DR = DagRun
         qry = session.query(DR).filter(
