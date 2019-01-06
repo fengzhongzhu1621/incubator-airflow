@@ -63,20 +63,23 @@
             </tr>
         </thead>
         <tbody>
+        <!-- 遍历需要展示dagid，此dagid必须存在加载的dag文件列表中 -->
         {% for dag_id in dag_ids_in_page %}
             {% set dag = webserver_dags[dag_id] if dag_id in webserver_dags else None %}
             <tr>
                 <!-- Column 1: Edit dag -->
                 <td class="text-center" style="width:10px;">
-                    {% if dag_id in orm_dags %}
-                  <a href="{{ url_for('dagmodel.edit_view') }}?id={{ dag_id }}" title="Info">
+                  <!-- dagid只有出现在DB中，才会显示编辑按钮-->
+                  {% if dag_id in orm_dags %}
+                    <a href="{{ url_for('dagmodel.edit_view') }}?id={{ dag_id }}" title="Info">
                         <span class="glyphicon glyphicon-edit" aria-hidden="true"></span>
                     </a>
-                    {% endif %}
+                  {% endif %}
                 </td>
 
                 <!-- Column 2: Turn dag on/off -->
                 <td>
+                  <!-- dagid只有出现在DB中，才会显示暂停按钮 -->
                   {% if dag_id in orm_dags %}
                     <input id="toggle-{{ dag_id }}" dag_id="{{ dag_id }}" type="checkbox" {{ "checked" if not orm_dags[dag_id].is_paused else "" }} data-toggle="toggle" data-size="mini" method="post">
                   {% endif %}
@@ -84,14 +87,17 @@
 
                 <!-- Column 3: Name -->
                 <td>
+                    <!-- 显示dag文件中的dagid配置 -->
                     {% if dag_id in webserver_dags %}
                     <a href="{{ url_for('airflow.'+dag.default_view, dag_id=dag.dag_id) }}" title="{{ dag.description }}">
                         {{ dag_id }}
                     </a>
+                    <!-- dagid在db中，但是dagbag没有读取到 -->
                     {% else %}
                         {{ dag_id }}
                         <span class="glyphicon glyphicon-info-sign" class="info" aria-hidden="true" title="This DAG isn't available in the web server's DagBag object. It shows up in this list because the scheduler marked it as active in the metadata database."></span>
                     {% endif %}
+                    <!-- dagid在dagbag中存在，但是没有加载到DB中 -->
                     {% if dag_id not in orm_dags %}
                         <span class="glyphicon glyphicon-info-sign" class="info" aria-hidden="true" title="This DAG seems to be existing only locally. The master scheduler doesn't seem to be aware of its existence."></span>
                     {% endif %}
@@ -99,11 +105,12 @@
 
                 <!-- Column 4: Dag Schedule -->
                 <td>
-                    {% if dag_id in webserver_dags %}
+                  <!-- 显示dag文件中的schedule_interval配置 -->
+                  {% if dag_id in webserver_dags %}
                   <a class="label label-default schedule {{ dag.dag_id }}" href="{{ url_for('dagrun.index_view') }}?flt2_dag_id_equals={{ dag.dag_id }}">
                         {{ dag.schedule_interval }}
                     </a>
-                    {% endif %}
+                  {% endif %}
                 </td>
 
                 <!-- Column 5: Dag Owners -->
@@ -119,12 +126,15 @@
                 <!-- Column 7: Last Run -->
                 <td class="text-nowrap latest_dag_run {{ dag.dag_id }}">
                   {% if dag %}
+                    <!-- 根据dagid，获得最近的一个dagrun，包含外部触发的dagrun -->
                     {% set last_run = dag.get_last_dagrun(include_externally_triggered=True) %}
                     {% if last_run and last_run.execution_date %}
+                      <!-- 显示dagrun调度时间 -->
                       <a href="{{ url_for('airflow.graph', dag_id=dag.dag_id, execution_date=last_run.execution_date) }}">
-                        {{ last_run.execution_date.strftime("%Y-%m-%d %H:%M") }}
+                        {{ last_run.execution_date.strftime("%Y-%m-%d %H:%M:%S") }}
                       </a>
-                      <span aria-hidden="true" id="statuses_info" title="Start Date: {{ last_run.start_date.strftime("%Y-%m-%d %H:%M") }}" class="glyphicon glyphicon-info-sign"></span>
+                      <!-- 显示dagrun开始时间 -->
+                      <span aria-hidden="true" id="statuses_info" title="Start Date: {{ last_run.start_date.strftime("%Y-%m-%d %H:%M:%S") }}" class="glyphicon glyphicon-info-sign"></span>
                     {% endif %}
                   {% endif %}
                 </td>
@@ -144,46 +154,46 @@
                     <span class="glyphicon glyphicon-play-circle" aria-hidden="true" data-original-title="Trigger Dag"></span>
                 </a>
 
-                <!-- Tree -->
+                <!-- Tree 
                 <a href="{{ url_for('airflow.tree', dag_id=dag.dag_id, num_runs=num_runs) }}">
                     <span class="glyphicon glyphicon-tree-deciduous" aria-hidden="true" data-original-title="Tree View"></span>
-                </a>
+                </a> -->
 
-                <!-- Graph -->
+                <!-- Graph 
                 <a href="{{ url_for('airflow.graph', dag_id=dag.dag_id) }}">
                     <span class="glyphicon glyphicon-certificate" aria-hidden="true" data-original-title="Graph View"></span>
-                </a>
+                </a> -->
 
-                <!-- Duration -->
+                <!-- Duration 
                 <a href="{{ url_for('airflow.duration', dag_id=dag.dag_id) }}">
                     <span class="glyphicon glyphicon-stats" aria-hidden="true" data-original-title="Tasks Duration"></span>
-                </a>
+                </a> -->
 
-                <!-- Retries -->
+                <!-- Retries 
                 <a href="{{ url_for('airflow.tries', dag_id=dag.dag_id) }}">
                     <span class="glyphicon glyphicon-duplicate" aria-hidden="true" data-original-title="Task Tries"></span>
-                </a>
+                </a> -->
 
-                <!-- Landing Times -->
+                <!-- Landing Times 
                 <a href="{{ url_for("airflow.landing_times", dag_id=dag.dag_id) }}">
                     <span class="glyphicon glyphicon-plane" aria-hidden="true" data-original-title="Landing Times"></span>
-                </a>
+                </a> -->
 
-                <!-- Gantt -->
+                <!-- Gantt 
                 <a href="{{ url_for("airflow.gantt", dag_id=dag.dag_id) }}">
                     <span class="glyphicon glyphicon-align-left" aria-hidden="true" data-original-title="Gantt View"></span>
-                </a>
+                </a> -->
 
-                <!-- Code -->
+                <!-- Code 
                 <a href="{{ url_for("airflow.code", dag_id=dag.dag_id) }}">
                     <span class="glyphicon glyphicon-file" aria-hidden="true" data-original-title="Code View"></span>
-                </a>
+                </a> -->
 
-                <!-- Logs -->
+                <!-- Logs 
                 <a href="{{ url_for('log.index_view') }}?sort=1&amp;desc=1&amp;flt1_dag_id_equals={{ dag.dag_id }}">
                     <span class="glyphicon glyphicon-align-justify" aria-hidden="true" data-original-title="Logs"></span>
                 </a>
-                {% endif %}
+                {% endif %} -->
 
                 <!-- Refresh -->
                 <a href="{{ url_for("airflow.refresh", dag_id=dag_id) }}">
@@ -201,11 +211,13 @@
         {% endfor %}
         </tbody>
     </table>
+
     <div class="row">
       <div class="col-sm-12" style="text-align:right;">
         <div class="dataTables_info" id="dags_info" role="status" aria-live="polite" style="padding-top: 0px;">Showing {{num_dag_from}} to {{num_dag_to}} of {{num_of_all_dags}} entries</div>
       </div>
     </div>
+
     <div class="row">
       <div class="col-sm-12" style="text-align:left;">
         <div class="dataTables_info" id="dags_paginate">

@@ -68,6 +68,8 @@ from flask_admin.form.fields import DateTimeField
 from pygments import highlight, lexers
 from pygments.formatters import HtmlFormatter
 
+from six import itervalues, iteritems
+
 import airflow
 from airflow import configuration as conf
 from airflow import models
@@ -98,6 +100,7 @@ CHART_LIMIT = 200000
 
 UTF8_READER = codecs.getreader('utf-8')
 
+# 创建dag集合类，查找指定dags目录下的所有dag文件，并导入每个dag模块
 dagbag = models.DagBag(settings.DAGS_FOLDER)
 
 login_required = airflow.login.login_required
@@ -1183,6 +1186,8 @@ class Airflow(BaseView):
     @login_required
     @provide_session
     def blocked(self, session=None):
+        """获得dag中，正在运行的dagrun的数量是否超过了dag的参数max_active_runs配置. """
+        # 根据dagid获取正在运行的dagrun的数量
         DR = models.DagRun
         dags = (
             session.query(DR.dag_id, sqla.func.count(DR.id))
@@ -1190,6 +1195,7 @@ class Airflow(BaseView):
                 .group_by(DR.dag_id)
                 .all()
         )
+
         payload = []
         for dag_id, active_dag_runs in dags:
             max_active_runs = 0
@@ -1946,6 +1952,7 @@ class Airflow(BaseView):
 
 
 class HomeView(AdminIndexView):
+    """首页 ."""
     @expose("/")
     @login_required
     @provide_session
@@ -1956,9 +1963,9 @@ class HomeView(AdminIndexView):
         do_filter = FILTER_BY_OWNER and (not current_user.is_superuser())
         owner_mode = conf.get('webserver', 'OWNER_MODE').strip().lower()
 
+        # 默认不隐藏暂停的DAG
         hide_paused_dags_by_default = conf.getboolean('webserver',
                                                       'hide_paused_dags_by_default')
-        show_paused_arg = request.args.get('showPaused', 'None')
 
         def get_int_arg(value, default=0):
             try:
@@ -1966,12 +1973,13 @@ class HomeView(AdminIndexView):
             except ValueError:
                 return default
 
+        # 从请求参数中获取页码
         arg_current_page = request.args.get('page', '0')
-        arg_search_query = request.args.get('search', None)
-
         dags_per_page = PAGE_SIZE
         current_page = get_int_arg(arg_current_page, default=0)
 
+        # 获得是否暂停的请求参数
+        show_paused_arg = request.args.get('showPaused', 'None')
         if show_paused_arg.strip().lower() == 'false':
             hide_paused = True
         elif show_paused_arg.strip().lower() == 'true':
@@ -2002,10 +2010,12 @@ class HomeView(AdminIndexView):
         if hide_paused:
             sql_query = sql_query.filter(~DM.is_paused)
 
+        # 1. 获得首页显示的所有dag，是从数据库中获取的
         orm_dags = {dag.dag_id: dag for dag
                     in sql_query
                     .all()}
 
+        # 获得所有的导入错误信息
         import_errors = session.query(models.ImportError).all()
         for ie in import_errors:
             flash(
@@ -2014,14 +2024,16 @@ class HomeView(AdminIndexView):
 
         # get a list of all non-subdag dags visible to everyone
         # optionally filter out "paused" dags
+        # 从指定文件夹中加载dag模块并过滤
         if hide_paused:
-            unfiltered_webserver_dags = [dag for dag in dagbag.dags.values() if
+            unfiltered_webserver_dags = [dag for dag in itervalues(dagbag.dags) if
                                          not dag.parent_dag and not dag.is_paused]
 
         else:
-            unfiltered_webserver_dags = [dag for dag in dagbag.dags.values() if
+            unfiltered_webserver_dags = [dag for dag in itervalues(dagbag.dags) if
                                          not dag.parent_dag]
 
+        # 2. 获得从文件中加载的dag模块
         # optionally filter to get only dags that the user should see
         if do_filter and owner_mode == 'ldapgroup':
             # only show dags owned by someone in @current_user.ldap_groups
@@ -2043,17 +2055,21 @@ class HomeView(AdminIndexView):
                 for dag in unfiltered_webserver_dags
             }
 
+        # 从请求参数中获取查询条件
+        arg_search_query = request.args.get('search', None)
+
+        # 返回排序的sorted_dag_ids = db中获取的dagid | 文件加载中获取的dagid
         if arg_search_query:
             lower_search_query = arg_search_query.lower()
-            # filter by dag_id
+            # filter by dag_id or owner
             webserver_dags_filtered = {
                 dag_id: dag
-                for dag_id, dag in webserver_dags.items()
+                for dag_id, dag in iteritems(webserver_dags)
                 if (lower_search_query in dag_id.lower() or
                     lower_search_query in dag.owner.lower())
             }
 
-            all_dag_ids = (set([dag.dag_id for dag in orm_dags.values()
+            all_dag_ids = (set([dag.dag_id for dag in itervalues(orm_dags)
                                 if lower_search_query in dag.dag_id.lower() or
                                 lower_search_query in dag.owners.lower()]) |
                            set(webserver_dags_filtered.keys()))
@@ -2066,12 +2082,14 @@ class HomeView(AdminIndexView):
         start = current_page * dags_per_page
         end = start + dags_per_page
 
-        num_of_all_dags = len(sorted_dag_ids)
+        # 获得需要展示的dagids，按字母排序
         page_dag_ids = sorted_dag_ids[start:end]
+
+        num_of_all_dags = len(sorted_dag_ids)
         num_of_pages = int(math.ceil(num_of_all_dags / float(dags_per_page)))
 
         auto_complete_data = set()
-        for dag in webserver_dags_filtered.values():
+        for dag in itervalues(webserver_dags_filtered):
             auto_complete_data.add(dag.dag_id)
             auto_complete_data.add(dag.owner)
         for dag in orm_dags.values():

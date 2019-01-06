@@ -72,7 +72,8 @@ def create_app(config=None, testing=False):
 
     with app.app_context():
         from airflow.www import views
-
+        
+        # 创建管理配置蓝图，设置首页
         admin = Admin(
             app, name='Airflow',
             static_url_path='/admin',
@@ -81,12 +82,15 @@ def create_app(config=None, testing=False):
         )
         av = admin.add_view
         vs = views
+
+        # 添加DAGS菜单
         av(vs.Airflow(name='DAGs', category='DAGs'))
 
         if not conf.getboolean('core', 'secure_mode'):
             av(vs.QueryView(name='Ad Hoc Query', category="Data Profiling"))
             av(vs.ChartModelView(
                 models.Chart, Session, name="Charts", category="Data Profiling"))
+
         av(vs.KnownEventView(
             models.KnownEvent,
             Session, name="Known Events", category="Data Profiling"))
