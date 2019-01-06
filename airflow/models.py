@@ -5104,6 +5104,7 @@ class DagStat(Base):
             qry = session.query(DagStat)
             if dag_ids:
                 qry = qry.filter(DagStat.dag_id.in_(set(dag_ids)))
+            # 仅仅获得脏数据
             if dirty_only:
                 qry = qry.filter(DagStat.dirty == True) # noqa
 
@@ -5111,18 +5112,18 @@ class DagStat(Base):
             qry = qry.with_for_update().all()
 
             # 获得所有的dagId列表
-            ids = set([dag_stat.dag_id for dag_stat in qry])
+            dag_ids = set([dag_stat.dag_id for dag_stat in qry])
 
             # avoid querying with an empty IN clause
-            if len(ids) == 0:
+            if not dag_ids:
                 session.commit()
                 return
 
-            # 获得dag每个状态的记录数量
-            dagstat_states = set(itertools.product(ids, State.dag_states))
+            # 获得dag每个dagrun状态的记录数量
+            dagstat_states = set(itertools.product(dag_ids, State.dag_states))
             qry = (
                 session.query(DagRun.dag_id, DagRun.state, func.count('*'))
-                .filter(DagRun.dag_id.in_(ids))
+                .filter(DagRun.dag_id.in_(dag_ids))
                 .group_by(DagRun.dag_id, DagRun.state)
             )
             counts = {(dag_id, state): count for dag_id, state, count in qry}

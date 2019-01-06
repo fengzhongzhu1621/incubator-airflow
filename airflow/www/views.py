@@ -561,16 +561,17 @@ class Airflow(BaseView):
     @login_required
     @provide_session
     def dag_stats(self, session=None):
+        """获得dag中每一种状态的dagrun的数量 ."""
         ds = models.DagStat
+        # 获得所有的dagids
+        dag_ids = [dag.dag_id for dag in itervalues(dagbag.dags) if not dag.is_subdag]
+        # 实时计算dag中dagrun每一种state的数量，并刷新到dag_stats表中
+        ds.update(dag_ids=dag_ids)
 
-        ds.update(
-            dag_ids=[dag.dag_id for dag in dagbag.dags.values() if not dag.is_subdag]
-        )
-
+        # 从统计结果表中获取每个dag的每个状态的dagrun的数量
         qry = (
             session.query(ds.dag_id, ds.state, ds.count)
         )
-
         data = {}
         for dag_id, state, count in qry:
             if dag_id not in data:
@@ -578,7 +579,7 @@ class Airflow(BaseView):
             data[dag_id][state] = count
 
         payload = {}
-        for dag in dagbag.dags.values():
+        for dag in itervalues(dagbag.dags):
             payload[dag.safe_dag_id] = []
             for state in State.dag_states:
                 count = data.get(dag.dag_id, {}).get(state, 0)
@@ -594,22 +595,28 @@ class Airflow(BaseView):
     @login_required
     @provide_session
     def task_stats(self, session=None):
+        """获得最近的任务实例每种状态的数量 ."""
         TI = models.TaskInstance
         DagRun = models.DagRun
         Dag = models.DagModel
 
+        # 获得上一次运行的dagrun，状态为成功或失败
         LastDagRun = (
             session.query(DagRun.dag_id, sqla.func.max(DagRun.execution_date).label('execution_date'))
                 .join(Dag, Dag.dag_id == DagRun.dag_id)
+                .filter(DagRun.execution_date > dt.datetime.now() - timedelta(days=conf.getint("core", "sql_query_history_days")))
                 .filter(DagRun.state != State.RUNNING)
                 .filter(Dag.is_active == True)
                 .filter(Dag.is_subdag == False)
                 .group_by(DagRun.dag_id)
                 .subquery('last_dag_run')
         )
+
+        # 获得所有正在运行的dagrun
         RunningDagRun = (
             session.query(DagRun.dag_id, DagRun.execution_date)
                 .join(Dag, Dag.dag_id == DagRun.dag_id)
+                .filter(DagRun.execution_date > dt.datetime.now() - timedelta(days=conf.getint("core", "sql_query_history_days")))
                 .filter(DagRun.state == State.RUNNING)
                 .filter(Dag.is_active == True)
                 .filter(Dag.is_subdag == False)
@@ -618,25 +625,30 @@ class Airflow(BaseView):
 
         # Select all task_instances from active dag_runs.
         # If no dag_run is active, return task instances from most recent dag_run.
-        LastTI = (
+        # 获得上一个运行的所有任务实例：它们的dagrun状态为成功或失败
+        LastTIs = (
             session.query(TI.dag_id.label('dag_id'), TI.state.label('state'))
             .join(LastDagRun, and_(
                 LastDagRun.c.dag_id == TI.dag_id,
                 LastDagRun.c.execution_date == TI.execution_date))
         )
-        RunningTI = (
+
+        # 获得正在运行的任务实例：它们的dagrun的状态为运行时
+        RunningTIs = (
             session.query(TI.dag_id.label('dag_id'), TI.state.label('state'))
             .join(RunningDagRun, and_(
                 RunningDagRun.c.dag_id == TI.dag_id,
                 RunningDagRun.c.execution_date == TI.execution_date))
         )
 
-        UnionTI = union_all(LastTI, RunningTI).alias('union_ti')
+        # 获得需要统计的所有任务实例
+        UnionTI = union_all(LastTIs, RunningTIs).alias('union_ti')
+
+        # 获得每一种任务实例状态的数量
         qry = (
             session.query(UnionTI.c.dag_id, UnionTI.c.state, sqla.func.count())
             .group_by(UnionTI.c.dag_id, UnionTI.c.state)
         )
-
         data = {}
         for dag_id, state, count in qry:
             if dag_id not in data:
@@ -644,10 +656,15 @@ class Airflow(BaseView):
             data[dag_id][state] = count
         session.commit()
 
+
         payload = {}
-        for dag in dagbag.dags.values():
+        # 替换状态NONE为字符串“None”
+        task_states = list(State.task_states)
+        task_states[task_states.index(None)] = "None"
+        for dag in itervalues(dagbag.dags):
             payload[dag.safe_dag_id] = []
-            for state in State.task_states:
+            for state in task_states:
+                # 获得每一种状态的数量
                 count = data.get(dag.dag_id, {}).get(state, 0)
                 payload[dag.safe_dag_id].append({
                     'state': state,
