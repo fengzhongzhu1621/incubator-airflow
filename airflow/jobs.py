@@ -43,6 +43,8 @@ from sqlalchemy.orm.session import make_transient
 from tabulate import tabulate
 from time import sleep
 
+from xTool.utils.processes import kill_children_processes
+
 from airflow import configuration as conf
 from airflow import executors, models, settings
 from airflow.exceptions import AirflowException
@@ -103,7 +105,7 @@ class BaseJob(Base, LoggingMixin):
             executor=executors.GetDefaultExecutor(),
             heartrate=conf.getfloat('scheduler', 'JOB_HEARTBEAT_SEC'),
             *args, **kwargs):
-        # 当前机器的主机名
+        # 当前机器的主机名/IP地址
         self.hostname = get_hostname()
         # 执行器： 从任务队列中获取任务，并执行
         self.executor = executor
@@ -226,7 +228,7 @@ class BaseJob(Base, LoggingMixin):
             id_ = self.id
             
             # 删除self与session对象的关联关系，成为一个新建的对象
-            # 为了解决在job调度的过程中，如果从DB中删除了此job，则job执行完成后会自动将其恢复到DB中
+            # 即清空self中所有与orm相关的参数
             make_transient(self)
             self.id = id_
 
@@ -243,8 +245,11 @@ class BaseJob(Base, LoggingMixin):
                 self.state = State.FAILED
                 raise
             finally:
+                # job执行完成后修改其状态，并设置结束时间
                 self.end_date = datetime.now()
                 # 判断新的job对象是否在数据库中存在，如果存在则更新，不存在则插入
+                # SELECT job.id AS job_id, job.dag_id AS job_dag_id, job.state AS job_state, job.job_type AS job_job_type, job.start_date AS job_start_date, job.end_date AS job_end_date, job.latest_heartbeat AS job_latest_heartbeat, job.executor_class AS job_executor_class, job.hostname AS job_hostname, job.unixname AS job_unixname FROM job WHERE job.id = %s AND job.job_type IN (%s)
+                # UPDATE job SET state=%s, end_date=%s WHERE job.id = %s
                 session.merge(self)
                 session.commit()
 
@@ -644,16 +649,17 @@ class SchedulerJob(BaseJob):
         # 子目录
         self.subdir = subdir
 
-        # 调度进程运行的次数
+        # 调度进程运行的次数，超过次数则退出
         self.num_runs = num_runs
-        # 调度进程运行的时长
+        # 调度进程运行的时长，超过时长则退出
         self.run_duration = run_duration
+        # 调度之间的时间间隔，默认是1s
         self._processor_poll_interval = processor_poll_interval
         # 是否将DAG实例化到DB中
         self.do_pickle = do_pickle
         super(SchedulerJob, self).__init__(*args, **kwargs)
 
-        # 调度器的运行间隔
+        # 调度器job的心跳间隔时间
         self.heartrate = conf.getint('scheduler', 'SCHEDULER_HEARTBEAT_SEC')
         # 调度器的线程数，即同时处理的DAG文件的数量，也即文件管理器同时开启多少个文件处理器进程
         self.max_threads = conf.getint('scheduler', 'max_threads')
@@ -687,7 +693,6 @@ class SchedulerJob(BaseJob):
         self.max_tis_per_query = conf.getint('scheduler', 'max_tis_per_query')
         # 调度器job运行的最大次数，-1表示永久运行
         if run_duration is None:
-            # 从配置文件中获得默认配置
             self.run_duration = conf.getint('scheduler',
                                             'run_duration')
 
@@ -1860,9 +1865,10 @@ class SchedulerJob(BaseJob):
         self.log.info(log_str)
 
     def _execute(self):
+        """job执行主函数 ."""
         self.log.info("Starting the scheduler")
 
-        # 根据executor判断DAG是否可以序列化
+        # 根据executor判断DAG是否可以序列化， 默认dag不序列化
         # DAGs can be pickled for easier remote execution by some executors
         pickle_dags = False
         if self.do_pickle and self.executor.__class__ not in \
@@ -1878,6 +1884,7 @@ class SchedulerJob(BaseJob):
             self.max_threads)
         self.log.info("Running execute loop for %s seconds", self.run_duration)
         self.log.info("Processing each file at most %s times", self.num_runs)
+        # 文件处理器处理同一个文件的间隔，0表示没有间隔
         self.log.info(
             "Process each file at most once every %s seconds",
             self.file_process_interval)
@@ -1898,58 +1905,27 @@ class SchedulerJob(BaseJob):
                                     self.dag_ids)
 
         # 创建文件处理器进程管理类，处理所有搜索到的多个可用文件
-        processor_manager = DagFileProcessorManager(self.subdir,
-                                                    known_file_paths,
-                                                    self.max_threads,
-                                                    self.file_process_interval,
-                                                    self.num_runs,
-                                                    processor_factory)
+        processor_manager = DagFileProcessorManager(self.subdir,       # dags目录
+                                                    known_file_paths,  # 在dags目录下搜索的dag路径列表
+                                                    self.max_threads,  # 文件处理器线程数量
+                                                    self.file_process_interval,  # 文件处理器处理同一个文件的间隔，0表示没有间隔
+                                                    self.num_runs,     # 每个文件的运行次数
+                                                    processor_factory) # 文件处理器工厂函数
 
         # 启动 executor
         try:
             self._execute_helper(processor_manager)
         finally:
             self.log.info("Exited execute loop")
-
+            
             # Kill all child processes on exit since we don't want to leave
             # them as orphaned.
             # 获得DAG文件处理器进程的PIDS
             pids_to_kill = processor_manager.get_all_pids()
-            if len(pids_to_kill) > 0:
-                # First try SIGTERM
-                this_process = psutil.Process(os.getpid())
-                # Only check child processes to ensure that we don't have a case
-                # where we kill the wrong process because a child process died
-                # but the PID got reused.
-                # 获得存活的子进程
-                child_processes = [x for x in this_process.children(recursive=True)
-                                   if x.is_running() and x.pid in pids_to_kill]
-                # 终止多个DAG处理子进程
-                for child in child_processes:
-                    self.log.info("Terminating child PID: %s", child.pid)
-                    child.terminate()
-                # TODO: Remove magic number
-                # 等待多个DAG处理子进程结束
-                timeout = 5
-                self.log.info(
-                    "Waiting up to %s seconds for processes to exit...", timeout)
-                try:
-                    psutil.wait_procs(
-                        child_processes, timeout=timeout,
-                        callback=lambda x: self.log.info('Terminated PID %s', x.pid))
-                except psutil.TimeoutExpired:
-                    self.log.debug("Ran out of time while waiting for processes to exit")
+            if pids_to_kill:
+                # 杀掉当前进程的所有子进程
+                kill_children_processes(pids_to_kill, timeout=5, log=self.log)
 
-                # 判断子进程是否结束
-                # Then SIGKILL
-                child_processes = [x for x in this_process.children(recursive=True)
-                                   if x.is_running() and x.pid in pids_to_kill]
-                if len(child_processes) > 0:
-                    self.log.info("SIGKILL processes that did not terminate gracefully")
-                    for child in child_processes:
-                        self.log.info("Killing child PID: %s", child.pid)
-                        child.kill()
-                        child.wait()
 
     def _execute_helper(self, processor_manager):
         """

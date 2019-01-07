@@ -999,11 +999,11 @@ def webserver(args):
 def scheduler(args):
     print(settings.HEADER)
     job = jobs.SchedulerJob(
-        dag_id=args.dag_id,
-        subdir=process_subdir(args.subdir),
-        run_duration=args.run_duration,     # 运行的时长
-        num_runs=args.num_runs,     # 运行的次数
-        do_pickle=args.do_pickle)
+        dag_id=args.dag_id,     # 指定dag_id
+        subdir=process_subdir(args.subdir),      # 指定子目录，默认是DAGS_FOLDER
+        run_duration=args.run_duration,          # 运行的时长
+        num_runs=args.num_runs,                  # 运行的次数
+        do_pickle=args.do_pickle)                # 默认dag不序列化
 
     if args.daemon:
         pid, stdout, stderr, log_file = setup_locations("scheduler",

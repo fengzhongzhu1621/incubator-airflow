@@ -95,3 +95,42 @@ def get_num_workers_running(gunicorn_master_proc):
     """获得gunicorn的子进程的数量 ."""
     workers = psutil.Process(gunicorn_master_proc.pid).children()
     return len(workers)
+
+
+def kill_children_processes(pids_to_kill, timeout=5, log=None):
+    """杀掉当前进程的所有子进程 ."""
+    if pids_to_kill:
+        # 获得主进程
+        this_process = psutil.Process(os.getpid())
+        # Only check child processes to ensure that we don't have a case
+        # where we kill the wrong process because a child process died
+        # but the PID got reused.
+        # 获得存活的子进程
+        child_processes = [x for x in this_process.children(recursive=True)
+                           if x.is_running() and x.pid in pids_to_kill]
+        # 终止多个DAG处理子进程
+        # First try SIGTERM
+        for child in child_processes:
+            log.info("Terminating child PID: %s", child.pid)
+            child.terminate()
+        # TODO: Remove magic number
+        # 等待多个DAG处理子进程结束
+        log.info(
+            "Waiting up to %s seconds for processes to exit...", timeout)
+        try:
+            psutil.wait_procs(
+                child_processes, timeout=timeout,
+                callback=lambda x: log.info('Terminated PID %s', x.pid))
+        except psutil.TimeoutExpired:
+            log.debug("Ran out of time while waiting for processes to exit")
+
+        # 判断子进程是否结束
+        # Then SIGKILL
+        child_processes = [x for x in this_process.children(recursive=True)
+                           if x.is_running() and x.pid in pids_to_kill]
+        if child_processes:
+            log.info("SIGKILL processes that did not terminate gracefully")
+            for child in child_processes:
+                log.info("Killing child PID: %s", child.pid)
+                child.kill()
+                child.wait()
