@@ -1027,9 +1027,10 @@ def scheduler(args):
         stdout.close()
         stderr.close()
     else:
-        signal.signal(signal.SIGINT, sigint_handler)
-        signal.signal(signal.SIGTERM, sigint_handler)
-        signal.signal(signal.SIGQUIT, sigquit_handler)
+        if platform.system() == 'Linux':
+            signal.signal(signal.SIGINT, sigint_handler)
+            signal.signal(signal.SIGTERM, sigint_handler)
+            signal.signal(signal.SIGQUIT, sigquit_handler)
         job.run()
 
 
