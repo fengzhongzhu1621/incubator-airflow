@@ -466,7 +466,8 @@ CREATE TABLE `task_instance` (
   KEY `ti_state_lkp` (`dag_id`,`task_id`,`execution_date`,`state`),
   KEY `ti_state` (`state`),
   KEY `ti_job_id` (`job_id`),
-  KEY `dag_id_execution_date` (`dag_id`,`execution_date`)
+  KEY `dag_id_execution_date` (`dag_id`,`execution_date`),
+  KEY `execution_date` (`execution_date`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
 

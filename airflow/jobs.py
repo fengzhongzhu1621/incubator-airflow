@@ -32,7 +32,7 @@ import six
 import sys
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from collections import defaultdict
 from past.builtins import basestring
@@ -287,6 +287,7 @@ class BaseJob(Base, LoggingMixin):
         DR = models.DagRun
         if filter_by_dag_run is None:
             # 获得所有正在运行的流程实例中，任务状态为 [State.SCHEDULED, State.QUEUED] 的任务实例
+            begin_time = datetime.now() - timedelta(days=conf.getint('core', 'sql_query_history_days'))
             resettable_tis = (
                 session
                 .query(TI)
@@ -296,6 +297,8 @@ class BaseJob(Base, LoggingMixin):
                         TI.dag_id == DR.dag_id,
                         TI.execution_date == DR.execution_date))
                 .filter(
+                    TI.execution_date > begin_time,
+                    DR.execution_date > begin_time,
                     DR.state == State.RUNNING,
                     DR.run_id.notlike(BackfillJob.ID_PREFIX + '%'),  # 不是补录的流程实例
                     TI.state.in_(resettable_states))).all()
@@ -312,15 +315,15 @@ class BaseJob(Base, LoggingMixin):
             if ti.key not in queued_tis and ti.key not in running_tis:
                 tis_to_reset.append(ti)
 
-        if len(tis_to_reset) == 0:
+        if not tis_to_reset:
             return []
 
         # 如果存在这种异常情况
         # 将不在执行器队列（待执行队列和运行队列）中的任务实例状态设置为None
         # TODO 为什么不根据任务实例的ID来设置where添加呢？待优化！！！
         def query(result, items):
-            filter_for_tis = ([and_(TI.dag_id == ti.dag_id,
-                                    TI.task_id == ti.task_id,
+            filter_for_tis = ([and_(TI.task_id == ti.task_id,
+                                    TI.dag_id == ti.dag_id,
                                     TI.execution_date == ti.execution_date)
                                for ti in items])
             reset_tis = (
