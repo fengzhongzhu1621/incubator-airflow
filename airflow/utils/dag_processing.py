@@ -575,6 +575,7 @@ class DagFileProcessorManager(LoggingMixin):
             file_paths_in_progress = self._processors.keys()
 
             # 记录下尚未到调度时间的文件
+            # 如果self_process_file_interval为0，则file_paths_recently_processed永远为[]
             now = datetime.now()
             file_paths_recently_processed = []
 
@@ -626,6 +627,7 @@ class DagFileProcessorManager(LoggingMixin):
                           file_paths_len,
                           file_paths_in_progress_len,
                           file_paths_recently_processed_len)
+
         # 处理器并发性最大值验证
         # Start more processors if we have enough slots and files to process
         while (self._parallelism - len(self._processors) > 0 and

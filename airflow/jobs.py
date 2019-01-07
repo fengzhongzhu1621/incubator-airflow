@@ -33,8 +33,9 @@ import sys
 import threading
 import time
 from datetime import datetime, timedelta
-
+import platform
 from collections import defaultdict
+
 from past.builtins import basestring
 from sqlalchemy import (
     Column, Integer, String, DateTime, func, Index, or_, and_, not_)
@@ -476,9 +477,19 @@ class DagFileProcessor(AbstractDagFileProcessor, LoggingMixin):
                 settings.dispose_orm()
 
         # 创建DAG文件处理子进程
-        p = multiprocessing.Process(target=helper,
-                                    args=(),
-                                    name="{}-Process".format(thread_name))
+        if platform.system() != 'Linux':
+            import dill
+            def run_dill_encoded(payload):
+                (fun, ) = dill.loads(payload)
+                return fun()
+            payload = dill.dumps((helper,))
+            p = multiprocessing.Process(target=run_dill_encoded,
+                                        args=(payload,),
+                                        name="{}-Process".format(thread_name))
+        else:
+            p = multiprocessing.Process(target=helper,
+                                        args=(),
+                                        name="{}-Process".format(thread_name))
         p.start()
         return p
 
@@ -1970,9 +1981,11 @@ class SchedulerJob(BaseJob):
                                           last_dag_dir_refresh_time).total_seconds()
 
             # 如果超出了文件扫描间隔，则重新加载DAG目录下的DAG文件
+            # 默认5分钟扫描一次dag目录，检测文件是否有变更
             if elapsed_time_since_refresh > self.dag_dir_list_interval:
                 # Build up a list of Python files that could contain DAGs
                 self.log.info("Searching for files in %s", self.subdir)
+                # 重新扫描文件
                 known_file_paths = list_py_file_paths(self.subdir)
                 last_dag_dir_refresh_time = datetime.now()
                 self.log.info(
@@ -1989,6 +2002,7 @@ class SchedulerJob(BaseJob):
             # Kick of new processes and collect results from finished ones
             self.log.info("Heartbeating the process manager, number of times is %s",
                           processor_manager.get_heart_beat_count())
+            # 文件进程管理器心跳
             simple_dags = processor_manager.heartbeat()
 
             # 因为sqlite只支持单进程，所以需要等待DAG子进程处理完成
