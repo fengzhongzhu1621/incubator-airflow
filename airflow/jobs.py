@@ -45,6 +45,7 @@ from tabulate import tabulate
 from time import sleep
 
 from xTool.utils.processes import kill_children_processes
+from xTool.utils.file_processing import BaseMultiprocessFileProcessor
 
 from airflow import configuration as conf
 from airflow import executors, models, settings
@@ -356,7 +357,7 @@ class BaseJob(Base, LoggingMixin):
         return reset_tis
 
 
-class DagFileProcessor(AbstractDagFileProcessor, LoggingMixin):
+class DagFileProcessor(BaseMultiprocessFileProcessor):
     """Helps call SchedulerJob.process_file() in a separate process."""
 
     # Counter that increments everytime an instance of this class is created
@@ -372,241 +373,63 @@ class DagFileProcessor(AbstractDagFileProcessor, LoggingMixin):
         :param dag_id_whitelist: If specified, only look at these DAG ID's
         :type dag_id_whitelist: list[unicode]
         """
-        # DAG文件的路径
-        self._file_path = file_path
-        # 创建一个多进程队列
-        # Queue that's used to pass results from the child process.
-        self._result_queue = multiprocessing.Queue()
-        # The process that was launched to process the given .
-        self._process = None
+        super(DagFileProcessor, self).__init__(file_path)
         # 需要调度的DAG ID列表，为[]则不需要过滤
         self._dag_id_white_list = dag_id_white_list
         # 是否需要序列化DAG到DB中
         self._pickle_dags = pickle_dags
-        # The result of Scheduler.process_file(file_path).
-        self._result = None
-        # Whether the process is done running.
-        self._done = False
-        # When the process started.
-        # 记录DAG文件进程的启动时间
-        self._start_time = None
-        # 使用实例的次数作为实例ID
-        # This ID is use to uniquely name the process / thread that's launched
-        # by this processor instance
-        self._instance_id = DagFileProcessor.class_creation_counter
-        # 实例创建次数自增
-        DagFileProcessor.class_creation_counter += 1
+        self.args = (pickle_dags, dag_id_white_list)
 
-    @property
-    def file_path(self):
-        """返回DAG文件的路径 ."""
-        return self._file_path
+    def _handler(self, result_queue, file_path, thread_name, *args, **kwargs):
+        (pickle_dags, dag_id_white_list) = args
+        # This helper runs in the newly created process
+        log = logging.getLogger("airflow.processor")
 
-    @staticmethod
-    def _launch_process(result_queue,
-                        file_path,
-                        pickle_dags,
-                        dag_id_white_list,
-                        thread_name):
-        """创建一个DAG文件处理进程，执行 SchedulerJob
-        Launch a process to process the given file.
+        # 重定向输入输出
+        stdout = StreamLogWriter(log, logging.INFO)
+        stderr = StreamLogWriter(log, logging.WARN)
 
-        :param result_queue: the queue to use for passing back the result
-        :type result_queue: multiprocessing.Queue
-        :param file_path: the file to process
-        :type file_path: unicode
-        :param pickle_dags: whether to pickle the DAGs found in the file and
-        save them to the DB
-        :type pickle_dags: bool
-        :param dag_id_white_list: if specified, only examine DAG ID's that are
-        in this list
-        :type dag_id_white_list: list[unicode]
-        :param thread_name: the name to use for the process that is launched
-        :type thread_name: unicode
-        :return: the process that was launched
-        :rtype: multiprocessing.Process
-        """
-        def helper():
-            # This helper runs in the newly created process
-            log = logging.getLogger("airflow.processor")
+        # 设置日志处理器上下文，即创建日志目录
+        set_context(log, file_path)
 
-            # 重定向输入输出
-            stdout = StreamLogWriter(log, logging.INFO)
-            stderr = StreamLogWriter(log, logging.WARN)
+        try:
+            # redirect stdout/stderr to log
+            sys.stdout = stdout
+            sys.stderr = stderr
 
-            # 设置日志处理器上下文，即创建日志目录
-            set_context(log, file_path)
+            # 创建DB连接池
+            # Re-configure the ORM engine as there are issues with multiple processes
+            settings.configure_orm()
 
-            try:
-                # redirect stdout/stderr to log
-                sys.stdout = stdout
-                sys.stderr = stderr
+            # Change the thread name to differentiate log lines. This is
+            # really a separate process, but changing the name of the
+            # process doesn't work, so changing the thread name instead.
+            threading.current_thread().name = thread_name
+            start_time = time.time()
 
-                # 创建DB连接池
-                # Re-configure the ORM engine as there are issues with multiple processes
-                settings.configure_orm()
-
-                # Change the thread name to differentiate log lines. This is
-                # really a separate process, but changing the name of the
-                # process doesn't work, so changing the thread name instead.
-                threading.current_thread().name = thread_name
-                start_time = time.time()
-
-                log.info("Started process (PID=%s) to work on %s",
-                         os.getpid(), file_path)
-                # 创建一个调度job
-                scheduler_job = SchedulerJob(dag_ids=dag_id_white_list, log=log)
-                # 执行DAG
-                result = scheduler_job.process_file(file_path,
-                                                    pickle_dags)
-                # 将执行结果保存到结果队列
-                result_queue.put(result)
-                end_time = time.time()
-                log.info(
-                    "Processing %s took %.3f seconds", file_path, end_time - start_time
-                )
-            except Exception:
-                # Log exceptions through the logging framework.
-                log.exception("Got an exception! Propagating...")
-                raise
-            finally:
-                sys.stdout = sys.__stdout__
-                sys.stderr = sys.__stderr__
-                # We re-initialized the ORM within this Process above so we need to
-                # tear it down manually here
-                settings.dispose_orm()
-
-        # 创建DAG文件处理子进程
-        if platform.system() != 'Linux':
-            import dill
-            def run_dill_encoded(payload):
-                (fun, ) = dill.loads(payload)
-                return fun()
-            payload = dill.dumps((helper,))
-            p = multiprocessing.Process(target=run_dill_encoded,
-                                        args=(payload,),
-                                        name="{}-Process".format(thread_name))
-        else:
-            p = multiprocessing.Process(target=helper,
-                                        args=(),
-                                        name="{}-Process".format(thread_name))
-        p.start()
-        return p
-
-    def start(self):
-        """
-        Launch the process and start processing the DAG.
-        """
-        # 创建一个DAG文件处理子进程，并将结果保存到self._result_queue结果队列
-        self._process = DagFileProcessor._launch_process(
-            self._result_queue,
-            self.file_path,
-            self._pickle_dags,
-            self._dag_id_white_list,
-            "DagFileProcessor{}".format(self._instance_id))
-        self._start_time = datetime.now()
-
-    def terminate(self, sigkill=False):
-        """终止文件处理子进程
-        Terminate (and then kill) the process launched to process the file.
-        :param sigkill: whether to issue a SIGKILL if SIGTERM doesn't work.
-        :type sigkill: bool
-        """
-        if self._process is None:
-            raise AirflowException("Tried to call stop before starting!")
-        # The queue will likely get corrupted, so remove the reference
-        self._result_queue = None
-        # 终止进程
-        self._process.terminate()
-        # Arbitrarily wait 5s for the process to die
-        # 等待进程被杀死
-        self._process.join(5)
-        # 是否需要强制再次杀死存活的文件处理进程
-        if sigkill and self._process.is_alive():
-            # 如果进程被终止后依然存活，发送SIGKILL信号杀死进程
-            self.log.warning("Killing PID %s", self._process.pid)
-            os.kill(self._process.pid, signal.SIGKILL)
-
-    @property
-    def pid(self):
-        """获得文件处理子进程的PID
-        :return: the PID of the process launched to process the given file
-        :rtype: int
-        """
-        if self._process is None:
-            raise AirflowException("Tried to get PID before starting!")
-        return self._process.pid
-
-    @property
-    def exit_code(self):
-        """获得文件处理子进程的错误码
-        After the process is finished, this can be called to get the return code
-        :return: the exit code of the process
-        :rtype: int
-        """
-        if not self._done:
-            raise AirflowException("Tried to call retcode before process was finished!")
-        return self._process.exitcode
-
-    @property
-    def done(self):
-        """判断文件处理子进程是否已经执行完成
-        Check if the process launched to process this file is done.
-        :return: whether the process is finished running
-        :rtype: bool
-        """
-        if self._process is None:
-            raise AirflowException("Tried to see if it's done before starting!")
-
-        if self._done:
-            return True
-
-        # 如果子进程有结果返回
-        if not self._result_queue.empty():
-            # 获得执行结果
-            self._result = self._result_queue.get_nowait()
-            self._done = True
-            self.log.debug("Waiting for %s", self._process)
-            # 等待子进程释放资源并结束
-            self._process.join()
-            return True
-
-        # Potential error case when process dies
-        # 如果子进程已经执行完成
-        if not self._process.is_alive():
-            # 设置完成标记
-            self._done = True
-            # 获得子进程执行结果
-            # Get the object from the queue or else join() can hang.
-            if not self._result_queue.empty():
-                self._result = self._result_queue.get_nowait()
-            # 等待子进程资源释放
-            # TODO join操作是没有必要的
-            self.log.debug("Waiting for %s", self._process)
-            self._process.join()
-            return True
-
-        return False
-
-    @property
-    def result(self):
-        """获得文件处理子进程的执行结果
-        :return: result of running SchedulerJob.process_file()
-        :rtype: SimpleDag
-        """
-        if not self.done:
-            raise AirflowException("Tried to get the result before it's done!")
-        return self._result
-
-    @property
-    def start_time(self):
-        """获得文件处理子进程的启动时间
-        :return: when this started to process the file
-        :rtype: datetime
-        """
-        if self._start_time is None:
-            raise AirflowException("Tried to get start time before it started!")
-        return self._start_time
+            log.info("Started process (PID=%s) to work on %s",
+                     os.getpid(), file_path)
+            # 创建一个调度job
+            scheduler_job = SchedulerJob(dag_ids=dag_id_white_list, log=log)
+            # 执行DAG
+            result = scheduler_job.process_file(file_path,
+                                                pickle_dags)
+            # 将执行结果保存到结果队列
+            result_queue.put(result)
+            end_time = time.time()
+            log.info(
+                "Processing %s took %.3f seconds", file_path, end_time - start_time
+            )
+        except Exception:
+            # Log exceptions through the logging framework.
+            log.exception("Got an exception! Propagating...")
+            raise
+        finally:
+            sys.stdout = sys.__stdout__
+            sys.stderr = sys.__stderr__
+            # We re-initialized the ORM within this Process above so we need to
+            # tear it down manually here
+            settings.dispose_orm()
 
 
 class SchedulerJob(BaseJob):
