@@ -44,6 +44,8 @@ from sqlalchemy.orm.session import make_transient
 from tabulate import tabulate
 from time import sleep
 
+from six import itervalues, iteritems
+
 from xTool.utils.processes import kill_children_processes
 from xTool.utils.file_processing import BaseMultiprocessFileProcessor
 
@@ -379,8 +381,9 @@ class DagFileProcessor(BaseMultiprocessFileProcessor):
         # 是否需要序列化DAG到DB中
         self._pickle_dags = pickle_dags
         self.args = (pickle_dags, dag_id_white_list)
-
-    def _handler(self, result_queue, file_path, thread_name, *args, **kwargs):
+        
+    @staticmethod
+    def _handler(result_queue, file_path, thread_name, args, kwargs):
         (pickle_dags, dag_id_white_list) = args
         # This helper runs in the newly created process
         log = logging.getLogger("airflow.processor")
@@ -406,10 +409,10 @@ class DagFileProcessor(BaseMultiprocessFileProcessor):
             # process doesn't work, so changing the thread name instead.
             threading.current_thread().name = thread_name
             start_time = time.time()
-
+            log.info("args = %s", args)
             log.info("Started process (PID=%s) to work on %s",
                      os.getpid(), file_path)
-            # 创建一个调度job
+            # 创建一个调度job，dag_ids表示需要调度的dag，如果为None则调度所有的dags
             scheduler_job = SchedulerJob(dag_ids=dag_id_white_list, log=log)
             # 执行DAG
             result = scheduler_job.process_file(file_path,
@@ -743,7 +746,7 @@ class SchedulerJob(BaseJob):
 
         # Add the errors of the processed files
         # 遍历导入异常，记录到数据库
-        for filename, stacktrace in six.iteritems(dagbag.import_errors):
+        for filename, stacktrace in iteritems(dagbag.import_errors):
             session.add(models.ImportError(
                 filename=filename,
                 stacktrace=stacktrace))
@@ -1561,7 +1564,7 @@ class SchedulerJob(BaseJob):
 
         :param dagbag: a collection of DAGs to process
         :type dagbag: models.DagBag
-        :param dags: the DAGs from the DagBag to process
+        :param dags: the DAGs from the DagBag to process  未暂停的dags
         :type dags: DAG
         :param tis_out: A queue to add generated TaskInstance objects
         :type tis_out: multiprocessing.Queue[TaskInstance]
@@ -1808,12 +1811,12 @@ class SchedulerJob(BaseJob):
             if elapsed_time_since_refresh > self.dag_dir_list_interval:
                 # Build up a list of Python files that could contain DAGs
                 self.log.info("Searching for files in %s", self.subdir)
-                # 重新扫描文件
+                # 重新扫描文件夹
                 known_file_paths = list_py_file_paths(self.subdir)
                 last_dag_dir_refresh_time = datetime.now()
                 self.log.info(
                     "There are %s files in %s", len(known_file_paths), self.subdir)
-                # 设置DAG目录下最新的DAG文件路径数组
+                # 设置DAG目录下最新的DAG文件路径数组，将新增的文件加入到文件管理器队列中
                 processor_manager.set_file_paths(known_file_paths)
 
                 # 清除已经解决的，不存在的导入错误
@@ -1825,7 +1828,7 @@ class SchedulerJob(BaseJob):
             # Kick of new processes and collect results from finished ones
             self.log.info("Heartbeating the process manager, number of times is %s",
                           processor_manager.get_heart_beat_count())
-            # 文件进程管理器心跳
+            # 文件进程管理器心跳，返回文件处理器的执行结果即加载的dag文件对象[{dag_id: dagModel}]
             simple_dags = processor_manager.heartbeat()
 
             # 因为sqlite只支持单进程，所以需要等待DAG子进程处理完成
@@ -1839,8 +1842,7 @@ class SchedulerJob(BaseJob):
 
             # Send tasks for execution if available
             simple_dag_bag = SimpleDagBag(simple_dags)
-            if len(simple_dags) > 0:
-
+            if simple_dags:
                 # Handle cases where a DAG run state is set (perhaps manually) to
                 # a non-running state. Handle task instances that belong to
                 # DAG runs in those states
@@ -1878,6 +1880,7 @@ class SchedulerJob(BaseJob):
             # Heartbeat the scheduler periodically
             time_since_last_heartbeat = (datetime.now() -
                                          last_self_heartbeat_time).total_seconds()
+            # 记录心跳时间
             if time_since_last_heartbeat > self.heartrate:
                 self.log.debug("Heartbeating the scheduler")
                 self.heartbeat()
@@ -1935,7 +1938,7 @@ class SchedulerJob(BaseJob):
 
     @provide_session
     def process_file(self, file_path, pickle_dags=False, session=None):
-        """执行一个DAG文件
+        """文件处理器子进程需要执行的函数，执行一个DAG文件
         Process a Python file containing Airflow DAGs.
 
         This includes:
@@ -1951,19 +1954,19 @@ class SchedulerJob(BaseJob):
         Returns a list of SimpleDag objects that represent the DAGs found in
         the file
 
-        :param file_path: the path to the Python file that should be executed
+        :param file_path: the path to the Python file that should be executed  dag可执行文件的路径
         :type file_path: unicode
-        :param pickle_dags: whether serialize the DAGs found in the file and
+        :param pickle_dags: whether serialize the DAGs found in the file and 是否需要序列化dag
         save them to the db
         :type pickle_dags: bool
         :return: a list of SimpleDags made from the Dags found in the file
         :rtype: list[SimpleDag]
         """
-        self.log.info("Processing file %s for tasks to queue", file_path)
+        self.log.info("Processing file %s for tasks to queue, pickle_dags is %s", file_path, pickle_dags)
         # As DAGs are parsed from this file, they will be converted into SimpleDags
         simple_dags = []
 
-        # 加载DAG文件
+        # 加载DAG文件，生成dagmodel
         try:
             dagbag = models.DagBag(file_path)
         except Exception:
@@ -1971,8 +1974,9 @@ class SchedulerJob(BaseJob):
             Stats.incr('dag_file_refresh_error', 1, 1)
             return []
 
-        if len(dagbag.dags) > 0:
-            self.log.info("DAG(s) %s retrieved from %s", dagbag.dags.keys(), file_path)
+        # 如果导入dag文件，找到了dagmodel
+        if dagbag.dags:
+            self.log.info("DAG(s) %s retrieved from %s", list(dagbag.dags.keys()), file_path)
         else:
             self.log.warning("No viable dags retrieved from %s", file_path)
             self.update_import_errors(session, dagbag)
@@ -1980,35 +1984,29 @@ class SchedulerJob(BaseJob):
 
         # 将最新的DAG对象同步到DB中
         # Save individual DAGs in the ORM and update DagModel.last_scheduled_time
-        for dag in dagbag.dags.values():
+        for dag in itervalues(dagbag.dags):
             dag.sync_to_db()
 
-        # 获得已暂停的dag
-        paused_dag_ids = [dag.dag_id for dag in dagbag.dags.values()
-                          if dag.is_paused]
-
-        # 返回可运行的SimpleDag
+        # 返回非暂停的SimpleDag
         # Pickle the DAGs (if necessary) and put them into a SimpleDag
-        for dag_id in dagbag.dags:
-            dag = dagbag.get_dag(dag_id)
+        dags = []
+        for dag_id, dag in iteritems(dagbag.dags):
             pickle_id = None
+            # 序列化dag
             if pickle_dags:
                 pickle_id = dag.pickle(session).id
 
             # Only return DAGs that are not paused
-            if dag_id not in paused_dag_ids:
+            if not dag.is_paused:
                 simple_dags.append(SimpleDag(dag, pickle_id=pickle_id))
-
-        # 白名单过滤
-        if len(self.dag_ids) > 0:
-            dags = [dag for dag in dagbag.dags.values()
-                    if dag.dag_id in self.dag_ids and
-                    dag.dag_id not in paused_dag_ids]
-        else:
-            dags = [dag for dag in dagbag.dags.values()
-                    if not dag.parent_dag and
-                    dag.dag_id not in paused_dag_ids]
-
+                # 白名单过滤
+                if self.dag_ids:
+                    if dag_id in self.dag_ids:
+                        dags.append(dag)
+                else:
+                    if not dag.parent_dag:
+                        dags.append(dag)
+        
         # Not using multiprocessing.Queue() since it's no longer a separate
         # process and due to some unusual behavior. (empty() incorrectly
         # returns true?)
@@ -2056,6 +2054,7 @@ class SchedulerJob(BaseJob):
             self.update_import_errors(session, dagbag)
         except Exception:
             self.log.exception("Error logging import errors!")
+            
         # 判断是否存在僵死的job，并记录失败的任务实例，发送告警
         try:
             dagbag.kill_zombies()

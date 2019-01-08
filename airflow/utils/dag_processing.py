@@ -583,7 +583,7 @@ class DagFileProcessorManager(LoggingMixin):
             for file_path in self._file_paths:
                 # 获得文件处理器上一次执行完成的时间
                 last_finish_time = self.get_last_finish_time(file_path)
-                # 如果文件曾经处理过
+                # 如果文件曾经处理过，且小于每个文件的处理间隔
                 if (last_finish_time is not None and
                     (now - last_finish_time).total_seconds() <
                         self._process_file_interval):

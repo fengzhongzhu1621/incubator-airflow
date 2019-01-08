@@ -485,15 +485,17 @@ class DagBag(BaseDagBag, LoggingMixin):
         limit_dttm = datetime.now() - timedelta(seconds=secs)
         self.log.info("Failing jobs without heartbeat after %s", limit_dttm)
 
-        # 获得正在运行的job，或心跳僵死的job
+        # 任务实例正在运行，但是job已经停止，或者job的心跳长时间未更新
+        begin_time = datetime.now() - timedelta(days=configuration.conf.getint('core', 'sql_query_history_days'))
         tis = (
             session.query(TI)
             .join(LJ, TI.job_id == LJ.id)
+            .filter(TI.execution_date > begin_time)
             .filter(TI.state == State.RUNNING)  # 任务实例正在运行
             .filter(
                 or_(
-                    LJ.state != State.RUNNING,  # 但是job不是运行态
                     LJ.latest_heartbeat < limit_dttm,   # 没有上报心跳
+                    LJ.state != State.RUNNING,  # 但是job不是运行态
                 ))
             .all()
         )
@@ -4541,7 +4543,7 @@ class DAG(BaseDag, LoggingMixin):
 
     @provide_session
     def sync_to_db(self, owner=None, sync_time=None, session=None):
-        """
+        """同步DagModel到db中
         Save attributes about this DAG to the DB. Note that this method
         can be called for both DAGs and SubDAGs. A SubDag is actually a
         SubDagOperator.
@@ -4558,6 +4560,7 @@ class DAG(BaseDag, LoggingMixin):
         if sync_time is None:
             sync_time = datetime.now()
 
+        # 从DB中获取dag，判断dag是否存在
         orm_dag = session.query(
             DagModel).filter(DagModel.dag_id == self.dag_id).first()
         if not orm_dag:
