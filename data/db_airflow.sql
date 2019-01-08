@@ -268,8 +268,8 @@ CREATE TABLE `job` (
   `hostname` varchar(500) DEFAULT NULL,
   `unixname` varchar(1000) DEFAULT NULL,
   PRIMARY KEY (`id`),
-  KEY `job_type_heart` (`job_type`,`latest_heartbeat`),
-  KEY `idx_job_state_heartbeat` (`state`,`latest_heartbeat`)
+  KEY `job_type` (`job_type`),
+  KEY `latest_heartbeat` (`latest_heartbeat`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
