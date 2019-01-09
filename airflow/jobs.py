@@ -47,7 +47,7 @@ from time import sleep
 from six import itervalues, iteritems
 
 from xTool.utils.processes import kill_children_processes
-from xTool.utils.file_processing import BaseMultiprocessFileProcessor
+from xTool.utils.file_processing import BaseMultiprocessFileProcessor, FileProcessorManager
 
 from airflow import configuration as conf
 from airflow import executors, models, settings
@@ -58,9 +58,7 @@ from airflow.task.task_runner import get_task_runner
 from airflow.ti_deps.dep_context import DepContext, QUEUE_DEPS, RUN_DEPS
 from airflow.utils import asciiart, helpers
 from airflow.utils.configuration import tmp_configuration_copy
-from airflow.utils.dag_processing import (AbstractDagFileProcessor,
-                                          DagFileProcessorManager,
-                                          SimpleDag,
+from airflow.utils.dag_processing import (SimpleDag,
                                           SimpleDagBag,
                                           list_py_file_paths)
 from airflow.utils.db import create_session, provide_session
@@ -1641,14 +1639,14 @@ class SchedulerJob(BaseJob):
     def _log_file_processing_stats(self,
                                    known_file_paths,
                                    processor_manager):
-        """
+        """打印文件处理器子进程的统计信息
         Print out stats about how files are getting processed.
 
         :param known_file_paths: a list of file paths that may contain Airflow
         DAG definitions
         :type known_file_paths: list[unicode]
         :param processor_manager: manager for the file processors
-        :type stats: DagFileProcessorManager
+        :type stats: FileProcessorManager
         :return: None
         """
 
@@ -1668,11 +1666,15 @@ class SchedulerJob(BaseJob):
 
         rows = []
         for file_path in known_file_paths:
+            # 文件处理器的的执行时长
             last_runtime = processor_manager.get_last_runtime(file_path)
+            # 文件处理子进程ID
             processor_pid = processor_manager.get_pid(file_path)
+            # 文件处理子进程启动时间
             processor_start_time = processor_manager.get_start_time(file_path)
             runtime = ((datetime.now() - processor_start_time).total_seconds()
                        if processor_start_time else None)
+            # 文件处理器子进程的结束时间
             last_run = processor_manager.get_last_finish_time(file_path)
 
             rows.append((file_path,
@@ -1745,12 +1747,12 @@ class SchedulerJob(BaseJob):
                                     self.dag_ids)
 
         # 创建文件处理器进程管理类，处理所有搜索到的多个可用文件
-        processor_manager = DagFileProcessorManager(self.subdir,       # dags目录
-                                                    known_file_paths,  # 在dags目录下搜索的dag路径列表
-                                                    self.max_threads,  # 文件处理器线程数量
-                                                    self.file_process_interval,  # 文件处理器处理同一个文件的间隔，0表示没有间隔
-                                                    self.num_runs,     # 每个文件的运行次数
-                                                    processor_factory) # 文件处理器工厂函数
+        processor_manager = FileProcessorManager(self.subdir,       # dags目录
+                                                 known_file_paths,  # 在dags目录下搜索的dag路径列表
+                                                 self.max_threads,  # 文件处理器线程数量
+                                                 self.file_process_interval,  # 文件处理器处理同一个文件的间隔，0表示没有间隔
+                                                 self.num_runs,     # 每个文件的运行次数
+                                                 processor_factory) # 文件处理器工厂函数
 
         # 启动 executor
         try:
@@ -1760,7 +1762,7 @@ class SchedulerJob(BaseJob):
             
             # Kill all child processes on exit since we don't want to leave
             # them as orphaned.
-            # 获得DAG文件处理器进程的PIDS
+            # 获得DAG文件处理器子进程进程的PIDS
             pids_to_kill = processor_manager.get_all_pids()
             if pids_to_kill:
                 # 杀掉当前进程的所有子进程
@@ -1770,7 +1772,7 @@ class SchedulerJob(BaseJob):
     def _execute_helper(self, processor_manager):
         """
         :param processor_manager: manager to use  多文件进程管理器
-        :type processor_manager: DagFileProcessorManager
+        :type processor_manager: FileProcessorManager
         :return: None
         """
         # 启动 executor
@@ -1880,16 +1882,17 @@ class SchedulerJob(BaseJob):
             # Heartbeat the scheduler periodically
             time_since_last_heartbeat = (datetime.now() -
                                          last_self_heartbeat_time).total_seconds()
-            # 记录心跳时间
+            # 更新心跳时间
             if time_since_last_heartbeat > self.heartrate:
                 self.log.debug("Heartbeating the scheduler")
                 self.heartbeat()
                 last_self_heartbeat_time = datetime.now()
 
+            # 打印所有文件处理器子进程的统计信息
             # Occasionally print out stats about how fast the files are getting processed
             if ((datetime.now() - last_stat_print_time).total_seconds() >
                     self.print_stats_interval):
-                if len(known_file_paths) > 0:
+                if known_file_paths:
                     self._log_file_processing_stats(known_file_paths,
                                                     processor_manager)
                 last_stat_print_time = datetime.now()
@@ -1899,9 +1902,12 @@ class SchedulerJob(BaseJob):
                 "Ran scheduling loop in %.2f seconds",
                 loop_end_time - loop_start_time)
             self.log.debug("Sleeping for %.2f seconds", self._processor_poll_interval)
+            
+            # 等待文件处理子进程执行
             time.sleep(self._processor_poll_interval)
 
             # Exit early for a test mode
+            # 如果设置了调度器的最大执行次数，则到达阈值退出
             if processor_manager.max_runs_reached():
                 self.log.info(
                     "Exiting loop as all files have been processed %s times",

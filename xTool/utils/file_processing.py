@@ -14,6 +14,8 @@ import zipfile
 from abc import ABCMeta, abstractmethod
 from collections import defaultdict
 import multiprocessing
+
+from six import itervalues, iteritems
 from datetime import datetime
 
 from xTool.utils.log.logging_mixin import LoggingMixin
@@ -104,6 +106,7 @@ class BaseMultiprocessFileProcessor(AbstractFileProcessor, LoggingMixin):
         """返回文件的路径 ."""
         return self._file_path
     
+    @staticmethod
     def process_file(self, file_path):
         """子进程文件处理函数 .
         
@@ -112,7 +115,7 @@ class BaseMultiprocessFileProcessor(AbstractFileProcessor, LoggingMixin):
         """
         raise NotImplementedError()
 
-    def _handler(self, result_queue, file_path, thread_name, *args, **kwargs):
+    def _handler(result_queue, file_path, thread_name, args, kwargs):
         log = logging.getLogger("xTool.processor")
         # 设置日志处理器上下文，例如日志handler初始化时创建日志目录
         set_context(log, file_path)
@@ -123,7 +126,7 @@ class BaseMultiprocessFileProcessor(AbstractFileProcessor, LoggingMixin):
 
             log.info("Started process (PID=%s) to work on %s", os.getpid(), file_path)
             # 执行文件处理
-            result = self.process_file(file_path)
+            result = BaseMultiprocessFileProcessor.process_file(file_path)
             # 将执行结果保存到结果队列
             result_queue.put(result)
             end_time = time.time()
@@ -250,12 +253,27 @@ class FileProcessorManager(LoggingMixin):
                  file_paths,
                  parallelism,
                  process_file_interval,
-                 min_file_parsing_loop_time,
                  max_runs,
                  processor_factory):
         """
-        :param processor_factory: function that creates processors for file definition files.
-        :type processor_factory: (unicode, unicode) -> (AbstractFileProcessor)
+        :param file_directory: All
+        files in file_paths should be under this directory
+        :type dag_directory: unicode
+        :param file_paths: list of file paths that contain DAG definitions
+        :type file_paths: list[unicode]
+        :param parallelism: maximum number of simultaneous process to run at once
+        :type parallelism: int
+        :param process_file_interval: process a file at most once every this
+        many seconds
+        :type process_file_interval: float
+        :param max_runs: The number of times to parse and schedule each file. -1
+        for unlimited.
+        :type max_runs: int
+        :type process_file_interval: float
+        :param processor_factory: function that creates processors for DAG
+        definition files. Arguments are (dag_definition_path)
+        :type processor_factory: (unicode, unicode) -> (AbstractDagFileProcessor)
+
         """
         # 文件的目录
         self._file_directory = file_directory
@@ -271,8 +289,6 @@ class FileProcessorManager(LoggingMixin):
         self._max_runs = max_runs
         # 同一个文件在被处理器处理时的间隔
         self._process_file_interval = process_file_interval
-        # 每次心跳的休眠时间
-        self._min_file_parsing_loop_time = min_file_parsing_loop_time
         # 文件处理进程工厂函数，接受一个文件路径参数，返回 AbstractFileProcessor 对象
         self._processor_factory = processor_factory
         # 记录正在运行的处理器
@@ -305,7 +321,7 @@ class FileProcessorManager(LoggingMixin):
     def get_runtime(self, file_path):
         """获得文件处理器的运行时长，单位是秒 ."""
         if file_path in self._processors:
-            return (timezone.system_now() - self._processors[file_path].start_time)\
+            return (datetime.now() - self._processors[file_path].start_time)\
                 .total_seconds()
         return None
 
@@ -326,11 +342,13 @@ class FileProcessorManager(LoggingMixin):
     def set_file_paths(self, new_file_paths):
         """根据文件处理器需要处理的新的文件列表 ."""
         # 设置目录下最新的文件路径数组
-        self._file_paths = new_file_paths
+        self._file_paths = list(new_file_paths)
         # 获得 self._file_path_queue 和  new_file_paths的交集
         # 即从文件队列中删除不存在的文件
         self._file_path_queue = [x for x in self._file_path_queue
-                                 if x in new_file_paths]
+                                 if x in self._file_paths]
+        self.log.info("There are %s files in file_path_queue", len(self._file_path_queue))
+        # Stop processors that are working on deleted files
         # 已删除的文件关联的处理器停止运行
         filtered_processors = {}
         for file_path, processor in self._processors.items():
@@ -342,6 +360,7 @@ class FileProcessorManager(LoggingMixin):
                 # 将被删除的文件关联的文件处理器进程，停止执行
                 processor.terminate()
         self._processors = filtered_processors
+        self.log.info("There are %s files in processors", len(self._processors))
 
     def processing_count(self):
         """获得文件处理器的数量 ."""
@@ -349,7 +368,7 @@ class FileProcessorManager(LoggingMixin):
 
     def wait_until_finished(self):
         """阻塞等待所有的文件处理器执行完成 ."""
-        for file_path, processor in self._processors.items():
+        for file_path, processor in iteritems(self._processors):
             while not processor.done:
                 time.sleep(0.1)
 
@@ -375,7 +394,7 @@ class FileProcessorManager(LoggingMixin):
                 # 获得已完成的文件处理器进程
                 finished_processors[file_path] = processor
                 # 文件处理器运行时间
-                now = timezone.system_now()
+                now = datetime.now()
                 # 记录文件处理器的的执行时长
                 self._last_runtime[file_path] = (now -
                                                  processor.start_time).total_seconds()
@@ -412,9 +431,9 @@ class FileProcessorManager(LoggingMixin):
             file_paths_in_progress = self._processors.keys()
 
             # 记录下尚未到调度时间的文件
+            # 如果self_process_file_interval为0，则file_paths_recently_processed永远为[]
+            now = datetime.now()
             file_paths_recently_processed = []
-            longest_parse_duration = 0
-            now = timezone.system_now()
 
             # 遍历需要处理的文件列表
             for file_path in self._file_paths:
@@ -426,24 +445,11 @@ class FileProcessorManager(LoggingMixin):
                     # 如果文件尚未到调度时间，则记录在指定数组中
                     if duration.total_seconds() < self._process_file_interval:
                         file_paths_recently_processed.append(file_path)
-                    # 获得所有文件中最长的等待时间
-                    longest_parse_duration = max(duration.total_seconds(),
-                                                 longest_parse_duration)
 
-            # 获得每次心跳的休眠时间
-            sleep_length = max(self._min_file_parsing_loop_time - longest_parse_duration,
-                               0)
-            # 休眠
-            if sleep_length > 0:
-                self.log.debug("Sleeping for %.2f seconds to prevent excessive "
-                               "logging",
-                               sleep_length)
-                time.sleep(sleep_length)
-
-            # 获得处理器已经执行完成的文件列表，且这些文件的执行次数已经达到了最大阈值
-            files_paths_at_run_limit = [file_path
-                                        for file_path, num_runs in self._run_count.items()
-                                        if num_runs == self._max_runs]
+            # 获得已经运行的process文件，且已经达到最大运行次数
+            #files_paths_at_run_limit = [file_path
+            #                            for file_path, num_runs in self._run_count.items()
+            #                            if num_runs == self._max_runs]
 
             # 获得需要入队的文件，新增的文件在此入库
             # 去掉正在运行的文件
@@ -451,15 +457,15 @@ class FileProcessorManager(LoggingMixin):
             # 去掉运行次数已经达到阈值的文件
             files_paths_to_queue = list(set(self._file_paths) -
                                         set(file_paths_in_progress) -
-                                        set(file_paths_recently_processed) -
-                                        set(files_paths_at_run_limit))
+                                        set(file_paths_recently_processed))
 
-            # 遍历正在运行的处理器进程
+            # 打印调试信息：遍历正在运行的处理器进程
             for file_path, processor in self._processors.items():
                 self.log.debug(
                     "File path %s is still being processed (started: %s)",
                     processor.file_path, processor.start_time.isoformat()
                 )
+
             self.log.debug(
                 "Queuing the following files for processing:\n\t%s",
                 "\n\t".join(files_paths_to_queue)
@@ -468,7 +474,19 @@ class FileProcessorManager(LoggingMixin):
             # 将任务加入队列
             self._file_path_queue.extend(files_paths_to_queue)
 
-        # 处理器并发性阈值验证
+            file_paths_len = len(self._file_paths)
+            file_paths_in_progress_len = len(file_paths_in_progress)
+            file_paths_recently_processed_len = len(file_paths_recently_processed)
+            files_paths_to_queue_len = len(files_paths_to_queue)
+            self.log.info("Queuing %s files for processing: %s = %s - %s - %s",
+                          files_paths_to_queue_len,
+                          files_paths_to_queue_len,
+                          file_paths_len,
+                          file_paths_in_progress_len,
+                          file_paths_recently_processed_len)
+
+        # 处理器并发性最大值验证
+        # Start more processors if we have enough slots and files to process
         while (self._parallelism - len(self._processors) > 0 and
                self._file_path_queue):
             # 从队列中出队一个文件
@@ -490,14 +508,17 @@ class FileProcessorManager(LoggingMixin):
         # 返回已完成处理器的执行结果
         return result
 
+    def get_heart_beat_count(self):
+        return self._run_count.get(self._heart_beat_key, 0)
+
     def max_runs_reached(self):
         """判断文件处理器是否触发最大阈值 ."""
         if self._max_runs == -1:  # Unlimited runs.
             return False
         # 如果有任意一个文件都没有达到执行次数，也认为没有到达最大阈值
-        for file_path in self._file_paths:
-            if self._run_count[file_path] != self._max_runs:
-                return False
+        #for file_path in self._file_paths:
+        #    if self._run_count[file_path] < self._max_runs:
+        #        return False
         # 心跳总数大于等于最大运行次数时，也会停止调度
         if self._run_count[self._heart_beat_key] < self._max_runs:
             return False
@@ -505,5 +526,5 @@ class FileProcessorManager(LoggingMixin):
 
     def terminate(self):
         """停止所有处理器 ."""
-        for processor in self._processors.values():
+        for processor in itervalues(self._processors):
             processor.terminate()
