@@ -212,6 +212,7 @@ CREATE TABLE `dag_run` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `dag_id` (`dag_id`,`execution_date`),
   UNIQUE KEY `dag_id_2` (`dag_id`,`run_id`),
+  KEY `run_id` (`run_id`),
   KEY `dag_id_state` (`dag_id`,`state`),
   KEY `execution_date` (`execution_date`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
