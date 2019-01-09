@@ -407,7 +407,6 @@ class DagFileProcessor(BaseMultiprocessFileProcessor):
             # process doesn't work, so changing the thread name instead.
             threading.current_thread().name = thread_name
             start_time = time.time()
-            log.info("args = %s", args)
             log.info("Started process (PID=%s) to work on %s",
                      os.getpid(), file_path)
             # 创建一个调度job，dag_ids表示需要调度的dag，如果为None则调度所有的dags
@@ -803,16 +802,23 @@ class SchedulerJob(BaseJob):
             #       最终引起连锁反应，整个集群都会停止创建dag实例
             if active_runs_len - timedout_runs >= dag.max_active_runs:
                 return
-
+                
             # this query should be replaced by find dagrun
+            # SELECT max(dag_run.execution_date) AS max_1 
+            # FROM dag_run 
+            # WHERE dag_run.dag_id = %s 
+            #    AND dag_run.execution_date > %s 
+            #    AND (dag_run.run_id LIKE 'scheduled__%' OR dag_run.external_trigger = false)           
             # 获得最近的一个正常非外部调度的dag_run，不包括补录的单据
+            begin_time = datetime.now() - timedelta(days=conf.getint('core', 'sql_query_history_days'))
             qry = (
                 session.query(func.max(DagRun.execution_date))
                 .filter_by(dag_id=dag.dag_id)
+                .filter(DagRun.execution_date > begin_time)
                 .filter(or_(
-                    DagRun.external_trigger == False,  # noqa: E712
                     # add % as a wildcard for the like query
-                    DagRun.run_id.like(DagRun.ID_PREFIX + '%')
+                    DagRun.run_id.like(DagRun.ID_PREFIX + '%'),
+                    DagRun.external_trigger == False  # noqa: E712
                 ))
             )
             # 获得最近的一个dagrun的调度日期
@@ -820,6 +826,7 @@ class SchedulerJob(BaseJob):
 
             # don't schedule @once again
             # 确保@once，只调度一次；如果存在上一次调度，说明once已经调度过了，不能再次调度
+            # 不管上一个dagrun的结果是成功，还是失败，都不会再次调度
             if dag.schedule_interval == '@once' and last_scheduled_run:
                 return None
 
@@ -1569,7 +1576,9 @@ class SchedulerJob(BaseJob):
         :return: None
         """
         for dag in dags:
-            dag = dagbag.get_dag(dag.dag_id)
+            # 根据用户是否在界面上点击了刷新按钮，来获得最新的dag对象
+            # 去掉刷新逻辑的判断，没有意义
+            # dag = dagbag.get_dag(dag.dag_id)
             # 忽略暂停的DAG
             if dag.is_paused:
                 self.log.info("Not processing DAG %s since it's paused", dag.dag_id)
@@ -1994,7 +2003,7 @@ class SchedulerJob(BaseJob):
             self.update_import_errors(session, dagbag)
             return []
 
-        # 将最新的DAG对象同步到DB中
+        # 将最新的DAG对象同步到DB中，并记录同步时间到 last_scheduler_run 字段
         # Save individual DAGs in the ORM and update DagModel.last_scheduled_time
         for dag in itervalues(dagbag.dags):
             dag.sync_to_db()
@@ -2002,6 +2011,7 @@ class SchedulerJob(BaseJob):
         # 返回非暂停的SimpleDag
         # Pickle the DAGs (if necessary) and put them into a SimpleDag
         dags = []
+
         for dag_id, dag in iteritems(dagbag.dags):
             pickle_id = None
             # 序列化dag
@@ -2009,6 +2019,8 @@ class SchedulerJob(BaseJob):
                 pickle_id = dag.pickle(session).id
 
             # Only return DAGs that are not paused
+            # 会从数据库中获取，因为is_paused这个属性无法从dag文件中获取
+            # SELECT is_paused FROM dag WHERE dag.dag_id = %s
             if not dag.is_paused:
                 simple_dags.append(SimpleDag(dag, pickle_id=pickle_id))
                 # 白名单过滤

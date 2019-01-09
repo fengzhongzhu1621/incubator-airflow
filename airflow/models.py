@@ -321,7 +321,12 @@ class DagBag(BaseDagBag, LoggingMixin):
                 root_dag_id = dag.parent_dag.dag_id
 
         # If the dag corresponding to root_dag_id is absent or expired
+        # 从DB中获取dag orm model
         orm_dag = DagModel.get_current(root_dag_id)
+        
+        # 如果用户在界面上点击了刷新按钮，会将当前时间记录到last_expired字段
+        # 如果刷新时间大于上次的文件加载时间，则重新加载文件
+        # 这样就不需要等到下一次
         if orm_dag and (
                 root_dag_id not in self.dags or
                 (
@@ -338,6 +343,8 @@ class DagBag(BaseDagBag, LoggingMixin):
                 return self.dags[dag_id]
             elif dag_id in self.dags:
                 del self.dags[dag_id]
+        
+        # 返回最新的dag，因为此dag可能会重新加载
         return self.dags.get(dag_id)
 
     def process_file(self, filepath, only_if_updated=True, safe_mode=True):
@@ -3270,7 +3277,7 @@ class DagModel(Base):
     @classmethod
     @provide_session
     def get_current(cls, dag_id, session=None):
-        """根据dag_id获得DagModel对象 ."""
+        """根据dag_id从DB中获得DagModel对象 ."""
         return session.query(cls).filter(cls.dag_id == dag_id).first()
 
 
