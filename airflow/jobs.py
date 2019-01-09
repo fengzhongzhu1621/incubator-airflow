@@ -48,6 +48,7 @@ from six import itervalues, iteritems
 
 from xTool.utils.processes import kill_children_processes
 from xTool.utils.file_processing import BaseMultiprocessFileProcessor, FileProcessorManager
+from xTool.utils.file import list_py_file_paths
 
 from airflow import configuration as conf
 from airflow import executors, models, settings
@@ -59,8 +60,7 @@ from airflow.ti_deps.dep_context import DepContext, QUEUE_DEPS, RUN_DEPS
 from airflow.utils import asciiart, helpers
 from airflow.utils.configuration import tmp_configuration_copy
 from airflow.utils.dag_processing import (SimpleDag,
-                                          SimpleDagBag,
-                                          list_py_file_paths)
+                                          SimpleDagBag)
 from airflow.utils.db import create_session, provide_session
 from airflow.utils.email import send_email, get_email_address_list
 from airflow.utils.log.logging_mixin import LoggingMixin, set_context, StreamLogWriter
@@ -1738,7 +1738,10 @@ class SchedulerJob(BaseJob):
         # 搜索遍历DAG目录返回所有的DAG路径
         # Build up a list of Python files that could contain DAGs
         self.log.info("Searching for files in %s", self.subdir)
-        known_file_paths = list_py_file_paths(self.subdir)
+        known_file_paths = list_py_file_paths(self.subdir,
+                                              ignore_filename=".airflowignore",
+                                              safe_mode=True,
+                                              safe_filters=(b'DAG', b'airflow'))
         self.log.info("There are %s files in %s", len(known_file_paths), self.subdir)
 
         def processor_factory(file_path):
@@ -1814,7 +1817,10 @@ class SchedulerJob(BaseJob):
                 # Build up a list of Python files that could contain DAGs
                 self.log.info("Searching for files in %s", self.subdir)
                 # 重新扫描文件夹
-                known_file_paths = list_py_file_paths(self.subdir)
+                known_file_paths = list_py_file_paths(self.subdir,
+                                      ignore_filename=".airflowignore",
+                                      safe_mode=True,
+                                      safe_filters=(b'DAG', b'airflow'))
                 last_dag_dir_refresh_time = datetime.now()
                 self.log.info(
                     "There are %s files in %s", len(known_file_paths), self.subdir)
