@@ -1223,8 +1223,8 @@ class TaskInstance(Base, LoggingMixin):
         """
         TI = TaskInstance
         ti = session.query(TI).filter(
-            TI.dag_id == self.dag_id,
             TI.task_id == self.task_id,
+            TI.dag_id == self.dag_id,
             TI.execution_date == self.execution_date,
         ).all()
         if ti:
@@ -3665,10 +3665,11 @@ class DAG(BaseDag, LoggingMixin):
         Args:
             include_externally_triggered: 是否包含外部触发的dagrun
         """
+        begin_time = datetime.now() - timedelta(days=configuration.conf.getint('core', 'sql_query_history_days'))
         DR = DagRun
         qry = session.query(DR).filter(
             DR.dag_id == self.dag_id,
-        )
+        ).filter(DagRun.execution_date > begin_time)
         # 是否获取外部触发的dagrun
         if not include_externally_triggered:
             qry = qry.filter(DR.external_trigger.__eq__(False))
@@ -3738,7 +3739,7 @@ class DAG(BaseDag, LoggingMixin):
 
     @property
     def active_tasks(self):
-        """获得dag包含的所有的有效任务 ."""
+        """获得dag包含的所有的有效任务，不包含即席查询 ."""
         return [t for t in self.tasks if not t.adhoc]
 
     @property
@@ -4566,7 +4567,6 @@ class DAG(BaseDag, LoggingMixin):
         :type sync_time: datetime
         :return: None
         """
-
         if owner is None:
             owner = self.owner
         if sync_time is None:
@@ -5254,18 +5254,14 @@ class DagRun(Base, LoggingMixin):
 
     @provide_session
     def refresh_from_db(self, session=None):
-        """从DB中获取状态更新到ORM模型中
+        """dagrun：从DB中获取状态更新到ORM模型中
         Reloads the current dagrun from the database
         :param session: database session
         """
         DR = DagRun
 
-        exec_date = func.cast(self.execution_date, DateTime)
-
-        # TODO (dag_id, run_id)可以确认唯一性，所以exec_date条件是多余的
         dr = session.query(DR).filter(
             DR.dag_id == self.dag_id,
-            func.cast(DR.execution_date, DateTime) == exec_date,
             DR.run_id == self.run_id
         ).one()
 
@@ -5308,6 +5304,9 @@ class DagRun(Base, LoggingMixin):
                 qry = qry.filter(DR.execution_date.in_(execution_date))
             else:
                 qry = qry.filter(DR.execution_date == execution_date)
+        else:
+            begin_time = datetime.now() - timedelta(days=configuration.conf.getint('core', 'sql_query_history_days'))
+            qry = qry.filter(DR.execution_date > begin_time)
         if state:
             qry = qry.filter(DR.state == state)
         if external_trigger is not None:
@@ -5421,27 +5420,27 @@ class DagRun(Base, LoggingMixin):
 
         dag = self.get_dag()
 
-        # 获得所有任务实例
+        # 根据dagid和execution_date获得所有任务实例
         tis = self.get_task_instances(session=session)
 
         self.log.debug("Updating state for %s considering %s task(s)", self, len(tis))
 
         # 根据任务实例获得任务，去掉已删除的任务实例
-        for ti in list(tis):
+        unfinished_tasks = []
+        for ti in tis:
             # skip in db?
             if ti.state == State.REMOVED:
                 tis.remove(ti)
             else:
                 ti.task = dag.get_task(ti.task_id)
-
+                # 获得未完成的任务实例
+                if ti.state in State.unfinished():
+                    unfinished_tasks.append(ti)
+            
         # 获得未完成的任务实例
         # pre-calculate
         # db is faster
         start_dttm = datetime.now()
-        unfinished_tasks = self.get_task_instances(
-            state=State.unfinished(),
-            session=session
-        )
         none_depends_on_past = all(not t.task.depends_on_past for t in unfinished_tasks)
 
         # 未完成的任务实例中，都没有设置并发数限制
@@ -5463,7 +5462,7 @@ class DagRun(Base, LoggingMixin):
                         flag_upstream_failed=True,
                         ignore_in_retry_period=True),
                     session=session)
-                # 如果依赖规则满足
+                # 如果依赖规则满足，从DB中获取任务实例的当前状态
                 if deps_met or old_state != ut.current_state(session=session):
                     # 依赖满足
                     no_dependencies_met = False
@@ -5508,9 +5507,11 @@ class DagRun(Base, LoggingMixin):
                 self.set_state(State.RUNNING)
 
         # todo: determine we want to use with_for_update to make sure to lock the run
+        # 如果dagrun的状态没有变化，则不更新DB
         session.merge(self)
         session.commit()
 
+        # 返回当前dagrun的状态
         return self.state
 
     @provide_session
@@ -5519,6 +5520,7 @@ class DagRun(Base, LoggingMixin):
         Verifies the DagRun by checking for removed tasks or tasks that are not in the
         database yet. It will set state to removed or add the task if required.
         """
+        # 获得dagmodel对象
         dag = self.get_dag()
 
         # 根据(dag_id,execution_date)获得当前dagrun关联的所有任务实例
@@ -5570,7 +5572,7 @@ class DagRun(Base, LoggingMixin):
                 continue
             if task.start_date > self.execution_date and not self.is_backfill:
                 continue
-            # 补齐确实的任务实例
+            # 补齐确实的任务实例，ORM模型自动优化为批量插入
             if task.task_id not in task_ids:
                 ti = TaskInstance(task, self.execution_date)
                 session.add(ti)

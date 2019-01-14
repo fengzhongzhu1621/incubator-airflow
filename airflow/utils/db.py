@@ -76,6 +76,7 @@ def provide_session(func):
         session_in_kwargs = arg_session in kwargs
 
         if session_in_kwargs or session_in_args:
+            # 如果session作为参数传递，则不会自动commit
             return func(*args, **kwargs)
         else:
             # 如果session变量不再函数参数中，在函数内部也没有声明
