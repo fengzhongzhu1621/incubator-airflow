@@ -872,13 +872,13 @@ class SchedulerJob(BaseJob):
             # 如果是dag的第一次调度，此时还不存在dagrun
             next_run_date = None
             if not last_scheduled_run:
-                # First run
-                # 如果任务设置了开始时间，会影响dagrun的调度
+                # dag的第一次调度，即不存在历史的dagrun
+                # 如果任务设置了开始时间，会影响dagrun的调度，任务的开始时间默认继承至dag的start_date
                 task_start_dates = [t.start_date for t in dag.tasks]
                 if task_start_dates:
                     # 获得所有任务的最小开始时间
                     # 并获得下一次调度时间
-                    # 如果是单次任务，则下一次调度时间为任务的最小开始时间
+                    # 如果是单次任务，则下一次调度时间为任务的最小开始时间，即next_run_date == min(task_start_dates)
                     next_run_date = dag.normalize_schedule(min(task_start_dates))
                     self.log.debug(
                         "Next run date based on tasks %s",
@@ -1041,21 +1041,29 @@ class SchedulerJob(BaseJob):
                 self.log.info("Active dag runs > max_active_run.")
                 continue
 
-            # 跳过补录任务
+            # 跳过补录任务，不经过scheduler的分支
             # skip backfill dagruns for now as long as they are not really scheduled
             if run.is_backfill:
                 continue
 
             # todo: run.dag is transient but needs to be set
             run.dag = dag
+            # 补齐缺失的任务实例
+            # 性能优化，如果是单次任务则不进行任务的补齐操作
             # todo: preferably the integrity check happens at dag collection time
             # 根据dag实例，创建所有的任务实例
             # 如果dag修改后增加了一个task，会通过验证后补录新增加的任务实例
             # 如果任务类型是即席查询，则不会创建任务实例
-            run.verify_integrity(session=session)
+            if dag.schedule_interval != '@once':
+                run.verify_integrity(session=session)
+                
             # 更新dagrun的状态，由所有的任务实例的状态决定
             run.update_state(session=session)
+            
+            # 如果任务实例还是在运行状态
             if run.state == State.RUNNING:
+                # 删除self与session对象的关联关系，成为一个新建的对象
+                # 即清空self中所有与orm相关的参数
                 make_transient(run)
                 active_dag_runs.append(run)
 
@@ -1590,15 +1598,18 @@ class SchedulerJob(BaseJob):
 
             self.log.info("Processing %s", dag.dag_id)
 
-            # 创建dag实例，此dag必须存在调度周期设置
+            # 创建dagrun，此dag必须存在调度周期设置
+            # 如果dagrun的数量超过了阈值，则返回None
             dag_run = self.create_dag_run(dag)
             if dag_run:
                 self.log.info("Created %s", dag_run)
+                
             # 创建dagrun关联的任务实例
             self._process_task_instances(dag, tis_out)
             # 如果任务实例执行超时，则记录到sla表中，并发送通知邮件
             self.manage_slas(dag)
 
+        # 更新dag每个状态的dag_run的数量，并设置dirty为False
         models.DagStat.update([d.dag_id for d in dags])
 
     @provide_session
@@ -2019,7 +2030,7 @@ class SchedulerJob(BaseJob):
                 pickle_id = dag.pickle(session).id
 
             # Only return DAGs that are not paused
-            # 会从数据库中获取，因为is_paused这个属性无法从dag文件中获取
+            # 因为is_paused这个属性无法从dag文件中获取，所以dag.is_paused会自动执行sql从db中获取
             # SELECT is_paused FROM dag WHERE dag.dag_id = %s
             if not dag.is_paused:
                 simple_dags.append(SimpleDag(dag, pickle_id=pickle_id))
