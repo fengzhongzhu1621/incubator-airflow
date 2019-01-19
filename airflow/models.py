@@ -3291,7 +3291,7 @@ class DagModel(Base):
 
     @staticmethod
     @provide_session
-    def get_task_instances_by_dag(dag, execution_dates, limit=1000, session=None):
+    def get_task_instances_by_dag(dag, execution_dates, limit=1000, state=None, session=None):
         """根据dag和调度时间获取任务实例 ."""
         # 获得当前dag的所有任务实例
         TI = TaskInstance
@@ -3300,6 +3300,20 @@ class DagModel(Base):
             TI.execution_date.in_(execution_dates),
         )
 
+        # 设置状态过滤条件，支持状态为None
+        if state:
+            if isinstance(state, six.string_types):
+                tis = tis.filter(TI.state == state)
+            else:
+                # this is required to deal with NULL values
+                if None in state:
+                    tis = tis.filter(
+                        or_(TI.state.in_(state),
+                            TI.state.is_(None))
+                    )
+                else:
+                    tis = tis.filter(TI.state.in_(state))
+                    
         # 如果dag是子集，则只需要获得部分任务实例
         if dag and dag.partial:
             tis = tis.filter(TI.task_id.in_(dag.task_ids))
@@ -5165,10 +5179,12 @@ class DagStat(Base):
                 return
 
             # 获得dag每个dagrun状态的记录数量
+            begin_time = datetime.now() - timedelta(days=configuration.conf.getint('core', 'sql_query_history_days'))
             dagstat_states = set(itertools.product(dag_ids, State.dag_states))
             qry = (
                 session.query(DagRun.dag_id, DagRun.state, func.count('*'))
                 .filter(DagRun.dag_id.in_(dag_ids))
+                .filter(DagRun.execution_date > begin_time)
                 .group_by(DagRun.dag_id, DagRun.state)
             )
             counts = {(dag_id, state): count for dag_id, state, count in qry}

@@ -1022,8 +1022,7 @@ class SchedulerJob(BaseJob):
         active DAG runs and adding task instances that should run to the
         queue.
         """
-        # update the state of the previously active dag runs
-        # 性能瓶颈：如果外部dag_run触发太快，会导致一个scheduler中的一个dag processor处理很长时间
+        # 获得正在运行的dagrun
         dag_runs = DagRun.find(dag_id=dag.dag_id, state=State.RUNNING, session=session)
         new_dag_runs = []
         dagrun_execution_date_list = []
@@ -1072,27 +1071,41 @@ class SchedulerJob(BaseJob):
         for tis in task_instances:
             execution_date = tis.execution_date
             execution_date_to_tasks.setdefault(execution_date, []).append(tis)
-            
+        
+        # 更新dagrun的状态
         active_dag_runs = []
+        dagrun_execution_date_list = []
         for run in new_dag_runs:
             # 更新dagrun的状态，由所有的任务实例的状态决定
             execution_date = run.execution_date
-            tis = execution_date_to_tasks.get(execution_date)
+            tis = execution_date_to_tasks.get(execution_date, [])
             run.update_state(tis=tis, session=session)
             
             # 如果任务实例还是在运行状态
             if run.state == State.RUNNING:
                 # 删除self与session对象的关联关系，成为一个新建的对象
                 # 即清空self中所有与orm相关的参数
+                execution_date = run.execution_date
                 make_transient(run)
                 active_dag_runs.append(run)
+                dagrun_execution_date_list.append(execution_date)
 
         # 处理状态为 State.NONE, State.UP_FOR_RETRY 的任务实例
+        task_instances = DagModel.get_task_instances_by_dag(dag,
+                                                            dagrun_execution_date_list,
+                                                            state=(State.NONE,
+                                                                   State.UP_FOR_RETRY),
+                                                            session=session)
+        execution_date_to_tasks = {}
+        for tis in task_instances:
+            execution_date = tis.execution_date
+            execution_date_to_tasks.setdefault(execution_date, []).append(tis)
+            
         for run in active_dag_runs:
-            self.log.debug("Examining active DAG run: %s", run)
+            self.log.info("Examining active DAG run: %s", run)
             # this needs a fresh session sometimes tis get detached
-            tis = run.get_task_instances(state=(State.NONE,
-                                                State.UP_FOR_RETRY))
+            execution_date = run.execution_date
+            tis = execution_date_to_tasks.get(execution_date, [])
 
             # this loop is quite slow as it uses are_dependencies_met for
             # every task (in ti.is_runnable). This is also called in
@@ -1110,7 +1123,7 @@ class SchedulerJob(BaseJob):
                     continue
 
                 # 验证任务触发规则，判断上游依赖任务是否完成
-                # 根据上游任务失败的情况设置当前任务实例的状态
+                # 根据上游任务失败的情况修改当前任务实例的状态
                 # 如果满足规则，则把任务实例发送到队列中
                 # 需要验证的规则如下：
                 #     验证重试时间： 任务实例已经标记为重试，但是还没有到下一次重试时间，如果运行就会失败
@@ -1123,8 +1136,11 @@ class SchedulerJob(BaseJob):
                 if ti.are_dependencies_met(
                         dep_context=DepContext(flag_upstream_failed=True),
                         session=session):
-                    self.log.debug('Queuing task: %s', ti)
-                    # 将任务实例的主键加入队列
+                    key = ti.key
+                    self.log.info('Queuing task: %s key is %s', ti, key)
+                    # 默认情况下：
+                    #   如果任务实例的状态为None，会通过NotInRetryPeriodDep依赖
+                    #   如果任务实例的状态为UP_FOR_RETRY，则不会通过NotInRetryPeriodDep依赖
                     queue.append(ti.key)
 
     @provide_session
@@ -1626,11 +1642,13 @@ class SchedulerJob(BaseJob):
                 
             # 创建dagrun关联的任务实例
             self._process_task_instances(dag, tis_out)
+            
             # 如果任务实例执行超时，则记录到sla表中，并发送通知邮件
             self.manage_slas(dag)
 
         # 更新dag每个状态的dag_run的数量，并设置dirty为False
-        models.DagStat.update([d.dag_id for d in dags])
+        # 考虑是否需要去掉，由前端触发
+        # models.DagStat.update([d.dag_id for d in dags])
 
     @provide_session
     def _process_executor_events(self, simple_dag_bag, session=None):
@@ -2070,7 +2088,7 @@ class SchedulerJob(BaseJob):
         # 创建DAG实例，任务实例，记录SLA，并发送通知邮件
         self._process_dags(dagbag, dags, ti_keys_to_schedule)
 
-        # 遍历可调度的任务实例
+        # 遍历可调度的任务实例，这些任务实例的状态为None或UP_FOR_RETRY
         for ti_key in ti_keys_to_schedule:
             dag = dagbag.dags[ti_key[0]]
             task = dag.get_task(ti_key[1])
