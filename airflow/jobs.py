@@ -53,7 +53,7 @@ from xTool.utils.file import list_py_file_paths
 from airflow import configuration as conf
 from airflow import executors, models, settings
 from airflow.exceptions import AirflowException
-from airflow.models import DAG, DagRun
+from airflow.models import DAG, DagRun, DagModel
 from airflow.settings import Stats
 from airflow.task.task_runner import get_task_runner
 from airflow.ti_deps.dep_context import DepContext, QUEUE_DEPS, RUN_DEPS
@@ -1025,7 +1025,8 @@ class SchedulerJob(BaseJob):
         # update the state of the previously active dag runs
         # 性能瓶颈：如果外部dag_run触发太快，会导致一个scheduler中的一个dag processor处理很长时间
         dag_runs = DagRun.find(dag_id=dag.dag_id, state=State.RUNNING, session=session)
-        active_dag_runs = []
+        new_dag_runs = []
+        dagrun_execution_date_list = []
         for run in dag_runs:
             self.log.info("Examining DAG run %s", run)
             # don't consider runs that are executed in the future
@@ -1037,9 +1038,10 @@ class SchedulerJob(BaseJob):
                 continue
 
             # 如果dagrun超过了最大阈值，则不会创建任务实例
-            if len(active_dag_runs) >= dag.max_active_runs:
-                self.log.info("Active dag runs > max_active_run.")
-                continue
+            # 因为在create_dag_run()中已经有阈值判断逻辑，所以这里没有意义
+            # if len(active_dag_runs) >= dag.max_active_runs:
+            #    self.log.info("Active dag runs > max_active_run.")
+            #    continue
 
             # 跳过补录任务，不经过scheduler的分支
             # skip backfill dagruns for now as long as they are not really scheduled
@@ -1055,10 +1057,28 @@ class SchedulerJob(BaseJob):
             # 如果dag修改后增加了一个task，会通过验证后补录新增加的任务实例
             # 如果任务类型是即席查询，则不会创建任务实例
             if dag.schedule_interval != '@once':
+                # 验证任务的完整性，补全缺失的任务
                 run.verify_integrity(session=session)
-                
+            
+            # 获得有效的dagrun的调度时间列表
+            execution_date = run.execution_date
+            dagrun_execution_date_list.append(execution_date)
+            # 获得有效的dagrun
+            new_dag_runs.append(run)
+        
+        # 获得dagrun关联的所有任务实例
+        task_instances = DagModel.get_task_instances_by_dag(dag, dagrun_execution_date_list, session=session)
+        execution_date_to_tasks = {}
+        for tis in task_instances:
+            execution_date = tis.execution_date
+            execution_date_to_tasks.setdefault(execution_date, []).append(tis)
+            
+        active_dag_runs = []
+        for run in new_dag_runs:
             # 更新dagrun的状态，由所有的任务实例的状态决定
-            run.update_state(session=session)
+            execution_date = run.execution_date
+            tis = execution_date_to_tasks.get(execution_date)
+            run.update_state(tis=tis, session=session)
             
             # 如果任务实例还是在运行状态
             if run.state == State.RUNNING:

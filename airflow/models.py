@@ -1409,6 +1409,7 @@ class TaskInstance(Base, LoggingMixin):
         failed = False
         # 根据DAG/TASK上下文中的依赖，返回失败的依赖
         verbose_aware_logger = self.log.info if verbose else self.log.debug
+        # 遍历失败的依赖
         for dep_status in self.get_failed_dep_statuses(
                 dep_context=dep_context,
                 session=session):
@@ -1422,6 +1423,7 @@ class TaskInstance(Base, LoggingMixin):
         if failed:
             return False
 
+        # 依赖全部满足，返回True
         verbose_aware_logger("Dependencies all met for %s", self)
         return True
 
@@ -1433,6 +1435,13 @@ class TaskInstance(Base, LoggingMixin):
         """获取失败的依赖  ."""
         # 获得DAG上下文
         dep_context = dep_context or DepContext()
+        # 默认的依赖self.task.deps 为
+        #            # 验证重试时间： 任务实例已经标记为重试，但是还没有到下一次重试时间，如果运行就会失败
+        #            NotInRetryPeriodDep(),
+        #            # 验证任务实例是否依赖上一个周期的任务实例
+        #            PrevDagrunDep(),
+        #            # 验证上游依赖任务
+        #            TriggerRuleDep(),
         for dep in dep_context.deps | self.task.deps:
             for dep_status in dep.get_dep_statuses(
                     self,
@@ -2196,7 +2205,7 @@ class TaskInstance(Base, LoggingMixin):
         """
         self.raw = raw
         self._set_context(self)
-
+        
 
 class TaskFail(Base):
     """
@@ -3280,7 +3289,27 @@ class DagModel(Base):
         """根据dag_id从DB中获得DagModel对象 ."""
         return session.query(cls).filter(cls.dag_id == dag_id).first()
 
+    @staticmethod
+    @provide_session
+    def get_task_instances_by_dag(dag, execution_dates, limit=1000, session=None):
+        """根据dag和调度时间获取任务实例 ."""
+        # 获得当前dag的所有任务实例
+        TI = TaskInstance
+        tis = session.query(TI).filter(
+            TI.dag_id == dag.dag_id,
+            TI.execution_date.in_(execution_dates),
+        )
 
+        # 如果dag是子集，则只需要获得部分任务实例
+        if dag and dag.partial:
+            tis = tis.filter(TI.task_id.in_(dag.task_ids))
+
+        if limit:
+            return tis.limit(limit).all()
+        else:
+            return tis.all()
+
+        
 @functools.total_ordering
 class DAG(BaseDag, LoggingMixin):
     """
@@ -3964,7 +3993,7 @@ class DAG(BaseDag, LoggingMixin):
 
     @property
     def roots(self):
-        """获得所有的根节点 / 尾节点，即没有下游节点 ."""
+        """获得所有的叶子节点，即没有下游节点 ."""
         return [t for t in self.tasks if not t.downstream_list]
 
     def topological_sort(self):
@@ -4689,6 +4718,7 @@ class DAG(BaseDag, LoggingMixin):
         visit_map[task_id] = DagBag.CYCLE_IN_PROGRESS
 
         task = self.task_dict[task_id]
+        # 遍历任务的所有上游任务
         for descendant_id in task.get_direct_relative_ids():
             if visit_map[descendant_id] == DagBag.CYCLE_IN_PROGRESS:
                 msg = "Cycle detected in DAG. Faulty task: {0} to {1}".format(
@@ -5324,7 +5354,7 @@ class DagRun(Base, LoggingMixin):
         dr = qry.order_by(DR.execution_date).all()
 
         return dr
-
+        
     @provide_session
     def get_task_instances(self, state=None, session=None):
         """获得当前dagrun的多个任务实例
@@ -5409,7 +5439,7 @@ class DagRun(Base, LoggingMixin):
         ).first()
 
     @provide_session
-    def update_state(self, session=None):
+    def update_state(self, tis=None, session=None):
         """更新dagrun的状态，由所有的任务实例的状态决定
         修改dagrun的状态，并调用dag的成功或失败回调函数
         Determines the overall state of the DagRun based on the state
@@ -5418,11 +5448,13 @@ class DagRun(Base, LoggingMixin):
         :return: State
         """
 
+        # 获得dagrun中dag属性
         dag = self.get_dag()
 
         # 根据dagid和execution_date获得所有任务实例
-        tis = self.get_task_instances(session=session)
-
+        if not tis:
+            tis = self.get_task_instances(session=session)
+            
         self.log.debug("Updating state for %s considering %s task(s)", self, len(tis))
 
         # 根据任务实例获得任务，去掉已删除的任务实例
@@ -5444,9 +5476,9 @@ class DagRun(Base, LoggingMixin):
         none_depends_on_past = all(not t.task.depends_on_past for t in unfinished_tasks)
 
         # 未完成的任务实例中，都没有设置并发数限制
-        none_task_concurrency = all(t.task.task_concurrency is None
-                                    for t in unfinished_tasks)
-        # small speed up
+        none_task_concurrency = all(t.task.task_concurrency is None for t in unfinished_tasks)
+        
+        # 任务没有上游依赖，且没有阈值限制，则有可优化的空间 small speed up
         if unfinished_tasks and none_depends_on_past and none_task_concurrency:
             # todo: this can actually get pretty slow: one task costs between 0.01-015s
             no_dependencies_met = True
@@ -5457,9 +5489,18 @@ class DagRun(Base, LoggingMixin):
                 # 判断任务实例的依赖规则是否满足
                 # ignore_in_retry_period 忽略重试时间
                 # flag_upstream_failed 根据上游任务失败的情况设置当前任务实例的状态
+                # 默认的依赖self.task.deps 为
+                #            # 验证重试时间： 任务实例已经标记为重试，但是还没有到下一次重试时间，如果运行就会失败
+                #            NotInRetryPeriodDep(),
+                #            # 验证任务实例是否依赖上一个周期的任务实例
+                #            PrevDagrunDep(),
+                #            # 验证上游依赖任务
+                #            TriggerRuleDep(),
                 deps_met = ut.are_dependencies_met(
                     dep_context=DepContext(
+                        # 是否根据上游任务失败的情况设置当前任务实例的状态
                         flag_upstream_failed=True,
+                        # 是否忽略重试时间
                         ignore_in_retry_period=True),
                     session=session)
                 # 如果依赖规则满足，从DB中获取任务实例的当前状态
@@ -5473,7 +5514,9 @@ class DagRun(Base, LoggingMixin):
 
         # future: remove the check on adhoc tasks (=active_tasks)
         if len(tis) == len(dag.active_tasks):
+            # 获得dag的叶子节点
             root_ids = [t.task_id for t in dag.roots]
+            # 获得所有的任务实例，都是叶子节点
             roots = [t for t in tis if t.task_id in root_ids]
 
             # 任务实例完成且根节点任何一个失败，则dagrun也标记为失败
@@ -5504,6 +5547,7 @@ class DagRun(Base, LoggingMixin):
 
             # finally, if the roots aren't done, the dag is still running
             else:
+                # 将任务状态改为RUNNING
                 self.set_state(State.RUNNING)
 
         # todo: determine we want to use with_for_update to make sure to lock the run
