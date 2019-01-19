@@ -231,12 +231,12 @@ class BaseJob(Base, LoggingMixin):
             
             # 删除self与session对象的关联关系，成为一个新建的对象
             # 即清空self中所有与orm相关的参数
+            # SELECT * FROM job WHERE job.id = %s AND job.job_type IN (%s)
             make_transient(self)
             self.id = id_
 
             # job执行完成后，记录完成时间和状态
             try:
-                # TODO session事务嵌套
                 self._execute()
                 # In case of max runs or max duration
                 self.state = State.SUCCESS
@@ -288,7 +288,7 @@ class BaseJob(Base, LoggingMixin):
         TI = models.TaskInstance
         DR = models.DagRun
         if filter_by_dag_run is None:
-            # 获得所有正在运行的流程实例中，任务状态为 [State.SCHEDULED, State.QUEUED] 的任务实例
+            # 获得所有正在运行的dagrun中，任务实例状态为 [State.SCHEDULED, State.QUEUED] 的任务实例
             begin_time = datetime.now() - timedelta(days=conf.getint('core', 'sql_query_history_days'))
             resettable_tis = (
                 session
@@ -299,7 +299,6 @@ class BaseJob(Base, LoggingMixin):
                         TI.dag_id == DR.dag_id,
                         TI.execution_date == DR.execution_date))
                 .filter(
-                    TI.execution_date > begin_time,
                     DR.execution_date > begin_time,
                     DR.state == State.RUNNING,
                     DR.run_id.notlike(BackfillJob.ID_PREFIX + '%'),  # 不是补录的流程实例
@@ -312,8 +311,8 @@ class BaseJob(Base, LoggingMixin):
         tis_to_reset = []
         # Can't use an update here since it doesn't support joins
         for ti in resettable_tis:
-            # 判断任务实例是否在调度器队列中
-            # 例如：任务状态修改为QUEUED，但是发送给celery队列失败
+            # 判断任务实例是否在调度器队列中，这种情况只有在scheduler进程突然异常终止才会发生
+            # 例如：任务状态修改为QUEUED，但是发送给celery队列失败，失败的原因可能是scheduler进程异常退出
             if ti.key not in queued_tis and ti.key not in running_tis:
                 tis_to_reset.append(ti)
 
@@ -334,6 +333,7 @@ class BaseJob(Base, LoggingMixin):
                 .filter(or_(*filter_for_tis), TI.state.in_(resettable_states))
                 .with_for_update()
                 .all())
+            # 将任务实例状态改为初始状态None，重新进行调度
             for ti in reset_tis:
                 ti.state = State.NONE
                 session.merge(ti)
@@ -414,7 +414,7 @@ class DagFileProcessor(BaseMultiprocessFileProcessor):
             # 执行DAG
             result = scheduler_job.process_file(file_path,
                                                 pickle_dags)
-            # 将执行结果保存到结果队列
+            # 将执行结果保存到结果队列，其实返回的是SimpleDag对象
             result_queue.put(result)
             end_time = time.time()
             log.info(
@@ -1894,7 +1894,8 @@ class SchedulerJob(BaseJob):
             # Kick of new processes and collect results from finished ones
             self.log.info("Heartbeating the process manager, number of times is %s",
                           processor_manager.get_heart_beat_count())
-            # 文件进程管理器心跳，返回文件处理器的执行结果即加载的dag文件对象[{dag_id: dagModel}]
+                          
+            # 文件进程管理器心跳，返回文件处理器子进程的执行结果即加载的dag文件对象[{dag_id: dagModel}]
             simple_dags = processor_manager.heartbeat()
 
             # 因为sqlite只支持单进程，所以需要等待DAG子进程处理完成
@@ -1967,7 +1968,7 @@ class SchedulerJob(BaseJob):
                 loop_end_time - loop_start_time)
             self.log.debug("Sleeping for %.2f seconds", self._processor_poll_interval)
             
-            # 等待文件处理子进程执行
+            # 等待文件处理子进程执行，默认1s
             time.sleep(self._processor_poll_interval)
 
             # Exit early for a test mode
@@ -2095,9 +2096,17 @@ class SchedulerJob(BaseJob):
             ti = models.TaskInstance(task, ti_key[2])
 
             # 将任务实例刷新到DB中
-            ti.refresh_from_db(session=session, lock_for_update=True)
+            # 不需要太及时的刷新操作
+            # ti.refresh_from_db(session=session, lock_for_update=True)
+            
             # We can defer checking the task dependency checks to the worker themselves
             # since they can be expensive to run in the scheduler.
+            # QUEUE_DEPS = {
+            #    NotRunningDep(),    # 任务实例没有运行
+            #    NotSkippedDep(),    # 任务实例没有被标记为跳过
+            #    RunnableExecDateDep(),  # 判断任务执行时间 必须小于等于当前时间  且 小于等于结束时间
+            #    ValidStateDep(QUEUEABLE_STATES),    # 验证任务的状态必须在队列状态中
+            #}
             dep_context = DepContext(deps=QUEUE_DEPS, ignore_task_deps=True)
 
             # Only schedule tasks that have their dependencies met, e.g. to avoid
@@ -2107,7 +2116,7 @@ class SchedulerJob(BaseJob):
             # dependencies twice; once to get the task scheduled, and again to actually
             # run the task. We should try to come up with a way to only check them once.
             # 任务实例入队验证，忽略任务依赖
-            # 标记任务状态为可调度
+            # 修改任务状态为可调度
             if ti.are_dependencies_met(
                     dep_context=dep_context,
                     session=session,
@@ -2129,11 +2138,13 @@ class SchedulerJob(BaseJob):
             self.log.exception("Error logging import errors!")
             
         # 判断是否存在僵死的job，并记录失败的任务实例，发送告警
-        try:
-            dagbag.kill_zombies()
-        except Exception:
-            self.log.exception("Error killing zombies!")
+        # TODO 下面的代码是有问题的，因为只处理job类型为 LocalTaskJob，而调度job的类型为SchedulerJob，所以下面的代码永远无法其作用
+        # try:
+        #     dagbag.kill_zombies()
+        # except Exception:
+        #     self.log.exception("Error killing zombies!")
 
+        # 返回未暂停的dag的封装SimleDag对象
         return simple_dags
 
     @provide_session
