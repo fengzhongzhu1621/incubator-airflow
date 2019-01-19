@@ -485,15 +485,15 @@ class DagBag(BaseDagBag, LoggingMixin):
         """
         Fails tasks that haven't had a heartbeat in too long
         """
-        from airflow.jobs import LocalTaskJob as LJ
-        self.log.info("Finding 'running' jobs without a recent heartbeat")
-        TI = TaskInstance
         secs = configuration.conf.getint('scheduler', 'scheduler_zombie_task_threshold')
-        limit_dttm = datetime.now() - timedelta(seconds=secs)
-        self.log.info("Failing jobs without heartbeat after %s", limit_dttm)
+        now = datetime.now()
+        limit_dttm = now - timedelta(seconds=secs)
+        self.log.info("Finding 'running' jobs without a recent heartbeat after %s", limit_dttm)
 
         # 任务实例正在运行，但是job已经停止，或者job的心跳长时间未更新
-        begin_time = datetime.now() - timedelta(days=configuration.conf.getint('core', 'sql_query_history_days'))
+        begin_time = now - timedelta(days=configuration.conf.getint('core', 'sql_query_history_days'))
+        TI = TaskInstance
+        from airflow.jobs import LocalTaskJob as LJ
         tis = (
             session.query(TI)
             .join(LJ, TI.job_id == LJ.id)
@@ -1256,8 +1256,8 @@ class TaskInstance(Base, LoggingMixin):
 
         # 从DB中获取任务实例
         qry = session.query(TI).filter(
-            TI.dag_id == self.dag_id,
             TI.task_id == self.task_id,
+            TI.dag_id == self.dag_id,
             TI.execution_date == self.execution_date)
 
         # 添加行锁
