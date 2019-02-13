@@ -409,7 +409,7 @@ class DagFileProcessor(BaseMultiprocessFileProcessor):
             start_time = time.time()
             log.info("Started process (PID=%s) to work on %s",
                      os.getpid(), file_path)
-            # 创建一个调度job，dag_ids表示需要调度的dag，如果为None则调度所有的dags
+            # 创建一个调度job，dag_ids表示需要调度的dag，如果为None/[]则调度所有的dags
             scheduler_job = SchedulerJob(dag_ids=dag_id_white_list, log=log)
             # 执行DAG
             result = scheduler_job.process_file(file_path,
@@ -810,6 +810,7 @@ class SchedulerJob(BaseJob):
             #    AND dag_run.execution_date > %s 
             #    AND (dag_run.run_id LIKE 'scheduled__%' OR dag_run.external_trigger = false)           
             # 获得最近的一个正常非外部调度的dag_run，不包括补录的单据
+            # 注意：如果是外部触发的，则@once的dag可以被调度多次
             begin_time = datetime.now() - timedelta(days=conf.getint('core', 'sql_query_history_days'))
             qry = (
                 session.query(func.max(DagRun.execution_date))
@@ -889,13 +890,15 @@ class SchedulerJob(BaseJob):
                 # 不是第一次调度，获得下一次调度时间
                 next_run_date = dag.following_schedule(last_scheduled_run)
 
-            # make sure backfills are also considered
-            # 获得最近的内部触发的dagrun：包括内部调度和补录的
-            last_run = dag.get_last_dagrun(session=session)
-            if last_run and next_run_date:
-                # 跳过已经补录的记录
-                while next_run_date <= last_run.execution_date:
-                    next_run_date = dag.following_schedule(next_run_date)
+            # 跳过已经补录的dagrun
+            if dag.schedule_interval != '@once':
+                # make sure backfills are also considered
+                # 获得最近的内部触发的dagrun：包括内部调度和补录的
+                last_run = dag.get_last_dagrun(session=session)
+                if last_run and next_run_date:
+                    # 跳过已经补录的记录
+                    while next_run_date <= last_run.execution_date:
+                        next_run_date = dag.following_schedule(next_run_date)
 
             # don't ever schedule prior to the dag's start_date
             # 处理调度和dag开始时间的关系
@@ -1002,12 +1005,15 @@ class SchedulerJob(BaseJob):
             # 判断当前时间是否超出区间的右边界
             # 并创建dagrun
             if next_run_date and period_end and period_end <= datetime.now():
+                run_id = DagRun.ID_PREFIX + next_run_date.isoformat()
+                self.log.info("create dagrun %s", run_id)
                 next_run = dag.create_dagrun(
                     run_id=DagRun.ID_PREFIX + next_run_date.isoformat(),
                     execution_date=next_run_date,
                     start_date=datetime.now(),
                     state=State.RUNNING,
-                    external_trigger=False
+                    external_trigger=False,
+                    only_create_dagrun=True
                 )
                 return next_run
 
@@ -1049,15 +1055,9 @@ class SchedulerJob(BaseJob):
 
             # todo: run.dag is transient but needs to be set
             run.dag = dag
-            # 补齐缺失的任务实例
-            # 性能优化，如果是单次任务则不进行任务的补齐操作
-            # todo: preferably the integrity check happens at dag collection time
-            # 根据dag实例，创建所有的任务实例
-            # 如果dag修改后增加了一个task，会通过验证后补录新增加的任务实例
-            # 如果任务类型是即席查询，则不会创建任务实例
-            if dag.schedule_interval != '@once':
-                # 验证任务的完整性，补全缺失的任务
-                run.verify_integrity(session=session)
+
+            # 验证任务的完整性，补全缺失的任务
+            run.verify_integrity(session=session)
             
             # 获得有效的dagrun的调度时间列表
             execution_date = run.execution_date
@@ -1637,8 +1637,8 @@ class SchedulerJob(BaseJob):
             # 创建dagrun，此dag必须存在调度周期设置
             # 如果dagrun的数量超过了阈值，则返回None
             dag_run = self.create_dag_run(dag)
-            if dag_run:
-                self.log.info("Created %s", dag_run)
+            #if dag_run:
+            #    self.log.info("Created %s", dag_run)
                 
             # 创建dagrun关联的任务实例
             self._process_task_instances(dag, tis_out)

@@ -4547,8 +4547,9 @@ class DAG(BaseDag, LoggingMixin):
                       start_date=None,
                       external_trigger=False,
                       conf=None,
+                      only_create_dagrun=False,
                       session=None):
-        """创建dag实例
+        """创建dagrun
         Creates a dag run from this dag including the tasks associated with this dag.
         Returns the dag run.
 
@@ -4578,22 +4579,27 @@ class DAG(BaseDag, LoggingMixin):
             state=state
         )
         session.add(run)
-        # 添加dag状态统计记录
-        DagStat.set_dirty(dag_id=self.dag_id, session=session)
-
         session.commit()
+        
+        # 添加dag状态统计记录
+        DagStat.set_dirty(dag_id=self.dag_id, session=session)       
 
         # 因为dag_run中没有设置dag的外键，所以需要显式设置
         run.dag = self
 
-        # create the associated task instances
-        # state is None at the moment of creation
-        # 根据dag实例，创建所有的任务实例
-        run.verify_integrity(session=session)
+        if not only_create_dagrun:
+            # create the associated task instances
+            # state is None at the moment of creation
+            # 根据dag实例，创建所有的任务实例
+            self.log.info("dagrun %s verify_integrity", run_id)
+            run.verify_integrity(session=session)
 
-        # 从DB中获取最新的dag_run状态和自增ID
-        # 在外部触发时，下面的方法其实没有必要调用
-        run.refresh_from_db()
+            # 从DB中获取最新的dag_run状态和自增ID
+            # SQLAlchemy的ORM方式将数据库中的记录映射成了我们定义好的模型类，
+            # 但是带来一个问题是，这些类对象的实例只在数据库会话（session）的生命期内有效，
+            # 假如我将数据库会话关闭了，再访问数据表类的对象就会报错。
+            #self.log.info("dagrun %s refresh_from_db", run_id)
+            #run.refresh_from_db()
 
         return run
 
@@ -4618,6 +4624,7 @@ class DAG(BaseDag, LoggingMixin):
         # 从DB中获取dag，判断dag是否存在
         orm_dag = session.query(
             DagModel).filter(DagModel.dag_id == self.dag_id).first()
+        # 如果dag不在db中，则创建一个DagModel
         if not orm_dag:
             orm_dag = DagModel(dag_id=self.dag_id)
             self.log.info("Creating ORM DAG for %s", self.dag_id)
