@@ -379,9 +379,6 @@ class FileProcessorManager(LoggingMixin):
         - 将任务加入队列
         - 执行队列中的进程
         """
-        # 已完成的文件处理器
-        # :type : dict[unicode, AbstractFileProcessor]
-        finished_processors = {}
         # 正在运行的文件处理器
         # :type : dict[unicode, AbstractFileProcessor]
         running_processors = {}
@@ -391,8 +388,6 @@ class FileProcessorManager(LoggingMixin):
         for file_path, processor in self._processors.items():
             if processor.done:
                 self.log.info("Processor for %s finished", file_path)
-                # 获得已完成的文件处理器进程
-                finished_processors[file_path] = processor
                 # 文件处理器运行时间
                 now = datetime.now()
                 # 记录文件处理器的的执行时长
@@ -480,9 +475,9 @@ class FileProcessorManager(LoggingMixin):
             files_paths_to_queue_len = len(files_paths_to_queue)
             self.log.info("Queuing %s files for processing: %s = %s - %s - %s",
                           files_paths_to_queue_len,
-                          files_paths_to_queue_len,
-                          file_paths_len,
-                          file_paths_in_progress_len,
+                          files_paths_to_queue_len,          # 队列的长度
+                          file_paths_len,                    # 需要处理的文件的数量
+                          file_paths_in_progress_len,        # 正在运行的文件子进程的数量
                           file_paths_recently_processed_len)
 
         # 处理器并发性最大值验证
