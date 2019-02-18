@@ -63,7 +63,7 @@ class SimpleDag(BaseDag):
             special_args = {}
             if task.task_concurrency is not None:
                 special_args['task_concurrency'] = task.task_concurrency
-            if len(special_args) > 0:
+            if special_args:
                 self._task_special_args[task.task_id] = special_args
 
     @property
