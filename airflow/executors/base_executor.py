@@ -52,7 +52,7 @@ class BaseExecutor(LoggingMixin):
         pass
 
     def queue_command(self, task_instance, command, priority=1, queue=None):
-        """将任务实例放到队列中 ."""
+        """将任务实例放到本地可执行队列中 ."""
         # 每个任务实例都有一个唯一key
         key = task_instance.key
         # 将没有运行，且没有在队列中的任务实例加入队列

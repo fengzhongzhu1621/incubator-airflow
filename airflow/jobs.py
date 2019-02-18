@@ -33,7 +33,6 @@ import sys
 import threading
 import time
 from datetime import datetime, timedelta
-import platform
 from collections import defaultdict
 
 from past.builtins import basestring
@@ -414,7 +413,7 @@ class DagFileProcessor(BaseMultiprocessFileProcessor):
             # 执行DAG
             result = scheduler_job.process_file(file_path,
                                                 pickle_dags)
-            # 将执行结果保存到结果队列，其实返回的是SimpleDag对象
+            # result是SimpleDag对象
             result_queue.put(result)
             end_time = time.time()
             log.info(
@@ -1027,6 +1026,9 @@ class SchedulerJob(BaseJob):
         This method schedules the tasks for a single DAG by looking at the
         active DAG runs and adding task instances that should run to the
         queue.
+        
+        Args:
+            queue: 满足依赖的任务实例的key列表
         """
         # 获得正在运行的dagrun
         dag_runs = DagRun.find(dag_id=dag.dag_id, state=State.RUNNING, session=session)
@@ -1104,6 +1106,7 @@ class SchedulerJob(BaseJob):
         for run in active_dag_runs:
             self.log.info("Examining active DAG run: %s", run)
             # this needs a fresh session sometimes tis get detached
+            # 获得dagrun的所有处理状态为 State.NONE, State.UP_FOR_RETRY 的任务实例
             execution_date = run.execution_date
             tis = execution_date_to_tasks.get(execution_date, [])
 
@@ -1149,7 +1152,7 @@ class SchedulerJob(BaseJob):
                                              old_states,
                                              new_state,
                                              session=None):
-        """
+        """修改没有dagrun的任务实例的状态
         For all DAG IDs in the SimpleDagBag, look for task instances in the
         old_states and set them to new_state if the corresponding DagRun
         does not exist or exists but is not in the running state. This
@@ -1163,9 +1166,40 @@ class SchedulerJob(BaseJob):
         :param simple_dag_bag: TaskInstances associated with DAGs in the
         simple_dag_bag and with states in the old_state will be examined
         :type simple_dag_bag: SimpleDagBag
+        
+        UPDATE task_instance, 
+            (SELECT *
+            FROM task_instance LEFT OUTER
+            JOIN dag_run
+                ON task_instance.dag_id = dag_run.dag_id
+                    AND task_instance.execution_date = dag_run.execution_date
+            WHERE task_instance.dag_id IN (%s)
+                    AND task_instance.state IN ('up_for_retry')
+                    AND (dag_run.state != 'running'
+                    OR dag_run.state IS NULL)) AS anon_1 SET task_instance.state='failed'
+        WHERE task_instance.dag_id = anon_1.dag_id
+                AND task_instance.task_id = anon_1.task_id
+                AND task_instance.execution_date = anon_1.execution_date 
+
+                
+        UPDATE task_instance, 
+            (SELECT *
+            FROM task_instance LEFT OUTER
+            JOIN dag_run
+                ON task_instance.dag_id = dag_run.dag_id
+                    AND task_instance.execution_date = dag_run.execution_date
+            WHERE task_instance.dag_id IN (%s)
+                    AND task_instance.state IN ('queued', 'scheduled')
+                    AND (dag_run.state != 'running'
+                    OR dag_run.state IS NULL)) AS anon_1 SET task_instance.state=null
+        WHERE task_instance.dag_id = anon_1.dag_id
+                AND task_instance.task_id = anon_1.task_id
+                AND task_instance.execution_date = anon_1.execution_date
+
         """
+        begin_time = datetime.now() - timedelta(days=conf.getint('core', 'sql_query_history_days'))
+        
         tis_changed = 0
-        # TODO sql优化
         # 根据旧的状态，查询任务实例
         # 且dagrun的状态可以为None，但不能为RUNNING
         query = session \
@@ -1174,6 +1208,7 @@ class SchedulerJob(BaseJob):
                 models.TaskInstance.dag_id == models.DagRun.dag_id,
                 models.TaskInstance.execution_date == models.DagRun.execution_date)) \
             .filter(models.TaskInstance.dag_id.in_(simple_dag_bag.dag_ids)) \
+            .filter(models.TaskInstance.execution_date > begin_time) \
             .filter(models.TaskInstance.state.in_(old_states)) \
             .filter(or_(
                 models.DagRun.state != State.RUNNING,
@@ -1207,7 +1242,7 @@ class SchedulerJob(BaseJob):
 
     @provide_session
     def __get_task_concurrency_map(self, states, session=None):
-        """根据状态，获得dag中每个任务实例的数量
+        """根据状态，获得每个任务中，任务实例的数量
         Returns a map from tasks to number in the states list given.
 
         :param states: List of states to query for
@@ -1215,13 +1250,21 @@ class SchedulerJob(BaseJob):
         :return: A map from (dag_id, task_id) to count of tasks in states
         :rtype: Dict[[String, String], Int]
 
+        SELECT task_instance.task_id AS task_instance_task_id,
+                 task_instance.dag_id AS task_instance_dag_id,
+                 count(*) AS count_1
+        FROM task_instance
+        WHERE task_instance.state IN ('running', 'queued')
+        GROUP BY  task_instance.task_id, task_instance.dag_id
         """
-        # TODO SQL优化
+        begin_time = now - timedelta(days=conf.getint('core', 'sql_query_history_days'))
+        
         TI = models.TaskInstance
         # 获得指定状态的任务实例的数量
         ti_concurrency_query = (
             session
             .query(TI.task_id, TI.dag_id, func.count('*'))
+            .filter(TI.execution_date > begin_time)
             .filter(TI.state.in_(states))
             .group_by(TI.task_id, TI.dag_id)
         ).all()
@@ -1245,9 +1288,26 @@ class SchedulerJob(BaseJob):
         :param states: Execute TaskInstances in these states
         :type states: Tuple[State]
         :return: List[TaskInstance]
+        
+        
+        SELECT *
+        FROM task_instance LEFT OUTER
+        JOIN dag_run
+            ON dag_run.dag_id = task_instance.dag_id
+                AND dag_run.execution_date = task_instance.execution_date LEFT OUTER
+        JOIN dag
+            ON dag.dag_id = task_instance.dag_id
+        WHERE task_instance.dag_id IN (%s)
+                AND (dag_run.run_id IS NULL
+                OR dag_run.run_id NOT LIKE % 'backfill_%')
+                AND (dag.dag_id IS NULL
+                OR dag.is_paused = 0)
+                AND task_instance.state IN ('scheduled')
         """
         executable_tis = []
 
+        begin_time = datetime.now() - timedelta(days=conf.getint('core', 'sql_query_history_days'))
+        
         # Get all the queued task instances from associated with scheduled
         # DagRuns which are not backfilled, in the given states,
         # and the dag is not paused
@@ -1259,6 +1319,7 @@ class SchedulerJob(BaseJob):
             session
             .query(TI)
             .filter(TI.dag_id.in_(simple_dag_bag.dag_ids))
+            .filter(TI.execution_date > begin_time)
             .outerjoin(
                 DR,
                 and_(DR.dag_id == TI.dag_id, DR.execution_date == TI.execution_date)
@@ -1288,22 +1349,19 @@ class SchedulerJob(BaseJob):
             ["{}".format(x) for x in task_instances_to_examine])
         self.log.info("Tasks up for execution:\n\t%s", task_instance_str)
 
-        # Get the pool settings
-        pools = {p.pool: p for p in session.query(models.Pool).all()}
-
         # 获得每个插槽已经容纳的任务实例
         pool_to_task_instances = defaultdict(list)
         for task_instance in task_instances_to_examine:
             pool_to_task_instances[task_instance.pool].append(task_instance)
 
-        # 根据状态，获得dag中RUNNING/QUEUE每个任务实例的数量
         states_to_count_as_running = [State.RUNNING, State.QUEUED]
-        task_concurrency_map = self.__get_task_concurrency_map(
-            states=states_to_count_as_running, session=session)
+        task_concurrency_map = None
+        pools = None
 
         # Go through each pool, and queue up a task for execution if there are
         # any open slots in the pool.
-        for pool, task_instances in pool_to_task_instances.items():
+        for pool, task_instances in iteritems(pool_to_task_instances):
+            # 获得每个类型的插槽的可用数量
             if not pool:
                 # Arbitrary:
                 # If queued outside of a pool, trigger no more than
@@ -1311,6 +1369,11 @@ class SchedulerJob(BaseJob):
                 # 默认任务实例插槽的数量，用于对任务实例的数量进行限制
                 open_slots = conf.getint('core', 'non_pooled_task_slot_count')
             else:
+                if pools is None:
+                    # Get the pool settings
+                    # 获得插槽配置
+                    # SELECT * FROM slot_pool
+                    pools = {p.pool: p for p in session.query(models.Pool).all()} 
                 if pool not in pools:
                     self.log.warning(
                         "Tasks using non-existent pool '%s' will not be scheduled",
@@ -1332,6 +1395,8 @@ class SchedulerJob(BaseJob):
 
             # 将任务实例按优先级逆序，时间顺序
             # 优先处理优先级高，且调度时间早的任务实例
+            # 1. 优先级权重越大，则优先级越高
+            # 2. 时间越早，则优先级越高
             priority_sorted_task_instances = sorted(
                 task_instances, key=lambda ti: (-ti.priority_weight, ti.execution_date))
 
@@ -1353,7 +1418,7 @@ class SchedulerJob(BaseJob):
                 dag_id = task_instance.dag_id
                 simple_dag = simple_dag_bag.get_dag(dag_id)
 
-                # 根据dag_id, 获得指定的任务实例的数量
+                # 根据dag_id, 获得正在运行的任务实例的数量
                 if dag_id not in dag_id_to_possibly_running_task_count:
                     dag_id_to_possibly_running_task_count[dag_id] = \
                         DAG.get_num_task_instances(
@@ -1364,7 +1429,7 @@ class SchedulerJob(BaseJob):
 
                 current_task_concurrency = dag_id_to_possibly_running_task_count[dag_id]
 
-                # 每个dag同时执行的任务实例的数量
+                # 每个dag同时执行的任务实例的数量，取决于配置文件中的参数 dag_concurrency
                 task_concurrency_limit = simple_dag_bag.get_dag(dag_id).concurrency
                 self.log.info(
                     "DAG %s has %s/%s running and queued tasks",
@@ -1379,11 +1444,15 @@ class SchedulerJob(BaseJob):
                     )
                     continue
 
-                # 获得任务的并发数限制，每个任务的实例数量都有阈值限制
+                # 获得任务的并发数限制，每个任务的实例数量都有阈值限制，此值是任务Operator的参数
                 task_concurrency = simple_dag.get_task_special_arg(
                     task_instance.task_id,
                     'task_concurrency')
                 if task_concurrency is not None:
+                    # 获得dag中状态为RUNNING/QUEUE的，每个任务实例的数量
+                    if task_concurrency_map is None:
+                        task_concurrency_map = self.__get_task_concurrency_map(
+                            states=states_to_count_as_running, session=session)
                     num_running = task_concurrency_map[
                         ((task_instance.dag_id, task_instance.task_id))
                     ]
@@ -1396,7 +1465,7 @@ class SchedulerJob(BaseJob):
                         # TODO 不明白为什么加一
                         task_concurrency_map[(task_instance.dag_id, task_instance.task_id)] += 1
 
-                # 执行器禁止重复执行
+                # 执行器禁止重复执行任务实例
                 if self.executor.has_task(task_instance):
                     self.log.debug(
                         "Not handling task %s as the executor reports it is running",
@@ -1412,8 +1481,8 @@ class SchedulerJob(BaseJob):
 
         task_instance_str = "\n\t".join(
             ["{}".format(x) for x in executable_tis])
-        self.log.info(
-            "Setting the follow tasks to queued state:\n\t%s", task_instance_str)
+        #self.log.info(
+        #    "Setting the follow tasks to queued state:\n\t%s", task_instance_str)
         # so these dont expire on commit
         for ti in executable_tis:
             copy_dag_id = ti.dag_id
@@ -1437,12 +1506,25 @@ class SchedulerJob(BaseJob):
         :param acceptable_states: Filters the TaskInstances updated to be in these states
         :type acceptable_states: Iterable[State]
         :return: List[TaskInstance]
+        
+        
+        SELECT *
+        FROM task_instance
+        WHERE task_instance.dag_id = %s
+                AND task_instance.task_id = %s
+                AND task_instance.execution_date = %s
+                AND task_instance.state IN ('scheduled') FOR UPDATE
+                
+        UPDATE task_instance SET state='queued',
+                 queued_dttm=%s
+        WHERE task_instance.task_id = %s
+                AND task_instance.dag_id = %s
+                AND task_instance.execution_date = %s
         """
-        if len(task_instances) == 0:
+        if not task_instances:
             session.commit()
             return []
 
-        # TODO 有可能导致SQL超长，考虑使用helpers.reduce_in_chunks
         TI = models.TaskInstance
         filter_for_ti_state_change = (
             [and_(
@@ -1486,7 +1568,6 @@ class SchedulerJob(BaseJob):
 
         # requery in batches since above was expired by commit
         # commit之后需要重新获取入队的任务实例
-        # TODO 是否可以直接返回 tis_to_set_to_queued
         def query(result, items):
             tis_to_be_queued = (
                 session
@@ -1513,7 +1594,7 @@ class SchedulerJob(BaseJob):
         return tis_to_be_queued
 
     def _enqueue_task_instances_with_queued_state(self, simple_dag_bag, task_instances):
-        """将已经入队的任务实例发给执行器执行
+        """将QUEUED状态的任务实例发给执行器执行
         Takes task_instances, which should have been set to queued, and enqueues them
         with the executor.
 
@@ -1557,7 +1638,7 @@ class SchedulerJob(BaseJob):
             task_instance.task_id = copy_task_id
             task_instance.execution_date = copy_execution_date
 
-            # 将任务实例放入可执行队列
+            # 将任务实例放入本地可执行队列
             self.executor.queue_command(
                 task_instance,
                 command,
@@ -1569,7 +1650,7 @@ class SchedulerJob(BaseJob):
                                 simple_dag_bag,
                                 states,
                                 session=None):
-        """执行状态为 SCHEDULED 的任务实例
+        """将任务实例的状态从 SCHEDULED 改为 QUEUED
         Attempts to execute TaskInstances that should be executed by the scheduler.
 
         There are three steps:
@@ -1595,12 +1676,14 @@ class SchedulerJob(BaseJob):
                 items,
                 states,
                 session=session)
+            # 将QUEUED状态的任务实例发给执行器执行
             self._enqueue_task_instances_with_queued_state(
                 simple_dag_bag,
                 tis_with_state_changed)
             session.commit()
             return result + len(tis_with_state_changed)
 
+        # 批量修改任务的状态
         return helpers.reduce_in_chunks(query, executable_tis, 0, self.max_tis_per_query)
 
     def _process_dags(self, dagbag, dags, tis_out):
@@ -1641,6 +1724,7 @@ class SchedulerJob(BaseJob):
             #    self.log.info("Created %s", dag_run)
                 
             # 创建dagrun关联的任务实例
+            # tis_out: 返回满足依赖的任务实例的key列表
             self._process_task_instances(dag, tis_out)
             
             # 如果任务实例执行超时，则记录到sla表中，并发送通知邮件
@@ -1908,6 +1992,7 @@ class SchedulerJob(BaseJob):
                 processor_manager.wait_until_finished()
 
             # Send tasks for execution if available
+            # 如果有文件处理子进程已经执行完成
             simple_dag_bag = SimpleDagBag(simple_dags)
             if simple_dags:
                 # Handle cases where a DAG run state is set (perhaps manually) to
@@ -1917,18 +2002,21 @@ class SchedulerJob(BaseJob):
                 # If a task instance is up for retry but the corresponding DAG run
                 # isn't running, mark the task instance as FAILED so we don't try
                 # to re-run it.
+                # 如果dagrun不是运行态，则将任务实例的状态从 UP_FOR_RETRY 改为 FAILED，因为没必要重跑失败的任务
                 self._change_state_for_tis_without_dagrun(simple_dag_bag,
                                                           [State.UP_FOR_RETRY],
                                                           State.FAILED)
                 # If a task instance is scheduled or queued, but the corresponding
                 # DAG run isn't running, set the state to NONE so we don't try to
                 # re-run it.
+                # 如果dagrun不是运行态，则任务实例已经被调度，则将其状态从 QUEUED/SCHEDULED 改为 None，重新调度任务实例
                 self._change_state_for_tis_without_dagrun(simple_dag_bag,
                                                           [State.QUEUED,
                                                            State.SCHEDULED],
                                                           State.NONE)
 
-                # 将任务实例加入到executor队列中
+                # 1. 修改任务实例的状态： SCHEDULED -> QUEUED
+                # 2. 将任务实例加入到executor队列中
                 self._execute_task_instances(simple_dag_bag,
                                              (State.SCHEDULED,))
 
@@ -2087,6 +2175,7 @@ class SchedulerJob(BaseJob):
         ti_keys_to_schedule = []
 
         # 创建DAG实例，任务实例，记录SLA，并发送通知邮件
+        # ti_keys_to_schedule: 返回满足依赖的任务实例的key列表
         self._process_dags(dagbag, dags, ti_keys_to_schedule)
 
         # 遍历可调度的任务实例，这些任务实例的状态为None或UP_FOR_RETRY
@@ -2101,6 +2190,15 @@ class SchedulerJob(BaseJob):
             
             # We can defer checking the task dependency checks to the worker themselves
             # since they can be expensive to run in the scheduler.
+            # QUEUEABLE_STATES = {
+            #    State.FAILED,
+            #    State.NONE,
+            #    State.QUEUED,
+            #    State.SCHEDULED,
+            #    State.SKIPPED,
+            #    State.UPSTREAM_FAILED,
+            #    State.UP_FOR_RETRY,
+            # }
             # QUEUE_DEPS = {
             #    NotRunningDep(),    # 任务实例没有运行
             #    NotSkippedDep(),    # 任务实例没有被标记为跳过
@@ -2117,6 +2215,7 @@ class SchedulerJob(BaseJob):
             # run the task. We should try to come up with a way to only check them once.
             # 任务实例入队验证，忽略任务依赖
             # 修改任务状态为可调度
+            # None / UP_FOR_RETRY -> SCHEDULED
             if ti.are_dependencies_met(
                     dep_context=dep_context,
                     session=session,
@@ -2125,9 +2224,9 @@ class SchedulerJob(BaseJob):
                 # scheduled state will be sent to the executor
                 ti.state = State.SCHEDULED
 
-            # Also save this task instance to the DB.
-            self.log.info("Creating / updating %s in ORM", ti)
-            session.merge(ti)
+                # Also save this task instance to the DB.
+                self.log.info("Creating / updating %s in ORM", ti)
+                session.merge(ti)
         # commit batch
         session.commit()
 
@@ -2138,13 +2237,14 @@ class SchedulerJob(BaseJob):
             self.log.exception("Error logging import errors!")
             
         # 判断是否存在僵死的job，并记录失败的任务实例，发送告警
-        # TODO 下面的代码是有问题的，因为只处理job类型为 LocalTaskJob，而调度job的类型为SchedulerJob，所以下面的代码永远无法其作用
-        # try:
-        #     dagbag.kill_zombies()
-        # except Exception:
-        #     self.log.exception("Error killing zombies!")
+        # TODO sql可以进一步优化
+        if self.executor_class != '1SequentialExecutor':
+            try:
+                dagbag.kill_zombies()
+            except Exception:
+                self.log.exception("Error killing zombies!")
 
-        # 返回未暂停的dag的封装SimleDag对象
+        # 返回dag的封装SimleDag对象
         return simple_dags
 
     @provide_session

@@ -494,6 +494,9 @@ class DagBag(BaseDagBag, LoggingMixin):
         begin_time = now - timedelta(days=configuration.conf.getint('core', 'sql_query_history_days'))
         TI = TaskInstance
         from airflow.jobs import LocalTaskJob as LJ
+        # SELECT task_instance.try_number AS task_instance_try_number, task_instance.task_id AS task_instance_task_id, task_instance.dag_id AS task_instance_dag_id, task_instance.execution_date AS task_instance_execution_date, task_instance.start_date AS task_instance_start_date, task_instance.end_date AS task_instance_end_date, task_instance.duration AS task_instance_duration, task_instance.state AS task_instance_state, task_instance.max_tries AS task_instance_max_tries, task_instance.hostname AS task_instance_hostname, task_instance.unixname AS task_instance_unixname, task_instance.job_id AS task_instance_job_id, task_instance.pool AS task_instance_pool, task_instance.queue AS task_instance_queue, task_instance.priority_weight AS task_instance_priority_weight, task_instance.operator AS task_instance_operator, task_instance.queued_dttm AS task_instance_queued_dttm, task_instance.pid AS task_instance_pid, task_instance.executor_config AS task_instance_executor_config 
+        # FROM task_instance INNER JOIN job ON task_instance.job_id = job.id AND job.job_type IN (LocalTaskJob) 
+        # WHERE task_instance.execution_date > %s AND task_instance.state = 'running' AND (job.latest_heartbeat < %s OR job.state != 'running')
         tis = (
             session.query(TI)
             .join(LJ, TI.job_id == LJ.id)
@@ -1251,6 +1254,12 @@ class TaskInstance(Base, LoggingMixin):
         :param lock_for_update: if True, indicates that the database should
             lock the TaskInstance (issuing a FOR UPDATE clause) until the
             session is committed.
+            
+        SELECT *
+        FROM task_instance
+        WHERE task_instance.task_id = %s
+                AND task_instance.dag_id = %s
+                AND task_instance.execution_date = %s LIMIT 1
         """
         TI = TaskInstance
 
@@ -4700,10 +4709,19 @@ class DAG(BaseDag, LoggingMixin):
         :type states: list[state]
         :return: The number of running tasks
         :rtype: int
+        
+        SELECT count(task_instance.task_id) AS count_1
+        FROM task_instance
+        WHERE task_instance.dag_id = %s
+                AND task_instance.task_id IN (%s)
+                AND task_instance.state IN ('running', 'queued')
         """
+        begin_time = datetime.now() - timedelta(days=configuration.conf.getint('core', 'sql_query_history_days'))
+        
         qry = session.query(func.count(TaskInstance.task_id)).filter(
             TaskInstance.dag_id == dag_id,
-            TaskInstance.task_id.in_(task_ids))
+            TaskInstance.task_id.in_(task_ids),
+            TaskInstance.execution_date > begin_time)
         if states is not None:
             if None in states:
                 qry = qry.filter(or_(
