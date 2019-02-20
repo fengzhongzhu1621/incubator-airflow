@@ -95,6 +95,9 @@ from airflow.utils.weight_rule import WeightRule
 from airflow.utils.net import get_hostname
 from airflow.utils.log.logging_mixin import LoggingMixin
 
+from xTool.misc import USE_WINDOWS
+
+
 install_aliases()
 
 Base = declarative_base()
@@ -1150,6 +1153,9 @@ class TaskInstance(Base, LoggingMixin):
         :type cfg_path: basestring
         :return: shell command that can be used to run the task instance
         """
+        if USE_WINDOWS and file_path:
+            file_path = file_path.replace("\\", "/")
+                
         iso = execution_date.isoformat()
         cmd = ["airflow", "run", str(dag_id), str(task_id), str(iso)]
         cmd.extend(["--mark_success"]) if mark_success else None
