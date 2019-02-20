@@ -116,6 +116,7 @@ class AirflowConfigParser(XToolConfigParser):
 
     def __init__(self, default_config=None, *args, **kwargs):
         super(AirflowConfigParser, self).__init__(default_config, *args, **kwargs)
+        self.airflow_defaults = self.defaults
 
     def _validate(self):
         if (
