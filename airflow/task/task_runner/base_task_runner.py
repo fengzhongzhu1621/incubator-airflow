@@ -28,6 +28,7 @@ from airflow.utils.log.logging_mixin import LoggingMixin
 
 from airflow import configuration as conf
 from airflow.utils.configuration import tmp_configuration_copy
+from xTool.misc import USE_WINDOWS
 
 
 PYTHONPATH_VAR = 'PYTHONPATH'
@@ -118,6 +119,10 @@ class BaseTaskRunner(LoggingMixin):
         full_cmd = run_with + cmd
 
         self.log.info('Running: %s', full_cmd)
+        if USE_WINDOWS:
+            preexec_fn = None
+        else:
+            preexec_fn = os.setsid
         proc = subprocess.Popen(
             full_cmd,
             stdout=subprocess.PIPE,
@@ -125,7 +130,7 @@ class BaseTaskRunner(LoggingMixin):
             universal_newlines=True,
             close_fds=True,
             env=os.environ.copy(),
-            preexec_fn=os.setsid
+            preexec_fn=preexec_fn
         )
 
         # 启动一个线程，在命令执行完成后记录相关日志
