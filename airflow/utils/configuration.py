@@ -22,8 +22,10 @@ from __future__ import absolute_import
 import os
 import json
 from tempfile import mkstemp
+import platform
 
 from airflow import configuration as conf
+from xTool.misc import USE_WINDOWS
 
 
 def tmp_configuration_copy(chmod=0o600):
@@ -37,7 +39,8 @@ def tmp_configuration_copy(chmod=0o600):
 
     with os.fdopen(temp_fd, 'w') as temp_file:
         if chmod is not None:
-            os.fchmod(temp_fd, chmod)
+            if not USE_WINDOWS:
+                os.fchmod(temp_fd, chmod)
         json.dump(cfg_dict, temp_file)
 
     return cfg_path
