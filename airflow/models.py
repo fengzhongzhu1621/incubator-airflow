@@ -1153,9 +1153,11 @@ class TaskInstance(Base, LoggingMixin):
         :type cfg_path: basestring
         :return: shell command that can be used to run the task instance
         """
-        if USE_WINDOWS and file_path:
-            file_path = file_path.replace("\\", "/")
-                
+        if USE_WINDOWS:
+            if file_path:
+                file_path = file_path.replace("\\", "/")
+            if cfg_path:
+                cfg_path = cfg_path.replace("\\", "/")
         iso = execution_date.isoformat()
         cmd = ["airflow", "run", str(dag_id), str(task_id), str(iso)]
         cmd.extend(["--mark_success"]) if mark_success else None

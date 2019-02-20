@@ -28,6 +28,7 @@ from airflow.exceptions import AirflowException
 from airflow.models import BaseOperator
 from airflow.utils.decorators import apply_defaults
 from airflow.utils.file import TemporaryDirectory
+from xTool.misc import USE_WINDOWS
 
 
 class BashOperator(BaseOperator):
@@ -89,12 +90,15 @@ class BashOperator(BaseOperator):
                     script_location
                 )
 
-                def pre_exec():
-                    # Restore default signal disposition and invoke setsid
-                    for sig in ('SIGPIPE', 'SIGXFZ', 'SIGXFSZ'):
-                        if hasattr(signal, sig):
-                            signal.signal(getattr(signal, sig), signal.SIG_DFL)
-                    os.setsid()
+                if USE_WINDOWS:
+                    pre_exec = None
+                else:
+                    def pre_exec():
+                        # Restore default signal disposition and invoke setsid
+                        for sig in ('SIGPIPE', 'SIGXFZ', 'SIGXFSZ'):
+                            if hasattr(signal, sig):
+                                signal.signal(getattr(signal, sig), signal.SIG_DFL)
+                        os.setsid()
 
                 self.log.info("Running command: %s", self.bash_command)
                 # 执行临时bash脚本

@@ -79,6 +79,7 @@ from sqlalchemy.orm import exc
 from xTool.utils.cli import BaseCLIFactory, Arg
 from xTool.utils.signal_handler import sigint_handler, sigquit_handler
 from xTool.utils.processes import get_num_ready_workers_running, get_num_workers_running
+from xTool.misc import USE_WINDOWS
 
 
 # 加载认证模块， 设置 api.api_auth.client_auth 全局变量
@@ -498,12 +499,16 @@ def run(args, dag=None):
     # Load custom airflow config
     # 加载自定义配置文件
     if args.cfg_path:
-        with open(args.cfg_path, 'r') as conf_file:
+        if USE_WINDOWS:
+            cfg_path = args.cfg_path.replace("\\", "/")
+        else:
+            cfg_path = args.cfg_path
+        with open(cfg_path, 'r') as conf_file:
             conf_dict = json.load(conf_file)
 
         # 加载完文件后立即删除
-        if os.path.exists(args.cfg_path):
-            os.remove(args.cfg_path)
+        if os.path.exists(cfg_path):
+            os.remove(cfg_path)
 
         conf.conf.read_dict(conf_dict, source=args.cfg_path)
         settings.configure_vars()
