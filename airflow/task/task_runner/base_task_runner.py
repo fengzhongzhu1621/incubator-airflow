@@ -169,5 +169,5 @@ class BaseTaskRunner(LoggingMixin):
         """删除临时配置文件
         A callback that should be called when this is done running.
         """
-        if self._cfg_path and os.path.isfile(self._cfg_path):
+        if not USE_WINDOWS and self._cfg_path and os.path.isfile(self._cfg_path):
             subprocess.call(['sudo', 'rm', self._cfg_path], close_fds=True)
