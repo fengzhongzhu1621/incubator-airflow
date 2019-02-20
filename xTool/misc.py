@@ -1,5 +1,17 @@
 #coding: utf-8
 
+import platform
+
+# Determine platform being used.
+system = platform.system()
+USE_MAC = USE_WINDOWS = USE_X11 = False
+if system == 'Darwin':
+    USE_MAC = True
+elif system == 'Windows' or system == 'Microsoft':
+    USE_WINDOWS = True
+else:  # Default to X11
+    USE_X11 = True
+
 
 def tob(s, enc='utf-8'):
     """将字符串转换为utf8/bytes编码 ."""
