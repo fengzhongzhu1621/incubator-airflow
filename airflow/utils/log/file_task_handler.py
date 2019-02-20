@@ -19,12 +19,14 @@
 
 import logging
 import os
+import platform
 import requests
 
 from airflow import configuration as conf
 from airflow.configuration import AirflowConfigException
 from airflow.utils.file import mkdirs
 from airflow.utils.helpers import parse_template_string
+from xTool.misc import USE_WINDOWS
 
 
 class FileTaskHandler(logging.Handler):
@@ -77,6 +79,11 @@ class FileTaskHandler(logging.Handler):
         if self.filename_jinja_template:
             jinja_context = ti.get_template_context()
             jinja_context['try_number'] = try_number
+
+            # windows下文件名不能有冒号
+            if USE_WINDOWS:
+                jinja_context['ts'] = jinja_context['ts'].replace(":", "")
+
             return self.filename_jinja_template.render(**jinja_context)
 
         return self.filename_template.format(dag_id=ti.dag_id,
@@ -195,15 +202,18 @@ class FileTaskHandler(logging.Handler):
         # tries to write to a log file created by the other user.
         relative_path = self._render_filename(ti, ti.try_number)
         full_path = os.path.join(self.local_base, relative_path)
+        # 获得日志目录
         directory = os.path.dirname(full_path)
         # Create the log file and give it group writable permissions
         # TODO(aoen): Make log dirs and logs globally readable for now since the SubDag
         # operator is not compatible with impersonation (e.g. if a Celery executor is used
         # for a SubDag operator and the SubDag operator has a different owner than the
         # parent DAG)
+        # 创建日志目录
         if not os.path.exists(directory):
             # Create the directory as globally writable using custom mkdirs
             # as os.makedirs doesn't set mode properly.
+            directory = os.path.abspath(directory)
             mkdirs(directory, 0o777)
 
         if not os.path.exists(full_path):
