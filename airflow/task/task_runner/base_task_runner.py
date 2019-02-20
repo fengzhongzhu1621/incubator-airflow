@@ -128,7 +128,7 @@ class BaseTaskRunner(LoggingMixin):
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             universal_newlines=True,
-            close_fds=True,
+            close_fds=False if USE_WINDOWS else True,
             env=os.environ.copy(),
             preexec_fn=preexec_fn
         )

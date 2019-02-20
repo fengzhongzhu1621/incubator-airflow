@@ -1676,7 +1676,7 @@ class SchedulerJob(BaseJob):
                 items,
                 states,
                 session=session)
-            # 将QUEUED状态的任务实例发给执行器执行
+            # 构造可执行任务命令，将QUEUED状态的任务实例发给执行器队列
             self._enqueue_task_instances_with_queued_state(
                 simple_dag_bag,
                 tis_with_state_changed)
