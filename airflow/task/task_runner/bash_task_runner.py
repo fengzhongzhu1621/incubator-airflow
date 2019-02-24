@@ -20,7 +20,7 @@
 import psutil
 
 from airflow.task.task_runner.base_task_runner import BaseTaskRunner
-from airflow.utils.helpers import reap_process_group
+from xTool.utils.helpers import reap_process_group
 
 
 class BashTaskRunner(BaseTaskRunner):
@@ -49,4 +49,5 @@ class BashTaskRunner(BaseTaskRunner):
             reap_process_group(self.process.pid, self.log)
 
     def on_finish(self):
+        """删除临时配置文件 ."""
         super(BashTaskRunner, self).on_finish()

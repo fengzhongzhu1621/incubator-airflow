@@ -66,6 +66,8 @@ from airflow.utils.log.logging_mixin import LoggingMixin, set_context, StreamLog
 from airflow.utils.net import get_hostname
 from airflow.utils.state import State
 
+from xTool.misc import USE_WINDOWS
+
 Base = models.Base
 ID_LEN = models.ID_LEN
 
@@ -3034,7 +3036,7 @@ class BackfillJob(BaseJob):
 
 
 class LocalTaskJob(BaseJob):
-    """job表中类型为LocalTaskJob的记录 ."""
+    """job表中类型为LocalTaskJob的记录，即消费者job ."""
     __mapper_args__ = {
         'polymorphic_identity': 'LocalTaskJob'
     }
@@ -3075,7 +3077,7 @@ class LocalTaskJob(BaseJob):
 
     def _execute(self):
         """调用run()函数时执行 ."""
-        # 获得任务实例运行器
+        # 获得任务实例运行器，用来运行消费者进程
         self.task_runner = get_task_runner(self)
 
         # 注册job终止信号处理函数
@@ -3086,7 +3088,7 @@ class LocalTaskJob(BaseJob):
             raise AirflowException("LocalTaskJob received SIGTERM signal")
         signal.signal(signal.SIGTERM, signal_handler)
 
-        # 任务实例执行前的验证，将任务实例的状态改为 RUNNING
+        # 任务实例执行前的验证，将任务实例的状态从 QUEUE 改为 RUNNING
         if not self.task_instance._check_and_change_state_before_execution(
                 mark_success=self.mark_success,
                 ignore_all_deps=self.ignore_all_deps,

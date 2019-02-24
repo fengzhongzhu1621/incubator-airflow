@@ -116,15 +116,21 @@ class BaseTaskRunner(LoggingMixin):
         """
         # 运行operator
         cmd = [" ".join(self._command)] if join_args else self._command
-        full_cmd = run_with + cmd
+        if USE_WINDOWS:
+            full_cmd = cmd
+        else:
+            full_cmd = run_with + cmd
 
         self.log.info('Running: %s', full_cmd)
         if USE_WINDOWS:
             preexec_fn = None
+            shell = True
         else:
             preexec_fn = os.setsid
+            shell = False
         proc = subprocess.Popen(
             full_cmd,
+            shell=shell,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             universal_newlines=True,

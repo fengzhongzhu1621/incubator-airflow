@@ -22,6 +22,7 @@ import subprocess
 
 from airflow.executors.base_executor import BaseExecutor
 from airflow.utils.state import State
+from xTool.misc import USE_WINDOWS
 
 
 class SequentialExecutor(BaseExecutor):
@@ -47,7 +48,7 @@ class SequentialExecutor(BaseExecutor):
 
             try:
                 # 执行命令，等待子进程结束
-                subprocess.check_call(command, shell=True, close_fds=True)
+                subprocess.check_call(command, shell=True, close_fds=False if USE_WINDOWS else True)
                 self.change_state(key, State.SUCCESS)
             except subprocess.CalledProcessError as e:
                 self.change_state(key, State.FAILED)
