@@ -1159,7 +1159,11 @@ class TaskInstance(Base, LoggingMixin):
             if cfg_path:
                 cfg_path = cfg_path.replace("\\", "/")
         iso = execution_date.isoformat()
-        cmd = ["airflow", "run", str(dag_id), str(task_id), str(iso)]
+        if USE_WINDOWS:
+            #cmd = ["python3.6", "C:/Users/linda/airflow/airflow", "run", str(dag_id), str(task_id), str(iso)]
+            cmd = ["python3.6", "%PYTHON_SCRIPT%/airflow", "run", str(dag_id), str(task_id), str(iso)]
+        else:
+            cmd = ["airflow", "run", str(dag_id), str(task_id), str(iso)]
         cmd.extend(["--mark_success"]) if mark_success else None
         cmd.extend(["--pickle", str(pickle_id)]) if pickle_id else None
         cmd.extend(["--job_id", str(job_id)]) if job_id else None

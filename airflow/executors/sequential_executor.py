@@ -17,6 +17,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
+import os
 from builtins import str
 import subprocess
 
@@ -48,7 +49,7 @@ class SequentialExecutor(BaseExecutor):
 
             try:
                 # 执行命令，等待子进程结束
-                subprocess.check_call(command, shell=True, close_fds=False if USE_WINDOWS else True)
+                subprocess.check_call(command, shell=True, close_fds=False if USE_WINDOWS else True, env=os.environ.copy())
                 self.change_state(key, State.SUCCESS)
             except subprocess.CalledProcessError as e:
                 self.change_state(key, State.FAILED)

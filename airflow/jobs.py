@@ -2240,7 +2240,7 @@ class SchedulerJob(BaseJob):
             
         # 判断是否存在僵死的job，并记录失败的任务实例，发送告警
         # TODO sql可以进一步优化
-        if self.executor_class != '1SequentialExecutor':
+        if self.executor_class != 'SequentialExecutor':
             try:
                 dagbag.kill_zombies()
             except Exception:
