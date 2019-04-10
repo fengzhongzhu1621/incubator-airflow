@@ -87,7 +87,7 @@ from airflow.utils import timezone
 from xTool.misc import json_ser
 from airflow.utils.state import State
 from airflow.utils.db import create_session, provide_session
-from airflow.utils.helpers import alchemy_to_dict
+from xTool.utils.helpers import alchemy_to_dict
 from airflow.utils.dates import infer_time_unit, scale_time_units, parse_execution_date
 from airflow.utils.timezone import datetime
 from xTool.utils.net import get_hostname

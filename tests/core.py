@@ -66,7 +66,8 @@ from airflow.utils.state import State
 from airflow.utils.dates import days_ago, infer_time_unit, round_time, scale_time_units
 from lxml import html
 from airflow.exceptions import AirflowException
-from airflow.configuration import AirflowConfigException, run_command
+from airflow.configuration import AirflowConfigException
+from xTool.utils.helpers import run_command
 from jinja2.sandbox import SecurityError
 from jinja2 import UndefinedError
 from pendulum import utcnow

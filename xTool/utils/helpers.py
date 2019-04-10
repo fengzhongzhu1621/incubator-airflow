@@ -22,6 +22,7 @@ import warnings
 import platform
 import errno
 
+from jinja2 import Template
 
 from xTool.exceptions import XToolException, XToolConfigException
 from xTool.misc import USE_WINDOWS
@@ -273,22 +274,9 @@ def reap_process_group(pid, log, sig=signal.SIGTERM,
 
 def parse_template_string(template_string):
     if "{{" in template_string:  # jinja mode
-        from jinja2 import Template
         return None, Template(template_string)
     else:
         return template_string, None
-
-
-def tob(s, enc='utf-8'):
-    """字符串编码 ."""
-    return s.encode(enc) if isinstance(s, unicode) else bytes(s)
-
-def tou(s, enc='utf-8'):
-    """字符串解码 ."""
-    return s.decode(enc) if isinstance(s, bytes) else unicode(s)
-
-tos = tou if PY3 else tob
-
 
 def expand_env_var(env_var):
     """使用环境变量替换env_var
@@ -334,12 +322,3 @@ def run_command(command):
     return output
 
 
-def mkdir_p(path):
-    try:
-        os.makedirs(path)
-    except OSError as exc:  # Python >2.5
-        if exc.errno == errno.EEXIST and os.path.isdir(path):
-            pass
-        else:
-            raise XToolConfigException(
-                'Error creating {}: {}'.format(path, exc.strerror))

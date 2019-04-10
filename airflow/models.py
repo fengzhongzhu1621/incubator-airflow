@@ -88,8 +88,11 @@ from airflow.utils.dates import cron_presets, date_range as utils_date_range
 from airflow.utils.db import provide_session
 from airflow.utils.decorators import apply_defaults
 from airflow.utils.email import send_email
-from airflow.utils.helpers import (
-    as_tuple, is_container, validate_key, pprinttable)
+from xTool.utils.helpers import pprinttable
+from xTool.utils.helpers import as_tuple
+from xTool.utils.helpers import is_container
+from xTool.utils.helpers import validate_key
+from xTool.utils.helpers import ask_yesno
 from airflow.utils.operator_resources import Resources
 from airflow.utils.state import State
 from airflow.utils.trigger_rule import TriggerRule
@@ -4212,7 +4215,7 @@ class DAG(BaseDag, LoggingMixin):
                 "You are about to delete these {count} tasks:\n"
                 "{ti_list}\n\n"
                 "Are you sure? (yes/no): ").format(**locals())
-            do_it = utils.helpers.ask_yesno(question)
+            do_it = ask_yesno(question)
 
         if do_it:
             # 将任务实例和job关闭，将dag_run设置为运行态
@@ -4285,7 +4288,7 @@ class DAG(BaseDag, LoggingMixin):
                 "You are about to delete these {} tasks:\n"
                 "{}\n\n"
                 "Are you sure? (yes/no): ").format(count, ti_list)
-            do_it = utils.helpers.ask_yesno(question)
+            do_it = ask_yesno(question)
 
         # 确认执行清除逻辑
         if do_it:

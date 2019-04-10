@@ -22,7 +22,7 @@ import logging
 import os
 
 from airflow import configuration as conf
-from airflow.utils.helpers import parse_template_string
+from xTool.utils.helpers import parse_template_string
 from datetime import datetime
 
 

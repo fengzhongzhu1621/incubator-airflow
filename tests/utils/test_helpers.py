@@ -26,6 +26,9 @@ import time
 import unittest
 
 from airflow.utils import helpers
+from xTool.utils.helpers import reap_process_group
+from xTool.utils.helpers import reduce_in_chunks
+from xTool.utils.helpers import chunks
 
 
 class TestHelpers(unittest.TestCase):
@@ -74,8 +77,8 @@ class TestHelpers(unittest.TestCase):
             self.assertTrue(psutil.pid_exists(parent_pid.value))
             self.assertTrue(psutil.pid_exists(child_pid.value))
 
-            helpers.reap_process_group(parent_pid.value, logging.getLogger(),
-                                       timeout=1)
+            reap_process_group(parent_pid.value, logging.getLogger(),
+                               timeout=1)
 
             self.assertFalse(psutil.pid_exists(parent_pid.value))
             self.assertFalse(psutil.pid_exists(child_pid.value))
@@ -88,29 +91,29 @@ class TestHelpers(unittest.TestCase):
 
     def test_chunks(self):
         with self.assertRaises(ValueError):
-            [i for i in helpers.chunks([1, 2, 3], 0)]
+            [i for i in chunks([1, 2, 3], 0)]
 
         with self.assertRaises(ValueError):
-            [i for i in helpers.chunks([1, 2, 3], -3)]
+            [i for i in chunks([1, 2, 3], -3)]
 
-        self.assertEqual([i for i in helpers.chunks([], 5)], [])
-        self.assertEqual([i for i in helpers.chunks([1], 1)], [[1]])
-        self.assertEqual([i for i in helpers.chunks([1, 2, 3], 2)],
+        self.assertEqual([i for i in chunks([], 5)], [])
+        self.assertEqual([i for i in chunks([1], 1)], [[1]])
+        self.assertEqual([i for i in chunks([1, 2, 3], 2)],
                          [[1, 2], [3]])
 
     def test_reduce_in_chunks(self):
-        self.assertEqual(helpers.reduce_in_chunks(lambda x, y: x + [y],
+        self.assertEqual(reduce_in_chunks(lambda x, y: x + [y],
                                                   [1, 2, 3, 4, 5],
                                                   []),
                          [[1, 2, 3, 4, 5]])
 
-        self.assertEqual(helpers.reduce_in_chunks(lambda x, y: x + [y],
+        self.assertEqual(reduce_in_chunks(lambda x, y: x + [y],
                                                   [1, 2, 3, 4, 5],
                                                   [],
                                                   2),
                          [[1, 2], [3, 4], [5]])
 
-        self.assertEqual(helpers.reduce_in_chunks(lambda x, y: x + y[0] * y[1],
+        self.assertEqual(reduce_in_chunks(lambda x, y: x + y[0] * y[1],
                                                   [1, 2, 3, 4],
                                                   0,
                                                   2),

@@ -65,6 +65,7 @@ from airflow.utils.db import create_session, provide_session
 from airflow.utils.email import send_email, get_email_address_list
 from xTool.utils.log.logging_mixin import LoggingMixin, set_context, StreamLogWriter
 from xTool.utils.net import get_hostname
+from xTool.utils.helpers import reduce_in_chunks
 from airflow.utils.state import State
 
 from xTool.misc import USE_WINDOWS
@@ -346,7 +347,7 @@ class BaseJob(Base, LoggingMixin):
             return result + reset_tis
 
         # 将任务实例的状态批量改为None，max_tis_per_query表示批次update处理的数量
-        reset_tis = helpers.reduce_in_chunks(query,
+        reset_tis = reduce_in_chunks(query,
                                              tis_to_reset,
                                              [],
                                              self.max_tis_per_query)
@@ -1593,7 +1594,7 @@ class SchedulerJob(BaseJob):
                                   TI.execution_date == ti.execution_date)
                                   for ti in tis_to_set_to_queued])
 
-        tis_to_be_queued = helpers.reduce_in_chunks(query,
+        tis_to_be_queued = reduce_in_chunks(query,
                                                     filter_for_ti_enqueue,
                                                     [],
                                                     self.max_tis_per_query)
@@ -1691,7 +1692,7 @@ class SchedulerJob(BaseJob):
             return result + len(tis_with_state_changed)
 
         # 批量修改任务的状态
-        return helpers.reduce_in_chunks(query, executable_tis, 0, self.max_tis_per_query)
+        return reduce_in_chunks(query, executable_tis, 0, self.max_tis_per_query)
 
     def _process_dags(self, dagbag, dags, tis_out):
         """

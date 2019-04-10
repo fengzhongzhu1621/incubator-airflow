@@ -37,7 +37,7 @@ import hmsclient
 from airflow import configuration as conf
 from airflow.exceptions import AirflowException
 from airflow.hooks.base_hook import BaseHook
-from airflow.utils.helpers import as_flattened_list
+from xTool.utils.helpers import as_flattened_list
 from xTool.utils.file import TemporaryDirectory
 from airflow import configuration
 import airflow.security.utils as utils

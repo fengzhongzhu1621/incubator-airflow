@@ -41,7 +41,8 @@ from backports.configparser import ConfigParser
 from zope.deprecation import deprecated as _deprecated
 from xTool.crypto.fernet import generate_fernet_key
 #from xTool.utils.configuration import parameterized_config
-from xTool.utils.helpers import expand_env_var, run_command
+from xTool.utils.helpers import expand_env_var
+from xTool.utils.helpers import run_command
 from xTool.utils.configuration import read_default_config_file
 from xTool.utils.configuration import XToolConfigParser
 from xTool.utils.file import mkdir_p
