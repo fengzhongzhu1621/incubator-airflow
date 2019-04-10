@@ -72,6 +72,8 @@ from xTool.utils.file import list_py_file_paths
 from airflow import settings, utils
 from airflow.executors import GetDefaultExecutor, LocalExecutor
 from airflow import configuration
+from airflow.configuration import AirflowConfigException
+from airflow import configuration as conf
 from airflow.exceptions import (
     AirflowDagCycleException, AirflowException, AirflowSkipException
 )
@@ -92,7 +94,7 @@ from airflow.utils.operator_resources import Resources
 from airflow.utils.state import State
 from airflow.utils.trigger_rule import TriggerRule
 from airflow.utils.weight_rule import WeightRule
-from airflow.utils.net import get_hostname
+from xTool.utils.net import get_hostname
 from xTool.utils.log.logging_mixin import LoggingMixin
 
 from xTool.misc import USE_WINDOWS
@@ -1608,7 +1610,11 @@ class TaskInstance(Base, LoggingMixin):
         self.refresh_from_db(session=session, lock_for_update=True)
         self.job_id = job_id
         # 获得任务实例运行所在机器的主机名
-        self.hostname = get_hostname()
+        try:
+            callable_path = conf.get('core', 'hostname_callable')
+        except AirflowConfigException:
+            callable_path = None        
+        self.hostname = get_hostname(callable_path)
         self.operator = task.__class__.__name__
 
         if not ignore_all_deps and not ignore_ti_state and self.state == State.SUCCESS:
@@ -1736,7 +1742,11 @@ class TaskInstance(Base, LoggingMixin):
         self.test_mode = test_mode
         self.refresh_from_db(session=session)
         self.job_id = job_id
-        self.hostname = get_hostname()
+        try:
+            callable_path = conf.get('core', 'hostname_callable')
+        except AirflowConfigException:
+            callable_path = None         
+        self.hostname = get_hostname(callable_path)
         self.operator = task.__class__.__name__
 
         context = {}

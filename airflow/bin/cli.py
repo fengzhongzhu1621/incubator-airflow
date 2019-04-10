@@ -55,7 +55,7 @@ import airflow
 from airflow import api
 from airflow import jobs, settings
 from airflow import configuration as conf
-from airflow.exceptions import AirflowException, AirflowWebServerTimeout
+from airflow.exceptions import AirflowException, AirflowWebServerTimeout, AirflowConfigException
 from airflow.executors import GetDefaultExecutor
 from airflow.models import (DagModel, DagBag, TaskInstance,
                             DagPickle, DagRun, Variable, DagStat,
@@ -65,7 +65,7 @@ from airflow.ti_deps.dep_context import (DepContext, SCHEDULER_DEPS)
 from airflow.utils import cli as cli_utils
 from airflow.utils import db as db_utils
 from airflow.utils.dates import parse_execution_date
-from airflow.utils.net import get_hostname
+from xTool.utils.net import get_hostname
 from xTool.utils.log.logging_mixin import LoggingMixin
 from xTool.utils.log.logging_mixin import (redirect_stderr,
                                              redirect_stdout)
@@ -545,7 +545,11 @@ def run(args, dag=None):
     # 即创建任务实例的日志目录
     ti.init_run_context(raw=args.raw)
 
-    hostname = get_hostname()
+    try:
+        callable_path = conf.get('core', 'hostname_callable')
+    except AirflowConfigException:
+        callable_path = None
+    hostname = get_hostname(callable_path)
     log.info("Running %s on host %s", ti, hostname)
 
     # 执行任务实例

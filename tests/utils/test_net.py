@@ -21,7 +21,8 @@ import unittest
 import mock
 
 from airflow.utils import net
-
+from airflow.configuration import AirflowConfigException
+from airflow import configuration as conf
 
 def get_hostname():
     return 'awesomehostname'
@@ -30,31 +31,47 @@ def get_hostname():
 class GetHostname(unittest.TestCase):
 
     @mock.patch('airflow.utils.net.socket')
-    @mock.patch('airflow.utils.net.conf')
+    @mock.patch('xTool.utils.net.conf')
     def test_get_hostname_unset(self, patched_conf, patched_socket):
+        try:
+            callable_path = conf.get('core', 'hostname_callable')
+        except AirflowConfigException:
+            callable_path = None        
         patched_conf.get = mock.Mock(return_value=None)
         patched_socket.getfqdn = mock.Mock(return_value='first')
-        self.assertTrue(net.get_hostname() == 'first')
+        self.assertTrue(net.get_hostname(callable_path) == 'first')
 
-    @mock.patch('airflow.utils.net.conf')
+    @mock.patch('xTool.utils.net.conf')
     def test_get_hostname_set(self, patched_conf):
+        try:
+            callable_path = conf.get('core', 'hostname_callable')
+        except AirflowConfigException:
+            callable_path = None          
         patched_conf.get = mock.Mock(
             return_value='tests.utils.test_net:get_hostname'
         )
-        self.assertTrue(net.get_hostname() == 'awesomehostname')
+        self.assertTrue(net.get_hostname(callable_path) == 'awesomehostname')
 
-    @mock.patch('airflow.utils.net.conf')
+    @mock.patch('xTool.utils.net.conf')
     def test_get_hostname_set_incorrect(self, patched_conf):
+        try:
+            callable_path = conf.get('core', 'hostname_callable')
+        except AirflowConfigException:
+            callable_path = None          
         patched_conf.get = mock.Mock(
             return_value='tests.utils.test_net'
         )
         with self.assertRaises(ValueError):
-            net.get_hostname()
+            net.get_hostname(callable_path)
 
-    @mock.patch('airflow.utils.net.conf')
+    @mock.patch('xTool.utils.net.conf')
     def test_get_hostname_set_missing(self, patched_conf):
+        try:
+            callable_path = conf.get('core', 'hostname_callable')
+        except AirflowConfigException:
+            callable_path = None          
         patched_conf.get = mock.Mock(
             return_value='tests.utils.test_net:missing_func'
         )
         with self.assertRaises(AttributeError):
-            net.get_hostname()
+            net.get_hostname(callable_path)

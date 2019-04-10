@@ -51,7 +51,9 @@ from airflow.utils.db import provide_session
 from airflow.utils.state import State
 from airflow.utils.timeout import timeout
 from airflow.utils.dag_processing import SimpleDag, SimpleDagBag, list_py_file_paths
-from airflow.utils.net import get_hostname
+from airflow.configuration import AirflowConfigException
+from airflow import configuration as conf
+from xTool.utils.net import get_hostname
 
 from mock import Mock, patch, MagicMock, PropertyMock
 from tests.executors.test_executor import TestExecutor
@@ -1161,7 +1163,11 @@ class LocalTaskJobTest(unittest.TestCase):
 
         mock_pid.return_value = 1
         ti.state = State.RUNNING
-        ti.hostname = get_hostname()
+        try:
+            callable_path = conf.get('core', 'hostname_callable')
+        except AirflowConfigException:
+            callable_path = None        
+        ti.hostname = get_hostname(callable_path)
         ti.pid = 1
         session.merge(ti)
         session.commit()
@@ -1231,7 +1237,11 @@ class LocalTaskJobTest(unittest.TestCase):
                                session=session)
         ti = dr.get_task_instance(task_id=task.task_id, session=session)
         ti.state = State.RUNNING
-        ti.hostname = get_hostname()
+        try:
+            callable_path = conf.get('core', 'hostname_callable')
+        except AirflowConfigException:
+            callable_path = None        
+        ti.hostname = get_hostname(callable_path)
         ti.pid = 1
         session.commit()
 

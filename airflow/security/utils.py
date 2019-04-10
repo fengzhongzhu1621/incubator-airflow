@@ -19,8 +19,9 @@
 import re
 import socket
 import airflow.configuration as conf
+from airflow.configuration import AirflowConfigException
 
-from airflow.utils.net import get_hostname
+from xTool.utils.net import get_hostname
 
 # Pattern to replace with hostname
 HOSTNAME_PATTERN = '_HOST'
@@ -56,7 +57,11 @@ def replace_hostname_pattern(components, host=None):
 
 
 def get_localhost_name():
-    return get_hostname()
+    try:
+        callable_path = conf.get('core', 'hostname_callable')
+    except AirflowConfigException:
+        callable_path = None    
+    return get_hostname(callable_path)
 
 
 def get_fqdn(hostname_or_ip=None):

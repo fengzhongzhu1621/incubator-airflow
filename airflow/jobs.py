@@ -50,6 +50,7 @@ from xTool.utils.file_processing import BaseMultiprocessFileProcessor, FileProce
 from xTool.utils.file import list_py_file_paths
 
 from airflow import configuration as conf
+from airflow.configuration import AirflowConfigException
 from airflow import executors, models, settings
 from airflow.exceptions import AirflowException
 from airflow.models import DAG, DagRun, DagModel
@@ -63,7 +64,7 @@ from airflow.utils.dag_processing import (SimpleDag,
 from airflow.utils.db import create_session, provide_session
 from airflow.utils.email import send_email, get_email_address_list
 from xTool.utils.log.logging_mixin import LoggingMixin, set_context, StreamLogWriter
-from airflow.utils.net import get_hostname
+from xTool.utils.net import get_hostname
 from airflow.utils.state import State
 
 from xTool.misc import USE_WINDOWS
@@ -109,7 +110,11 @@ class BaseJob(Base, LoggingMixin):
             heartrate=conf.getfloat('scheduler', 'JOB_HEARTBEAT_SEC'),
             *args, **kwargs):
         # 当前机器的主机名/IP地址
-        self.hostname = get_hostname()
+        try:
+            callable_path = conf.get('core', 'hostname_callable')
+        except AirflowConfigException:
+            callable_path = None
+        self.hostname = get_hostname(callable_path)
         # 执行器： 从任务队列中获取任务，并执行
         self.executor = executor
         # 获得执行器的类名
@@ -3171,8 +3176,11 @@ class LocalTaskJob(BaseJob):
         # 将任务实例的DB更新到ORM
         self.task_instance.refresh_from_db()
         ti = self.task_instance
-
-        fqdn = get_hostname()
+        try:
+            callable_path = conf.get('core', 'hostname_callable')
+        except AirflowConfigException:
+            callable_path = None
+        fqdn = get_hostname(callable_path)
         same_hostname = fqdn == ti.hostname
         same_process = ti.pid == os.getpid()
 
