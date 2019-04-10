@@ -20,7 +20,7 @@
 from __future__ import print_function
 
 from airflow import DAG, configuration, operators
-from airflow.utils.tests import skipUnlessImported
+from xTool.utils.tests import skipUnlessImported
 from airflow.utils import timezone
 
 from collections import OrderedDict
@@ -120,7 +120,7 @@ class MySqlTest(unittest.TestCase):
         tmp_file = "/path/to/output/file"
         hook.bulk_dump(table, tmp_file)
 
-        from airflow.utils.tests import assertEqualIgnoreMultipleSpaces
+        from xTool.utils.tests import assertEqualIgnoreMultipleSpaces
         mock_execute.assert_called_once()
         query = """
             SELECT * INTO OUTFILE '{tmp_file}'

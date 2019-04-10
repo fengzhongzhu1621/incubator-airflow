@@ -23,7 +23,7 @@ import unittest
 
 from boto3.session import Session
 from airflow.operators.redshift_to_s3_operator import RedshiftToS3Transfer
-from airflow.utils.tests import assertEqualIgnoreMultipleSpaces
+from xTool.utils.tests import assertEqualIgnoreMultipleSpaces
 
 
 class TestRedshiftToS3Transfer(unittest.TestCase):
