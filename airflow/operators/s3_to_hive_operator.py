@@ -31,7 +31,7 @@ from airflow.hooks.S3_hook import S3Hook
 from airflow.hooks.hive_hooks import HiveCliHook
 from airflow.models import BaseOperator
 from airflow.utils.decorators import apply_defaults
-from airflow.utils.compression import uncompress_file
+from xTool.utils.compression import uncompress_file
 
 
 class S3ToHiveTransfer(BaseOperator):

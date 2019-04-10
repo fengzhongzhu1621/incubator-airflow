@@ -26,7 +26,7 @@ import shutil
 import tempfile
 import unittest
 
-from airflow.utils import compression
+from xTool.utils import compression
 
 
 class Compression(unittest.TestCase):
