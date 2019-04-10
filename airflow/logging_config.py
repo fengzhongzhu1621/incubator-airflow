@@ -17,6 +17,7 @@
 # specific language governing permissions and limitations
 # under the License.
 #
+import os
 import logging
 import warnings
 from logging.config import dictConfig
@@ -24,7 +25,7 @@ from logging.config import dictConfig
 from airflow import configuration as conf
 from airflow.exceptions import AirflowConfigException
 from xTool.utils.module_loading import import_string
-from airflow.utils.module_loading import prepare_classpath
+from xTool.utils.module_loading import prepare_classpath
 
 log = logging.getLogger(__name__)
 
@@ -35,7 +36,8 @@ def configure_logging():
         # Prepare the classpath so we are sure that the config folder
         # is on the python classpath and it is reachable
         # 将路径加入python系统路径
-        prepare_classpath()
+        config_path = os.path.join(conf.get('core', 'airflow_home'), 'config')
+        prepare_classpath(config_path)
 
         logging_class_path = conf.get('core', 'logging_config_class')
     except AirflowConfigException:
