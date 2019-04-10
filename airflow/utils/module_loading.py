@@ -32,29 +32,3 @@ def prepare_classpath():
 
     if config_path not in sys.path:
         sys.path.append(config_path)
-
-
-def import_string(dotted_path):
-    """根据点分割的字符串，加载类
-    Import a dotted module path and return the attribute/class designated by the
-    last name in the path. Raise ImportError if the import failed.
-
-    Args:
-        dotted_path: 字符串表示的模块类，module.class
-    Returns:
-        返回加载的模块中的对象
-    """
-    try:
-        module_path, class_name = dotted_path.rsplit('.', 1)
-    except ValueError:
-        raise ImportError("{} doesn't look like a module path".format(dotted_path))
-
-    module = import_module(module_path)
-
-    try:
-        # 返回模块中的类
-        return getattr(module, class_name)
-    except AttributeError as err:
-        raise ImportError('Module "{}" does not define a "{}" attribute/class'.format(
-            module_path, class_name)
-        )
