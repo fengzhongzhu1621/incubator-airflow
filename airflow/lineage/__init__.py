@@ -21,7 +21,7 @@ from functools import wraps
 
 from airflow import configuration as conf
 from airflow.lineage.datasets import DataSet
-from airflow.utils.log.logging_mixin import LoggingMixin
+from xTool.utils.log.logging_mixin import LoggingMixin
 from xTool.utils.module_loading import prepare_classpath
 from xTool.utils.module_loading import import_string
 

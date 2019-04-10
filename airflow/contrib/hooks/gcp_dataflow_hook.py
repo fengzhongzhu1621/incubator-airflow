@@ -26,7 +26,7 @@ import uuid
 from apiclient.discovery import build
 
 from airflow.contrib.hooks.gcp_api_base_hook import GoogleCloudBaseHook
-from airflow.utils.log.logging_mixin import LoggingMixin
+from xTool.utils.log.logging_mixin import LoggingMixin
 
 # This is the default location
 # https://cloud.google.com/dataflow/pipelines/specifying-exec-params

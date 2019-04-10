@@ -31,7 +31,7 @@ import random
 from sqlalchemy import event, exc, select
 from sqlalchemy.types import DateTime, TypeDecorator
 
-from airflow.utils.log.logging_mixin import LoggingMixin
+from xTool.utils.log.logging_mixin import LoggingMixin
 
 log = LoggingMixin().log
 

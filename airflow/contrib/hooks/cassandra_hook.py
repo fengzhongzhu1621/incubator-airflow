@@ -23,7 +23,7 @@ from cassandra.policies import (RoundRobinPolicy, DCAwareRoundRobinPolicy,
 from cassandra.auth import PlainTextAuthProvider
 
 from airflow.hooks.base_hook import BaseHook
-from airflow.utils.log.logging_mixin import LoggingMixin
+from xTool.utils.log.logging_mixin import LoggingMixin
 
 
 class CassandraHook(BaseHook, LoggingMixin):

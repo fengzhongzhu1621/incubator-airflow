@@ -62,7 +62,7 @@ from airflow.utils.dag_processing import (SimpleDag,
                                           SimpleDagBag)
 from airflow.utils.db import create_session, provide_session
 from airflow.utils.email import send_email, get_email_address_list
-from airflow.utils.log.logging_mixin import LoggingMixin, set_context, StreamLogWriter
+from xTool.utils.log.logging_mixin import LoggingMixin, set_context, StreamLogWriter
 from airflow.utils.net import get_hostname
 from airflow.utils.state import State
 

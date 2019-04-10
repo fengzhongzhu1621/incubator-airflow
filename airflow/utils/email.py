@@ -36,7 +36,7 @@ from email.utils import formatdate
 
 from airflow import configuration
 from airflow.exceptions import AirflowConfigException
-from airflow.utils.log.logging_mixin import LoggingMixin
+from xTool.utils.log.logging_mixin import LoggingMixin
 
 
 def send_email(to, subject, html_content,

@@ -38,7 +38,7 @@ from sqlalchemy.ext.hybrid import hybrid_property
 from airflow import settings
 from airflow import models
 from airflow.utils.db import provide_session
-from airflow.utils.log.logging_mixin import LoggingMixin
+from xTool.utils.log.logging_mixin import LoggingMixin
 
 login_manager = flask_login.LoginManager()
 login_manager.login_view = 'airflow.login'  # Calls login() below

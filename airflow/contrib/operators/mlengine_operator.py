@@ -21,7 +21,7 @@ from airflow.contrib.hooks.gcp_mlengine_hook import MLEngineHook
 from airflow.exceptions import AirflowException
 from airflow.operators import BaseOperator
 from airflow.utils.decorators import apply_defaults
-from airflow.utils.log.logging_mixin import LoggingMixin
+from xTool.utils.log.logging_mixin import LoggingMixin
 
 log = LoggingMixin().log
 

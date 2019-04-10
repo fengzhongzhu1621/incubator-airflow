@@ -32,7 +32,7 @@ from flask_oauthlib.client import OAuth
 
 from airflow import models, configuration, settings
 from airflow.utils.db import provide_session
-from airflow.utils.log.logging_mixin import LoggingMixin
+from xTool.utils.log.logging_mixin import LoggingMixin
 
 log = LoggingMixin().log
 

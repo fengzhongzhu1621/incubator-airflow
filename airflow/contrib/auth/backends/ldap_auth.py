@@ -38,7 +38,7 @@ from airflow.utils.db import provide_session
 import traceback
 import re
 
-from airflow.utils.log.logging_mixin import LoggingMixin
+from xTool.utils.log.logging_mixin import LoggingMixin
 
 login_manager = flask_login.LoginManager()
 login_manager.login_view = 'airflow.login'  # Calls login() below

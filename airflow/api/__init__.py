@@ -23,7 +23,7 @@ from airflow.exceptions import AirflowException
 from airflow import configuration as conf
 from importlib import import_module
 
-from airflow.utils.log.logging_mixin import LoggingMixin
+from xTool.utils.log.logging_mixin import LoggingMixin
 
 api_auth = None
 

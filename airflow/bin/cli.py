@@ -66,7 +66,8 @@ from airflow.utils import cli as cli_utils
 from airflow.utils import db as db_utils
 from airflow.utils.dates import parse_execution_date
 from airflow.utils.net import get_hostname
-from airflow.utils.log.logging_mixin import (LoggingMixin, redirect_stderr,
+from xTool.utils.log.logging_mixin import LoggingMixin
+from xTool.utils.log.logging_mixin import (redirect_stderr,
                                              redirect_stdout)
 from airflow.www.app import (cached_app, create_app)
 from airflow.www_rbac.app import cached_app as cached_app_rbac

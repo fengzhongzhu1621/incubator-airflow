@@ -24,7 +24,7 @@ import os
 import subprocess
 import threading
 
-from airflow.utils.log.logging_mixin import LoggingMixin
+from xTool.utils.log.logging_mixin import LoggingMixin
 
 from airflow import configuration as conf
 from airflow.utils.configuration import tmp_configuration_copy

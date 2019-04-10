@@ -64,7 +64,7 @@ DEFAULT_LOGGING_CONFIG = {
     },
     'handlers': {
         'console': {
-            'class': 'airflow.utils.log.logging_mixin.RedirectStdHandler',
+            'class': 'xTool.utils.log.logging_mixin.RedirectStdHandler',
             'formatter': 'airflow',
             'stream': 'sys.stdout'
         },

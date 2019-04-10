@@ -22,7 +22,7 @@ from docker.errors import APIError
 
 from airflow.exceptions import AirflowException
 from airflow.hooks.base_hook import BaseHook
-from airflow.utils.log.logging_mixin import LoggingMixin
+from xTool.utils.log.logging_mixin import LoggingMixin
 
 
 class DockerHook(BaseHook, LoggingMixin):

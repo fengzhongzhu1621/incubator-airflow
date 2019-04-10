@@ -26,7 +26,7 @@ from requests import exceptions as requests_exceptions
 from requests.auth import AuthBase
 from time import sleep
 
-from airflow.utils.log.logging_mixin import LoggingMixin
+from xTool.utils.log.logging_mixin import LoggingMixin
 
 try:
     from urllib import parse as urlparse

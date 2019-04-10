@@ -34,7 +34,7 @@ from six import itervalues, iteritems
 from airflow.dag.base_dag import BaseDag, BaseDagBag
 from airflow.exceptions import AirflowException
 from datetime import datetime
-from airflow.utils.log.logging_mixin import LoggingMixin
+from xTool.utils.log.logging_mixin import LoggingMixin
 
 
 class SimpleDag(BaseDag):

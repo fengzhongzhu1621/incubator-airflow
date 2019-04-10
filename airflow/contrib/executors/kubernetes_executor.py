@@ -33,7 +33,7 @@ from airflow.models import TaskInstance, KubeResourceVersion, KubeWorkerIdentifi
 from airflow.utils.state import State
 from airflow import configuration, settings
 from airflow.exceptions import AirflowConfigException, AirflowException
-from airflow.utils.log.logging_mixin import LoggingMixin
+from xTool.utils.log.logging_mixin import LoggingMixin
 
 
 class KubernetesExecutorConfig:

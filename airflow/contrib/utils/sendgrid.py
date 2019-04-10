@@ -31,7 +31,7 @@ from sendgrid.helpers.mail import Attachment, Content, Email, Mail, \
     Personalization, CustomArg, Category
 
 from airflow.utils.email import get_email_address_list
-from airflow.utils.log.logging_mixin import LoggingMixin
+from xTool.utils.log.logging_mixin import LoggingMixin
 
 
 def send_email(to, subject, html_content, files=None,

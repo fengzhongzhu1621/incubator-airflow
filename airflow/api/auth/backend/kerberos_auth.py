@@ -19,7 +19,7 @@
 
 from future.standard_library import install_aliases
 
-from airflow.utils.log.logging_mixin import LoggingMixin
+from xTool.utils.log.logging_mixin import LoggingMixin
 
 import kerberos
 import os

@@ -18,7 +18,7 @@
 # under the License.
 
 from airflow.utils.dates import days_ago
-from airflow.utils.log.logging_mixin import LoggingMixin
+from xTool.utils.log.logging_mixin import LoggingMixin
 from airflow.models import DAG
 
 log = LoggingMixin().log

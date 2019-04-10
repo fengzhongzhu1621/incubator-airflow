@@ -74,15 +74,12 @@ class StreamLogWriter(object):
         Do whatever it takes to actually log the specified logging record
         :param message: message to log
         """
-        self.logger.log(self.level, message)
-        return
-
         if not message.endswith("\n"):
             self._buffer += message
         else:
             # 只有遇到换行符才真正的输入日志，否则缓存到_buffer
             self._buffer += message
-            self.logger.log(self.level, self._buffer)
+            self.logger.log(self.level, self._buffer.rstrip())
             self._buffer = str()
 
     def flush(self):
@@ -108,6 +105,7 @@ class RedirectStdHandler(StreamHandler):
     sys.stderr/stdout at handler construction time.
     """
     def __init__(self, stream):
+        # stream是必填的，且必须是字符串，不能使用文件对象
         if not isinstance(stream, six.string_types):
             raise Exception("Cannot use file like objects. Use 'stdout' or 'stderr'"
                             " as a str and without 'ext://'.")

@@ -25,7 +25,7 @@ from airflow import settings
 from airflow.hooks.hdfs_hook import HDFSHook
 from airflow.sensors.base_sensor_operator import BaseSensorOperator
 from airflow.utils.decorators import apply_defaults
-from airflow.utils.log.logging_mixin import LoggingMixin
+from xTool.utils.log.logging_mixin import LoggingMixin
 
 
 class HdfsSensor(BaseSensorOperator):

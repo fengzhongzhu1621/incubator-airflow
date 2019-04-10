@@ -34,7 +34,7 @@ import json
 import pandas as pd
 import time
 
-from airflow.utils.log.logging_mixin import LoggingMixin
+from xTool.utils.log.logging_mixin import LoggingMixin
 
 
 class SalesforceHook(BaseHook, LoggingMixin):

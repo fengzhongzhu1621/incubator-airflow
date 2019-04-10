@@ -47,7 +47,7 @@ from xTool.utils.configuration import XToolConfigParser
 from xTool.utils.file import mkdir_p
 
 from airflow.exceptions import AirflowConfigException
-from airflow.utils.log.logging_mixin import LoggingMixin
+from xTool.utils.log.logging_mixin import LoggingMixin
 
 standard_library.install_aliases()
 

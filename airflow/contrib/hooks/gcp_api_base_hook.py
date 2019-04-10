@@ -26,7 +26,7 @@ import google.oauth2.service_account
 
 from airflow.exceptions import AirflowException
 from airflow.hooks.base_hook import BaseHook
-from airflow.utils.log.logging_mixin import LoggingMixin
+from xTool.utils.log.logging_mixin import LoggingMixin
 
 
 _DEFAULT_SCOPES = ('https://www.googleapis.com/auth/cloud-platform',)

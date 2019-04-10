@@ -24,7 +24,7 @@ import os.path
 from airflow.hooks.base_hook import BaseHook
 from past.builtins import basestring
 
-from airflow.utils.log.logging_mixin import LoggingMixin
+from xTool.utils.log.logging_mixin import LoggingMixin
 
 
 def mlsd(conn, path="", facts=None):

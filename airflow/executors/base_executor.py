@@ -20,7 +20,7 @@
 from builtins import range
 
 from airflow import configuration
-from airflow.utils.log.logging_mixin import LoggingMixin
+from xTool.utils.log.logging_mixin import LoggingMixin
 from airflow.utils.state import State
 
 

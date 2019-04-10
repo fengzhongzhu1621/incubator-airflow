@@ -21,7 +21,7 @@ import ssl
 
 from airflow import configuration
 from airflow.exceptions import AirflowConfigException, AirflowException
-from airflow.utils.log.logging_mixin import LoggingMixin
+from xTool.utils.log.logging_mixin import LoggingMixin
 
 
 def _broker_supports_visibility_timeout(url):

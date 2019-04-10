@@ -19,7 +19,7 @@
 
 from future import standard_library
 
-from airflow.utils.log.logging_mixin import LoggingMixin
+from xTool.utils.log.logging_mixin import LoggingMixin
 from airflow.www.utils import LoginMixin
 
 
