@@ -21,7 +21,7 @@ import unittest
 
 from airflow.executors.local_executor import LocalExecutor
 from airflow.utils.state import State
-from airflow.utils.timeout import timeout
+from xTool.utils.timeout import timeout
 
 
 class LocalExecutorTest(unittest.TestCase):

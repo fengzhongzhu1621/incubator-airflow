@@ -57,6 +57,7 @@ from airflow.utils.trigger_rule import TriggerRule
 from mock import patch, ANY
 from parameterized import parameterized
 from tempfile import mkdtemp, NamedTemporaryFile
+from xTool.exceptions import XToolException
 
 DEFAULT_DATE = timezone.datetime(2016, 1, 1)
 TEST_DAGS_FOLDER = os.path.join(
@@ -1958,7 +1959,7 @@ class TaskInstanceTest(unittest.TestCase):
         def run_with_error(ti):
             try:
                 ti.run()
-            except AirflowException:
+            except (AirflowException, XToolException):
                 pass
 
         ti = TI(
@@ -2000,7 +2001,7 @@ class TaskInstanceTest(unittest.TestCase):
         def run_with_error(ti):
             try:
                 ti.run()
-            except AirflowException:
+            except (AirflowException, XToolException):
                 pass
 
         ti = TI(

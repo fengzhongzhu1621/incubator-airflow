@@ -24,6 +24,7 @@ import unittest
 from airflow.models import DAG
 from airflow.exceptions import AirflowException
 from airflow.operators.druid_check_operator import DruidCheckOperator
+from xTool.exceptions import XToolException
 
 try:
     from unittest import mock
@@ -60,7 +61,7 @@ class DruidCheckOperatorTest(unittest.TestCase):
 
         try:
             operator.execute(None)
-        except AirflowException:
+        except (AirflowException, XToolException):
             self.fail('Exception should not thrown!')
 
     @mock.patch.object(DruidCheckOperator, 'get_first')

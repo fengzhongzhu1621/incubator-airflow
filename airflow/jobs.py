@@ -50,7 +50,8 @@ from xTool.utils.file_processing import BaseMultiprocessFileProcessor, FileProce
 from xTool.utils.file import list_py_file_paths
 
 from airflow import configuration as conf
-from airflow.configuration import AirflowConfigException
+from airflow.exceptions import AirflowConfigException
+from xTool.exceptions import XToolConfigException
 from airflow import executors, models, settings
 from airflow.exceptions import AirflowException
 from airflow.models import DAG, DagRun, DagModel
@@ -113,7 +114,7 @@ class BaseJob(Base, LoggingMixin):
         # 当前机器的主机名/IP地址
         try:
             callable_path = conf.get('core', 'hostname_callable')
-        except AirflowConfigException:
+        except (AirflowConfigException, XToolConfigException):
             callable_path = None
         self.hostname = get_hostname(callable_path)
         # 执行器： 从任务队列中获取任务，并执行
@@ -3179,7 +3180,7 @@ class LocalTaskJob(BaseJob):
         ti = self.task_instance
         try:
             callable_path = conf.get('core', 'hostname_callable')
-        except AirflowConfigException:
+        except (AirflowConfigException, XToolConfigException):
             callable_path = None
         fqdn = get_hostname(callable_path)
         same_hostname = fqdn == ti.hostname

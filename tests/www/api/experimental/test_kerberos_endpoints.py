@@ -27,9 +27,10 @@ from datetime import datetime
 
 from airflow import configuration
 from airflow.api.auth.backend.kerberos_auth import client_auth
-from airflow.configuration import AirflowConfigException
+from airflow.exceptions import AirflowConfigException
 from airflow import configuration as conf
 from xTool.utils.net import get_hostname
+from xTool.exceptions import XToolConfigException
 from airflow.www import app as application
 
 
@@ -66,7 +67,7 @@ class ApiKerberosTests(unittest.TestCase):
             self.assertEqual(401, response.status_code)
             try:
                 callable_path = conf.get('core', 'hostname_callable')
-            except AirflowConfigException:
+            except (AirflowConfigException, XToolConfigException):
                 callable_path = None
             response.url = 'http://{}'.format(get_hostname(callable_path))
 
@@ -85,7 +86,7 @@ class ApiKerberosTests(unittest.TestCase):
             # case can influence the results
             try:
                 callable_path = conf.get('core', 'hostname_callable')
-            except AirflowConfigException:
+            except (AirflowConfigException, XToolConfigException):
                 callable_path = None            
             client_auth.hostname_override = get_hostname(callable_path)
 

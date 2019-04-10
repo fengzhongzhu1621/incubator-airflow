@@ -49,12 +49,13 @@ from airflow.utils import timezone
 from airflow.utils.dates import days_ago
 from airflow.utils.db import provide_session
 from airflow.utils.state import State
-from airflow.utils.timeout import timeout
+from xTool.utils.timeout import timeout
 from airflow.utils.dag_processing import SimpleDag, SimpleDagBag
 from xTool.utils.file import list_py_file_paths
-from airflow.configuration import AirflowConfigException
+from airflow.exceptions import AirflowConfigException
 from airflow import configuration as conf
 from xTool.utils.net import get_hostname
+from xTool.exceptions import XToolConfigException, XToolException
 
 from mock import Mock, patch, MagicMock, PropertyMock
 from tests.executors.test_executor import TestExecutor
@@ -1166,7 +1167,7 @@ class LocalTaskJobTest(unittest.TestCase):
         ti.state = State.RUNNING
         try:
             callable_path = conf.get('core', 'hostname_callable')
-        except AirflowConfigException:
+        except (AirflowConfigException, XToolConfigException):
             callable_path = None        
         ti.hostname = get_hostname(callable_path)
         ti.pid = 1
@@ -1240,7 +1241,7 @@ class LocalTaskJobTest(unittest.TestCase):
         ti.state = State.RUNNING
         try:
             callable_path = conf.get('core', 'hostname_callable')
-        except AirflowConfigException:
+        except (AirflowConfigException, XToolConfigException):
             callable_path = None        
         ti.hostname = get_hostname(callable_path)
         ti.pid = 1
@@ -2101,7 +2102,7 @@ class SchedulerJobTest(unittest.TestCase):
 
         try:
             dag.run(start_date=ex_date, end_date=ex_date, **run_kwargs)
-        except AirflowException:
+        except (AirflowException, XToolException):
             pass
 
         # test tasks
@@ -2166,7 +2167,7 @@ class SchedulerJobTest(unittest.TestCase):
         dr = scheduler.create_dag_run(dag)
         try:
             dag.run(start_date=dr.execution_date, end_date=dr.execution_date)
-        except AirflowException:  # Expect an exception since there is a failed task
+        except (AirflowException, XToolException):  # Expect an exception since there is a failed task
             pass
 
         # Mark the successful task as never having run since we want to see if the
@@ -2939,7 +2940,7 @@ class SchedulerJobTest(unittest.TestCase):
         def run_with_error(task):
             try:
                 task.run()
-            except AirflowException:
+            except (AirflowException, XToolException):
                 pass
 
         ti_tuple = six.next(six.itervalues(executor.queued_tasks))

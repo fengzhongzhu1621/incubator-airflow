@@ -56,6 +56,7 @@ from airflow import api
 from airflow import jobs, settings
 from airflow import configuration as conf
 from airflow.exceptions import AirflowException, AirflowWebServerTimeout, AirflowConfigException
+from xTool.exceptions import XToolException, XToolConfigException
 from airflow.executors import GetDefaultExecutor
 from airflow.models import (DagModel, DagBag, TaskInstance,
                             DagPickle, DagRun, Variable, DagStat,
@@ -309,7 +310,7 @@ def pool(args):
             pools = [api_client.delete_pool(name=args.delete)]
         else:
             pools = api_client.get_pools()
-    except (AirflowException, IOError) as err:
+    except (AirflowException, XToolException, IOError) as err:
         log.error(err)
     else:
         log.info(_tabulate(pools=pools))
@@ -547,7 +548,7 @@ def run(args, dag=None):
 
     try:
         callable_path = conf.get('core', 'hostname_callable')
-    except AirflowConfigException:
+    except (AirflowConfigException, XToolConfigException):
         callable_path = None
     hostname = get_hostname(callable_path)
     log.info("Running %s on host %s", ti, hostname)

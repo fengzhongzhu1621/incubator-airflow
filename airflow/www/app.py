@@ -37,9 +37,10 @@ from airflow.logging_config import configure_logging
 from airflow import jobs
 from airflow import settings
 from airflow import configuration
-from airflow.configuration import AirflowConfigException
+from airflow.exceptions import AirflowConfigException
 from airflow import configuration as conf
 from xTool.utils.net import get_hostname
+from xTool.exceptions import XToolConfigException
 
 csrf = CSRFProtect()
 
@@ -167,7 +168,7 @@ def create_app(config=None, testing=False):
         def jinja_globals():
             try:
                 callable_path = conf.get('core', 'hostname_callable')
-            except AirflowConfigException:
+            except (AirflowConfigException, XToolConfigException):
                 callable_path = None            
             return {
                 'hostname': get_hostname(callable_path),

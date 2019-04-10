@@ -36,6 +36,7 @@ import hmsclient
 
 from airflow import configuration as conf
 from airflow.exceptions import AirflowException
+from xTool.exceptions import XToolException
 from airflow.hooks.base_hook import BaseHook
 from xTool.utils.helpers import as_flattened_list
 from xTool.utils.file import TemporaryDirectory
@@ -270,7 +271,7 @@ class HiveCliHook(BaseHook):
                     query = 'explain ' + query
                 try:
                     self.run_cli(query, verbose=False)
-                except AirflowException as e:
+                except (AirflowException, XToolException) as e:
                     message = e.args[0].split('\n')[-2]
                     self.log.info(message)
                     error_loc = re.search('(\d+):(\d+)', message)

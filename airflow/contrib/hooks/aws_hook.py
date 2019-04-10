@@ -22,6 +22,7 @@ import configparser
 import logging
 
 from airflow.exceptions import AirflowException
+from xTool.exceptions import XToolException
 from airflow.hooks.base_hook import BaseHook
 
 
@@ -151,7 +152,7 @@ class AwsHook(BaseHook):
 
                 endpoint_url = extra_config.get('host')
 
-            except AirflowException:
+            except (AirflowException, XToolException):
                 # No connection found: fallback on boto3 credential strategy
                 # http://boto3.readthedocs.io/en/latest/guide/configuration.html
                 pass

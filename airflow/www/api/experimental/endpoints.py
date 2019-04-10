@@ -27,6 +27,7 @@ from airflow.api.common.experimental import trigger_dag as trigger
 from airflow.api.common.experimental.get_task import get_task
 from airflow.api.common.experimental.get_task_instance import get_task_instance
 from airflow.exceptions import AirflowException
+from xTool.exceptions import XToolException
 from airflow.utils.dates import parse_execution_date
 from xTool.utils.log.logging_mixin import LoggingMixin
 from airflow.www.app import csrf
@@ -76,7 +77,7 @@ def trigger_dag(dag_id):
 
     try:
         dr = trigger.trigger_dag(dag_id, run_id, conf, execution_date)
-    except AirflowException as err:
+    except (AirflowException, XToolException) as err:
         _log.error(err)
         response = jsonify(error="{}".format(err))
         response.status_code = err.status_code
@@ -98,7 +99,7 @@ def delete_dag(dag_id):
     """
     try:
         count = delete.delete_dag(dag_id)
-    except AirflowException as err:
+    except (AirflowException, XToolException) as err:
         _log.error(err)
         response = jsonify(error="{}".format(err))
         response.status_code = err.status_code
@@ -118,7 +119,7 @@ def task_info(dag_id, task_id):
     """Returns a JSON with a task's public instance variables. """
     try:
         info = get_task(dag_id, task_id)
-    except AirflowException as err:
+    except (AirflowException, XToolException) as err:
         _log.info(err)
         response = jsonify(error="{}".format(err))
         response.status_code = err.status_code
@@ -159,7 +160,7 @@ def task_instance_info(dag_id, execution_date, task_id):
 
     try:
         info = get_task_instance(dag_id, task_id, execution_date)
-    except AirflowException as err:
+    except (AirflowException, XToolException) as err:
         _log.info(err)
         response = jsonify(error="{}".format(err))
         response.status_code = err.status_code
@@ -198,7 +199,7 @@ def get_pool(name):
     """Get pool by a given name."""
     try:
         pool = pool_api.get_pool(name=name)
-    except AirflowException as err:
+    except (AirflowException, XToolException) as err:
         _log.error(err)
         response = jsonify(error="{}".format(err))
         response.status_code = err.status_code
@@ -213,7 +214,7 @@ def get_pools():
     """Get all pools."""
     try:
         pools = pool_api.get_pools()
-    except AirflowException as err:
+    except (AirflowException, XToolException) as err:
         _log.error(err)
         response = jsonify(error="{}".format(err))
         response.status_code = err.status_code
@@ -230,7 +231,7 @@ def create_pool():
     params = request.get_json(force=True)
     try:
         pool = pool_api.create_pool(**params)
-    except AirflowException as err:
+    except (AirflowException, XToolException) as err:
         _log.error(err)
         response = jsonify(error="{}".format(err))
         response.status_code = err.status_code
@@ -246,7 +247,7 @@ def delete_pool(name):
     """Delete pool."""
     try:
         pool = pool_api.delete_pool(name=name)
-    except AirflowException as err:
+    except (AirflowException, XToolException) as err:
         _log.error(err)
         response = jsonify(error="{}".format(err))
         response.status_code = err.status_code

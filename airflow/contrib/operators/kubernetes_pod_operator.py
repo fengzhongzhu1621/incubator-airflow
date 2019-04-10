@@ -16,6 +16,7 @@
 # under the License.
 
 from airflow.exceptions import AirflowException
+from xTool.exceptions import XToolException
 from airflow.models import BaseOperator
 from airflow.utils.decorators import apply_defaults
 from airflow.contrib.kubernetes import kube_client, pod_generator, pod_launcher
@@ -131,7 +132,7 @@ class KubernetesPodOperator(BaseOperator):
                 )
             if self.xcom_push:
                 return result
-        except AirflowException as ex:
+        except (AirflowException, XToolException) as ex:
             raise AirflowException('Pod Launching failed: {error}'.format(error=ex))
 
     @apply_defaults

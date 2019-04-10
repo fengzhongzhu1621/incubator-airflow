@@ -31,7 +31,8 @@ from flask import url_for, redirect, request
 from flask_oauthlib.client import OAuth
 
 from airflow import models, configuration, settings
-from airflow.configuration import AirflowConfigException
+from airflow.exceptions import AirflowConfigException
+from xTool.exceptions import XToolConfigException
 from airflow.utils.db import provide_session
 from xTool.utils.log.logging_mixin import LoggingMixin
 
@@ -158,7 +159,7 @@ class GHEAuthBackend(object):
                     'it appears that you are using the string name for a team, '
                     'please use the id number instead')
 
-        except AirflowConfigException:
+        except (AirflowConfigException, XToolConfigException):
             # No allowed teams defined, let anyone in GHE in.
             return True
 

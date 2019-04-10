@@ -21,6 +21,7 @@ import ssl
 
 from airflow import configuration
 from airflow.exceptions import AirflowConfigException, AirflowException
+from xTool.exceptions import XToolConfigException
 from xTool.utils.log.logging_mixin import LoggingMixin
 
 
@@ -57,7 +58,7 @@ DEFAULT_CELERY_CONFIG = {
 celery_ssl_active = False
 try:
     celery_ssl_active = configuration.conf.getboolean('celery', 'SSL_ACTIVE')
-except AirflowConfigException as e:
+except (AirflowConfigException, XToolConfigException) as e:
     log.warning("Celery Executor will run without SSL")
 
 try:
@@ -67,7 +68,7 @@ try:
                           'ca_certs': configuration.conf.get('celery', 'SSL_CACERT'),
                           'cert_reqs': ssl.CERT_REQUIRED}
         DEFAULT_CELERY_CONFIG['broker_use_ssl'] = broker_use_ssl
-except AirflowConfigException as e:
+except (AirflowConfigException, XToolConfigException) as e:
     raise AirflowException('AirflowConfigException: SSL_ACTIVE is True, '
                            'please ensure SSL_KEY, '
                            'SSL_CERT and SSL_CACERT are set')

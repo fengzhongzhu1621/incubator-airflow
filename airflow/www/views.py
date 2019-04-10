@@ -72,7 +72,8 @@ from six import itervalues, iteritems
 
 import airflow
 from airflow import configuration as conf
-from airflow.configuration import AirflowConfigException
+from airflow.exceptions import AirflowConfigException
+from xTool.exceptions import XToolConfigException
 from airflow import models
 from airflow import settings
 from airflow.api.common.experimental.mark_tasks import set_dag_run_state
@@ -717,7 +718,7 @@ class Airflow(BaseView):
     def circles(self):
         try:
             callable_path = conf.get('core', 'hostname_callable')
-        except AirflowConfigException:
+        except (AirflowConfigException, XToolConfigException):
             callable_path = None
         return render_template(
             'airflow/circles.html', hostname=get_hostname(callable_path)), 404
@@ -727,7 +728,7 @@ class Airflow(BaseView):
         from airflow.utils import asciiart as ascii_
         try:
             callable_path = conf.get('core', 'hostname_callable')
-        except AirflowConfigException:
+        except (AirflowConfigException, XToolConfigException):
             callable_path = None        
         return render_template(
             'airflow/traceback.html',

@@ -19,12 +19,13 @@
 import unittest
 
 from airflow import configuration as conf
-from airflow.configuration import AirflowConfigException
+from airflow.exceptions import AirflowConfigException
 from airflow.lineage.backend.atlas import AtlasBackend
 from airflow.lineage.datasets import File
 from airflow.models import DAG, TaskInstance as TI
 from airflow.operators.dummy_operator import DummyOperator
 from airflow.utils import timezone
+from xTool.exceptions import XToolConfigException
 
 from backports.configparser import DuplicateSectionError
 
@@ -44,7 +45,7 @@ class TestAtlas(unittest.TestCase):
         conf.load_test_config()
         try:
             conf.conf.add_section("atlas")
-        except AirflowConfigException:
+        except (AirflowConfigException, XToolConfigException):
             pass
         except DuplicateSectionError:
             pass

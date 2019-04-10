@@ -20,6 +20,8 @@
 from __future__ import print_function
 
 from airflow.exceptions import AirflowException
+from airflow.exceptions import AirflowConfigException
+from xTool.exceptions import XToolConfigException
 from airflow import configuration as conf
 from importlib import import_module
 
@@ -35,7 +37,7 @@ def load_auth():
     auth_backend = 'airflow.api.auth.backend.default'
     try:
         auth_backend = conf.get("api", "auth_backend")
-    except conf.AirflowConfigException:
+    except (AirflowConfigException, XToolConfigException):
         # 没有配置api/auth_backend
         pass
 

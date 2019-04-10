@@ -67,12 +67,14 @@ from croniter import (
 import six
 from xTool.utils.timeout import timeout
 from xTool.exceptions import XToolTimeoutError
+from xTool.exceptions import XToolException
 from xTool.utils.file import list_py_file_paths
 
 from airflow import settings, utils
 from airflow.executors import GetDefaultExecutor, LocalExecutor
 from airflow import configuration
-from airflow.configuration import AirflowConfigException
+from airflow.exceptions import AirflowConfigException
+from xTool.exceptions import XToolConfigException
 from airflow import configuration as conf
 from airflow.exceptions import (
     AirflowDagCycleException, AirflowException, AirflowSkipException
@@ -1615,7 +1617,7 @@ class TaskInstance(Base, LoggingMixin):
         # 获得任务实例运行所在机器的主机名
         try:
             callable_path = conf.get('core', 'hostname_callable')
-        except AirflowConfigException:
+        except (AirflowConfigException, XToolConfigException):
             callable_path = None        
         self.hostname = get_hostname(callable_path)
         self.operator = task.__class__.__name__
@@ -1747,7 +1749,7 @@ class TaskInstance(Base, LoggingMixin):
         self.job_id = job_id
         try:
             callable_path = conf.get('core', 'hostname_callable')
-        except AirflowConfigException:
+        except (AirflowConfigException, XToolConfigException):
             callable_path = None         
         self.hostname = get_hostname(callable_path)
         self.operator = task.__class__.__name__
@@ -5648,7 +5650,7 @@ class DagRun(Base, LoggingMixin):
             # 将不存在的任务标记为删除
             try:
                 task = dag.get_task(ti.task_id)
-            except AirflowException:
+            except (AirflowException, XToolException):
                 # dag.task_dict中不存在这个任务
                 # 用户修改了dag文件，去掉了部分task声明
                 # 此时用户手工触发dag_run，它的调度时间刚好和系统正在调度的时间一致

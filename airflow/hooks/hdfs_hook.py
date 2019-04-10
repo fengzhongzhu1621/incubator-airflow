@@ -21,6 +21,7 @@ from six import PY2
 
 from airflow import configuration
 from airflow.exceptions import AirflowException
+from xTool.exceptions import XToolException
 from airflow.hooks.base_hook import BaseHook
 
 
@@ -77,7 +78,7 @@ class HDFSHook(BaseHook):
                                                              False)
             hdfs_namenode_principal = connections[0].extra_dejson.get(
                 'hdfs_namenode_principal')
-        except AirflowException:
+        except (AirflowException, XToolException):
             if not autoconfig:
                 raise
 

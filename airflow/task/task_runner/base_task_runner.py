@@ -29,6 +29,8 @@ from xTool.utils.log.logging_mixin import LoggingMixin
 from airflow import configuration as conf
 from airflow.utils.configuration import tmp_configuration_copy
 from xTool.misc import USE_WINDOWS
+from airflow.exceptions import AirflowConfigException
+from xTool.exceptions import XToolConfigException
 
 
 PYTHONPATH_VAR = 'PYTHONPATH'
@@ -56,7 +58,7 @@ class BaseTaskRunner(LoggingMixin):
         else:
             try:
                 self.run_as_user = conf.get('core', 'default_impersonation')
-            except conf.AirflowConfigException:
+            except (AirflowConfigException, XToolConfigException):
                 self.run_as_user = None
 
         # Always provide a copy of the configuration file settings

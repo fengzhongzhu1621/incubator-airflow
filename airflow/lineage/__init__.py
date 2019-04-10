@@ -24,6 +24,8 @@ from airflow.lineage.datasets import DataSet
 from xTool.utils.log.logging_mixin import LoggingMixin
 from xTool.utils.module_loading import prepare_classpath
 from xTool.utils.module_loading import import_string
+from xTool.exceptions import XToolConfigException
+from airflow.exceptions import AirflowConfigException
 
 from itertools import chain
 
@@ -43,7 +45,7 @@ def _get_backend():
         backend = import_string(_backend_str)
     except ImportError as ie:
         log.debug("Cannot import %s due to %s", _backend_str, ie)
-    except conf.AirflowConfigException:
+    except (AirflowConfigException, XToolConfigException):
         log.debug("Could not find lineage backend key in config")
 
     return backend

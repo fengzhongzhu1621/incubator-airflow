@@ -26,6 +26,7 @@ from airflow import configuration as conf
 from airflow.exceptions import AirflowConfigException
 from xTool.utils.module_loading import import_string
 from xTool.utils.module_loading import prepare_classpath
+from xTool.exceptions import XToolConfigException
 
 log = logging.getLogger(__name__)
 
@@ -40,7 +41,7 @@ def configure_logging():
         prepare_classpath(config_path)
 
         logging_class_path = conf.get('core', 'logging_config_class')
-    except AirflowConfigException:
+    except (AirflowConfigException, XToolConfigException):
         log.debug('Could not find key logging_config_class in config')
 
     if logging_class_path:

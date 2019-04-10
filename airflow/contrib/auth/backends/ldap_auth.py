@@ -32,7 +32,8 @@ from flask import url_for, redirect
 
 from airflow import models
 from airflow import configuration
-from airflow.configuration import AirflowConfigException
+from airflow.exceptions import AirflowConfigException
+from xTool.exceptions import XToolConfigException
 from airflow.utils.db import provide_session
 
 import traceback
@@ -58,7 +59,7 @@ class LdapException(Exception):
 def get_ldap_connection(dn=None, password=None):
     try:
         cacert = configuration.conf.get("ldap", "cacert")
-    except AirflowConfigException:
+    except (AirflowConfigException, XToolConfigException):
         pass
 
     tls_configuration = Tls(validate=ssl.CERT_REQUIRED,
@@ -138,7 +139,7 @@ class LdapUser(models.User):
         data_profiler_filter = None
         try:
             superuser_filter = configuration.conf.get("ldap", "superuser_filter")
-        except AirflowConfigException:
+        except (AirflowConfigException, XToolConfigException):
             pass
 
         if not superuser_filter:
@@ -154,7 +155,7 @@ class LdapUser(models.User):
 
         try:
             data_profiler_filter = configuration.conf.get("ldap", "data_profiler_filter")
-        except AirflowConfigException:
+        except (AirflowConfigException, XToolConfigException):
             pass
 
         if not data_profiler_filter:
@@ -180,7 +181,7 @@ class LdapUser(models.User):
                 configuration.conf.get("ldap", "user_name_attr"),
                 user.username
             )
-        except AirflowConfigException:
+        except (AirflowConfigException, XToolConfigException):
             log.debug("Missing configuration for ldap settings. Skipping")
 
     @staticmethod

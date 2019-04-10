@@ -22,6 +22,7 @@ from airflow.utils.decorators import apply_defaults
 from airflow.contrib.hooks.qubole_check_hook import QuboleCheckHook
 from airflow.operators.check_operator import CheckOperator, ValueCheckOperator
 from airflow.exceptions import AirflowException
+from xTool.exceptions import XToolException
 
 
 class QuboleCheckOperator(CheckOperator, QuboleOperator):
@@ -88,7 +89,7 @@ class QuboleCheckOperator(CheckOperator, QuboleOperator):
         try:
             self.hook = self.get_hook(context=context)
             super(QuboleCheckOperator, self).execute(context=context)
-        except AirflowException as e:
+        except (AirflowException, XToolException) as e:
             handle_airflow_exception(e, self.get_hook())
 
     def get_db_hook(self):
@@ -175,7 +176,7 @@ class QuboleValueCheckOperator(ValueCheckOperator, QuboleOperator):
         try:
             self.hook = self.get_hook(context=context)
             super(QuboleValueCheckOperator, self).execute(context=context)
-        except AirflowException as e:
+        except (AirflowException, XToolException) as e:
             handle_airflow_exception(e, self.get_hook())
 
     def get_db_hook(self):

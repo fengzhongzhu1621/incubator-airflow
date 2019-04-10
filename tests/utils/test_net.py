@@ -21,8 +21,9 @@ import unittest
 import mock
 
 from airflow.utils import net
-from airflow.configuration import AirflowConfigException
+from airflow.exceptions import AirflowConfigException
 from airflow import configuration as conf
+from xTool.exceptions import XToolConfigException
 
 def get_hostname():
     return 'awesomehostname'
@@ -35,7 +36,7 @@ class GetHostname(unittest.TestCase):
     def test_get_hostname_unset(self, patched_conf, patched_socket):
         try:
             callable_path = conf.get('core', 'hostname_callable')
-        except AirflowConfigException:
+        except (AirflowConfigException, XToolConfigException):
             callable_path = None        
         patched_conf.get = mock.Mock(return_value=None)
         patched_socket.getfqdn = mock.Mock(return_value='first')
@@ -45,7 +46,7 @@ class GetHostname(unittest.TestCase):
     def test_get_hostname_set(self, patched_conf):
         try:
             callable_path = conf.get('core', 'hostname_callable')
-        except AirflowConfigException:
+        except (AirflowConfigException, XToolConfigException):
             callable_path = None          
         patched_conf.get = mock.Mock(
             return_value='tests.utils.test_net:get_hostname'
@@ -56,7 +57,7 @@ class GetHostname(unittest.TestCase):
     def test_get_hostname_set_incorrect(self, patched_conf):
         try:
             callable_path = conf.get('core', 'hostname_callable')
-        except AirflowConfigException:
+        except (AirflowConfigException, XToolConfigException):
             callable_path = None          
         patched_conf.get = mock.Mock(
             return_value='tests.utils.test_net'
@@ -68,7 +69,7 @@ class GetHostname(unittest.TestCase):
     def test_get_hostname_set_missing(self, patched_conf):
         try:
             callable_path = conf.get('core', 'hostname_callable')
-        except AirflowConfigException:
+        except (AirflowConfigException, XToolConfigException):
             callable_path = None          
         patched_conf.get = mock.Mock(
             return_value='tests.utils.test_net:missing_func'

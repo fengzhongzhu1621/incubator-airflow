@@ -34,6 +34,8 @@ from sqlalchemy.pool import NullPool
 from airflow import configuration as conf
 from airflow.logging_config import configure_logging
 from airflow.utils.sqlalchemy import setup_event_handlers
+from airflow.exceptions import AirflowConfigException
+from xTool.exceptions import XToolConfigException
 
 log = logging.getLogger(__name__)
 
@@ -161,7 +163,7 @@ def configure_orm(disable_connection_pool=False):
         # 0 means no limit, which could lead to exceeding the Database connection limit.
         try:
             pool_size = conf.getint('core', 'SQL_ALCHEMY_POOL_SIZE')
-        except conf.AirflowConfigException:
+        except (AirflowConfigException, XToolConfigException):
             pool_size = 5
 
         # The DB server already has a value for wait_timeout (number of seconds after
@@ -170,7 +172,7 @@ def configure_orm(disable_connection_pool=False):
         # pool_recycle to an equal or smaller value.
         try:
             pool_recycle = conf.getint('core', 'SQL_ALCHEMY_POOL_RECYCLE')
-        except conf.AirflowConfigException:
+        except (AirflowConfigException, XToolConfigException):
             pool_recycle = 1800
 
         log.info("setting.configure_orm(): Using pool settings. pool_size={}, "
@@ -183,7 +185,7 @@ def configure_orm(disable_connection_pool=False):
         # to utf-8 so jobs & users with non-latin1 characters can still use
         # us.
         engine_args['encoding'] = conf.get('core', 'SQL_ENGINE_ENCODING')
-    except conf.AirflowConfigException:
+    except (AirflowConfigException, XToolConfigException):
         engine_args['encoding'] = 'utf-8'
     # For Python2 we get back a newstr and need a str
     engine_args['encoding'] = engine_args['encoding'].__str__()
@@ -230,7 +232,7 @@ def configure_adapters():
 def validate_session():
     try:
         worker_precheck = conf.getboolean('core', 'worker_precheck')
-    except conf.AirflowConfigException:
+    except (AirflowConfigException, XToolConfigException):
         worker_precheck = False
     if not worker_precheck:
         return True

@@ -38,6 +38,8 @@ from airflow.models import DAG
 from flask_admin import BaseView
 from importlib import import_module
 from airflow.exceptions import AirflowException
+from xTool.exceptions import XToolConfigException
+from airflow.exceptions import AirflowConfigException
 
 # 将dag目录添加到系统路径
 if settings.DAGS_FOLDER not in sys.path:
@@ -54,7 +56,7 @@ def load_login():
         # 获得默认web认证
         if conf.getboolean('webserver', 'AUTHENTICATE'):
             auth_backend = conf.get('webserver', 'auth_backend')
-    except conf.AirflowConfigException:
+    except (AirflowConfigException, XToolConfigException):
         if conf.getboolean('webserver', 'AUTHENTICATE'):
             log.warning(
                 "auth_backend not found in webserver config reverting to "

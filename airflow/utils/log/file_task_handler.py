@@ -23,10 +23,11 @@ import platform
 import requests
 
 from airflow import configuration as conf
-from airflow.configuration import AirflowConfigException
+from airflow.exceptions import AirflowConfigException
 from xTool.utils.file import mkdirs
 from xTool.utils.helpers import parse_template_string
 from xTool.misc import USE_WINDOWS
+from xTool.exceptions import XToolConfigException
 
 
 class FileTaskHandler(logging.Handler):
@@ -132,7 +133,7 @@ class FileTaskHandler(logging.Handler):
                 timeout = None  # No timeout
                 try:
                     timeout = conf.getint('webserver', 'log_fetch_timeout_sec')
-                except (AirflowConfigException, ValueError):
+                except (AirflowConfigException, XToolConfigException, ValueError):
                     pass
 
                 response = requests.get(url, timeout=timeout)

@@ -21,6 +21,7 @@ import unittest
 import sqlalchemy
 import airflow
 from argparse import Namespace
+from airflow.exceptions import AirflowConfigException
 
 try:
     from unittest import mock
@@ -59,7 +60,7 @@ class TestWorkerPrecheck(unittest.TestCase):
         Test to check the behaviour of validate_session method
         when worker_precheck is absent in airflow configuration
         """
-        mock_getboolean.side_effect = airflow.configuration.AirflowConfigException
+        mock_getboolean.side_effect = AirflowConfigException
         self.assertEqual(airflow.settings.validate_session(), True)
 
     @mock.patch('sqlalchemy.orm.session.Session.execute')

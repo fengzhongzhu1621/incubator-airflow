@@ -21,6 +21,7 @@
 from builtins import str
 
 from airflow.exceptions import AirflowException
+from xTool.exceptions import XToolConfigException, XToolException
 from airflow.hooks.http_hook import HttpHook
 from airflow.sensors.base_sensor_operator import BaseSensorOperator
 from airflow.utils.decorators import apply_defaults
@@ -83,7 +84,7 @@ class HttpSensor(BaseSensorOperator):
             if self.response_check:
                 # run content check on response
                 return self.response_check(response)
-        except AirflowException as ae:
+        except (AirflowException, XToolException) as ae:
             if str(ae).startswith("404"):
                 return False
 
