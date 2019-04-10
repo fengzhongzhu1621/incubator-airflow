@@ -28,6 +28,7 @@ from airflow.hooks.base_hook import BaseHook
 from airflow import configuration
 from xTool.utils.log.logging_mixin import LoggingMixin
 from airflow.utils.state import State
+from xTool.utils.file import mkdir_p
 
 from qds_sdk.qubole import Qubole
 from qds_sdk.commands import Command, HiveCommand, PrestoCommand, HadoopCommand, \
@@ -150,7 +151,7 @@ class QuboleHook(BaseHook, LoggingMixin):
                 configuration.conf.get('core', 'BASE_LOG_FOLDER')
             )
             resultpath = logpath + '/' + self.dag_id + '/' + self.task_id + '/results'
-            configuration.mkdir_p(resultpath)
+            mkdir_p(resultpath)
             fp = open(resultpath + '/' + iso, 'wb')
 
         if self.cmd is None:

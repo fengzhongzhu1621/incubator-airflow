@@ -50,7 +50,8 @@ from airflow.utils.dates import days_ago
 from airflow.utils.db import provide_session
 from airflow.utils.state import State
 from airflow.utils.timeout import timeout
-from airflow.utils.dag_processing import SimpleDag, SimpleDagBag, list_py_file_paths
+from airflow.utils.dag_processing import SimpleDag, SimpleDagBag
+from xTool.utils.file import list_py_file_paths
 from airflow.configuration import AirflowConfigException
 from airflow import configuration as conf
 from xTool.utils.net import get_hostname

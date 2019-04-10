@@ -20,7 +20,7 @@
 from builtins import next
 from builtins import zip
 from tempfile import NamedTemporaryFile
-from airflow.utils.file import TemporaryDirectory
+from xTool.utils.file import TemporaryDirectory
 import gzip
 import bz2
 import tempfile

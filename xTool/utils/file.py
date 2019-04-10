@@ -10,24 +10,12 @@ from tempfile import mkdtemp
 
 from contextlib import contextmanager
 
-
 import os
-import json
 import re
-import time
 import zipfile
-from abc import ABCMeta, abstractmethod
-from collections import defaultdict
-
-import threading
-
 
 from xTool.utils.log.logging_mixin import LoggingMixin
 from xTool.exceptions import XToolConfigException
-
-
-### incase people are using threading, we lock file reads
-lock = threading.Lock()
 
 
 @contextmanager
@@ -78,19 +66,6 @@ def mkdir_p(path):
         else:
             raise XToolConfigException(
                 'Error creating {}: {}'.format(path, exc.strerror))
-
-
-def rm_f(path):
-    """
-    Remove the file at the given path with os.remove(), ignoring errors caused by the file's absence.
-    """
-    try:
-        os.remove( path )
-    except OSError as e:
-        if e.errno == errno.ENOENT:
-            pass
-        else:
-            raise
 
 
 def list_py_file_paths(directory, followlinks=True, ignore_filename='.ignore', file_ext='.py', safe_mode=False, safe_filters=(b'xTool', b'XTool')):
@@ -169,52 +144,3 @@ def list_py_file_paths(directory, followlinks=True, ignore_filename='.ignore', f
                     log = LoggingMixin().log
                     log.exception("Error while examining %s", f)
     return file_paths
-
-
-def ensure_file_exists(filename):
-    """创建文件
-    Given a valid filename, make sure it exists (will create if DNE)."""
-    if not os.path.exists(filename):
-        head, tail = os.path.split(filename)
-        ensure_dir_exists(head)
-        with open(filename, 'w') as f:
-            pass  # just create the file
-
-
-def ensure_dir_exists(directory):
-    """创建目录
-    Given a valid directory path, make sure it exists."""
-    if dir:
-        if not os.path.isdir(directory):
-            os.makedirs(directory)
-
-
-def load_json_dict(filename, *args):
-    """根据参数列表从配置文件中获取值 ."""
-    data = {}
-    if os.path.exists(filename):
-        lock.acquire()
-        with open(filename, "r") as f:
-            try:
-                data = json.load(f)
-                if not isinstance(data, dict):
-                    data = {}
-            except:
-                data = {}  # TODO: issue a warning and bubble it up
-        lock.release()
-        if args:
-            return {key: data[key] for key in args if key in data}
-    return data
-
-
-def save_json_dict(filename, json_dict):
-    """将json数据保存到配置文件 ."""
-    if isinstance(json_dict, dict):
-        # this will raise a TypeError if something goes wrong
-        json_string = json.dumps(json_dict, indent=4)
-        lock.acquire()
-        with open(filename, "w") as f:
-            f.write(json_string)
-        lock.release()
-    else:
-        raise TypeError("json_dict was not a dictionary. not saving.")

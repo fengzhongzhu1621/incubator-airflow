@@ -23,7 +23,7 @@ from tempfile import NamedTemporaryFile
 
 from airflow.exceptions import AirflowException
 from airflow.hooks.base_hook import BaseHook
-from airflow.utils.file import TemporaryDirectory
+from xTool.utils.file import TemporaryDirectory
 
 
 class PigCliHook(BaseHook):

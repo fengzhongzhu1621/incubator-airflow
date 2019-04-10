@@ -23,7 +23,7 @@ import tempfile
 from mock import patch, mock
 
 from airflow import configuration as conf
-from airflow.configuration import mkdir_p
+from xTool.utils.file import mkdir_p
 from airflow.exceptions import AirflowConfigException
 
 

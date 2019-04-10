@@ -24,7 +24,7 @@ import requests
 
 from airflow import configuration as conf
 from airflow.configuration import AirflowConfigException
-from airflow.utils.file import mkdirs
+from xTool.utils.file import mkdirs
 from airflow.utils.helpers import parse_template_string
 from xTool.misc import USE_WINDOWS
 

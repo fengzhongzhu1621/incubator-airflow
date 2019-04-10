@@ -23,7 +23,7 @@ from subprocess import Popen, STDOUT, PIPE
 from tempfile import gettempdir, NamedTemporaryFile
 from airflow.utils.decorators import apply_defaults
 from airflow.sensors.base_sensor_operator import BaseSensorOperator
-from airflow.utils.file import TemporaryDirectory
+from xTool.utils.file import TemporaryDirectory
 
 
 class BashSensor(BaseSensorOperator):
