@@ -19,7 +19,7 @@
 
 import unittest
 
-from airflow.utils.module_loading import import_string
+from xTool.utils.module_loading import import_string
 
 
 class ModuleImportTestCase(unittest.TestCase):

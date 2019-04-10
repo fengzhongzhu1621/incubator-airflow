@@ -29,7 +29,7 @@ from airflow.exceptions import AirflowException
 from airflow.executors.base_executor import BaseExecutor
 from airflow import configuration
 from airflow.utils.log.logging_mixin import LoggingMixin
-from airflow.utils.module_loading import import_string
+from xTool.utils.module_loading import import_string
 
 '''
 To start the celery worker, run the command:
