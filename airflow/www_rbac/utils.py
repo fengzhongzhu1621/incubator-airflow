@@ -44,7 +44,7 @@ import sqlalchemy as sqla
 from airflow import configuration, settings
 from airflow.models import BaseOperator
 from airflow.operators.subdag_operator import SubDagOperator
-from airflow.utils.json import AirflowJsonEncoder
+from xTool.misc import NumpyJsonEncoder
 from airflow.utils.state import State
 
 AUTHENTICATE = configuration.getboolean('webserver', 'AUTHENTICATE')
@@ -204,7 +204,7 @@ def json_response(obj):
     """
     return Response(
         response=json.dumps(
-            obj, indent=4, cls=AirflowJsonEncoder),
+            obj, indent=4, cls=NumpyJsonEncoder),
         status=200,
         mimetype="application/json")
 

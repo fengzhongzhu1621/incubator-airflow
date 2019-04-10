@@ -60,7 +60,7 @@ from airflow.models import XCom, DagRun
 from airflow.ti_deps.dep_context import DepContext, QUEUE_DEPS, SCHEDULER_DEPS
 
 from airflow.utils import timezone
-from airflow.utils.json import json_ser
+from xTool.misc import json_ser
 from airflow.utils.state import State
 from airflow.utils.dates import parse_execution_date
 from airflow.utils.db import provide_session

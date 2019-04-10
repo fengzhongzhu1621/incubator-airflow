@@ -42,7 +42,7 @@ from wtforms.compat import text_type
 from airflow import configuration, models, settings
 from airflow.utils.db import create_session
 from airflow.utils.dates import parse_execution_date
-from airflow.utils.json import AirflowJsonEncoder
+from xTool.misc import NumpyJsonEncoder
 
 AUTHENTICATE = configuration.conf.getboolean('webserver', 'AUTHENTICATE')
 
@@ -332,7 +332,7 @@ def json_response(obj):
     """
     return Response(
         response=json.dumps(
-            obj, indent=4, cls=AirflowJsonEncoder),
+            obj, indent=4, cls=NumpyJsonEncoder),
         status=200,
         mimetype="application/json")
 
