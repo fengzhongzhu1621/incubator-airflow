@@ -22,7 +22,7 @@ from __future__ import division
 from __future__ import print_function
 from __future__ import unicode_literals
 
-from airflow.utils import timezone
+from xTool.utils import timezone
 from datetime import datetime, timedelta
 import datetime as dt
 from dateutil.relativedelta import relativedelta  # for doctest

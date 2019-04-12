@@ -27,7 +27,7 @@ from airflow.models import TaskInstance, DAG, DagRun
 from airflow.config_templates.airflow_local_settings import DEFAULT_LOGGING_CONFIG
 from airflow.operators.dummy_operator import DummyOperator
 from airflow.operators.python_operator import PythonOperator
-from airflow.utils.timezone import datetime
+from xTool.utils.timezone import datetime
 from xTool.utils.log.logging_mixin import set_context
 from airflow.utils.log.file_task_handler import FileTaskHandler
 from xTool.decorators.db import create_session

@@ -61,9 +61,9 @@ from airflow.bin import cli
 from airflow.www import app as application
 from airflow.settings import Session
 from airflow.utils import timezone
-from airflow.utils.timezone import datetime
+from xTool.utils.timezone import datetime
 from xTool.utils.state import State
-from airflow.utils.dates import days_ago, infer_time_unit, round_time, scale_time_units
+from xTool.utils.dates import days_ago, infer_time_unit, round_time, scale_time_units
 from lxml import html
 from airflow.exceptions import AirflowException
 from airflow.exceptions import AirflowConfigException

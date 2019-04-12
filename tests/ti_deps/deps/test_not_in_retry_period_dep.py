@@ -25,7 +25,7 @@ from mock import Mock
 from airflow.models import TaskInstance
 from airflow.ti_deps.deps.not_in_retry_period_dep import NotInRetryPeriodDep
 from xTool.utils.state import State
-from airflow.utils.timezone import datetime
+from xTool.utils.timezone import datetime
 
 
 class NotInRetryPeriodDepTest(unittest.TestCase):

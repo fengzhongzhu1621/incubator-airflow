@@ -20,12 +20,16 @@
 import datetime as dt
 import pendulum
 
-# 从配置文件中获取时区设置
-from airflow.settings import TIMEZONE
+# 设置默认时区
+TIMEZONE = pendulum.timezone('UTC')
 
 
 # UTC time zone as a tzinfo instance.
 utc = pendulum.timezone('UTC')
+
+
+def set_timezone_var(timezone):
+    TIMEZONE = timezone
 
 
 def is_localized(value):

@@ -28,7 +28,7 @@ from airflow.contrib.operators.ssh_operator import SSHOperator
 from airflow.models import DAG, TaskInstance
 from airflow.settings import Session
 from airflow.utils import timezone
-from airflow.utils.timezone import datetime
+from xTool.utils.timezone import datetime
 
 TEST_DAG_ID = 'unit_tests'
 DEFAULT_DATE = datetime(2017, 1, 1)

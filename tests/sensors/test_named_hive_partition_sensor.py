@@ -22,7 +22,7 @@ from datetime import timedelta
 
 from airflow import configuration, DAG, operators
 from airflow.sensors.named_hive_partition_sensor import NamedHivePartitionSensor
-from airflow.utils.timezone import datetime
+from xTool.utils.timezone import datetime
 from airflow.hooks.hive_hooks import HiveMetastoreHook
 
 configuration.load_test_config()

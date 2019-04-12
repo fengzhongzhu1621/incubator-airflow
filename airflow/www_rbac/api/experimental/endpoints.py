@@ -26,7 +26,7 @@ from airflow.api.common.experimental.get_task_instance import get_task_instance
 from airflow.api.common.experimental.get_dag_run_state import get_dag_run_state
 from airflow.exceptions import AirflowException
 from xTool.utils.log.logging_mixin import LoggingMixin
-from airflow.utils.dates import parse_execution_date
+from xTool.utils.dates import parse_execution_date
 from airflow.www_rbac.app import csrf
 from airflow import models
 from xTool.decorators.db import create_session

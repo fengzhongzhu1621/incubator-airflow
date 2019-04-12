@@ -41,7 +41,7 @@ from wtforms.compat import text_type
 
 from airflow import configuration, models, settings
 from xTool.decorators.db import create_session
-from airflow.utils.dates import parse_execution_date
+from xTool.utils.dates import parse_execution_date
 from xTool.misc import NumpyJsonEncoder
 
 AUTHENTICATE = configuration.conf.getboolean('webserver', 'AUTHENTICATE')

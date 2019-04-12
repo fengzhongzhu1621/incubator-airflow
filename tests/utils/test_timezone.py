@@ -21,7 +21,7 @@ import datetime
 import pendulum
 import unittest
 
-from airflow.utils import timezone
+from xTool.utils import timezone
 
 CET = pendulum.timezone("Europe/Paris")
 EAT = pendulum.timezone('Africa/Nairobi')      # Africa/Nairobi

@@ -24,7 +24,7 @@ from airflow import settings
 from airflow.models import DAG
 from airflow.settings import Session
 from xTool.utils.state import State
-from airflow.utils.timezone import utcnow
+from xTool.utils.timezone import utcnow
 
 from sqlalchemy.exc import StatementError
 

@@ -28,7 +28,7 @@ from botocore.exceptions import ClientError
 from airflow.exceptions import AirflowException
 from airflow.contrib.hooks.aws_hook import AwsHook
 from airflow.hooks.S3_hook import S3Hook
-from airflow.utils import timezone
+from xTool.utils import timezone
 
 
 class LogState(object):

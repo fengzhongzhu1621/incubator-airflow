@@ -30,13 +30,13 @@ import sys
 from argparse import Namespace
 from datetime import datetime
 
+import airflow.models
+import airflow.settings
+
 from xTool.utils.cli import (on_pre_execution,
                              on_post_execution,
                              register_pre_exec_callback)
 from xTool.misc import get_local_host_ip
-
-import airflow.models
-import airflow.settings
 
 
 def default_action_log(log, **_):

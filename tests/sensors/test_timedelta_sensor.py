@@ -23,7 +23,7 @@ from datetime import timedelta
 from airflow import configuration
 from airflow import models, DAG
 from airflow.sensors.time_delta_sensor import TimeDeltaSensor
-from airflow.utils.timezone import datetime
+from xTool.utils.timezone import datetime
 
 configuration.load_test_config()
 

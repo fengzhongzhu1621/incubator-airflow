@@ -26,7 +26,7 @@ from airflow import configuration
 from airflow.api.common.experimental.trigger_dag import trigger_dag
 from airflow.models import DagBag, DagRun, Pool, TaskInstance
 from airflow.settings import Session
-from airflow.utils.timezone import datetime, utcnow
+from xTool.utils.timezone import datetime, utcnow
 from airflow.www_rbac import app as application
 
 

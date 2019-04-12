@@ -19,7 +19,7 @@
 
 from airflow.models import DAG
 from airflow.operators.dummy_operator import DummyOperator
-from airflow.utils.timezone import datetime
+from xTool.utils.timezone import datetime
 
 # The schedule_interval specified here is an INVALID
 # Cron expression. This invalid DAG will be used to

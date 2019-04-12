@@ -17,7 +17,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
-from airflow.utils.dates import days_ago
+from xTool.utils.dates import days_ago
 from xTool.utils.log.logging_mixin import LoggingMixin
 from airflow.models import DAG
 

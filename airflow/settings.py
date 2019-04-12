@@ -37,7 +37,7 @@ from airflow.utils.sqlalchemy import setup_event_handlers
 from airflow.exceptions import AirflowConfigException
 from xTool.exceptions import XToolConfigException
 from xTool.db import alchemy_orm
-
+from xTool.utils.timezone import set_timezone_var
 
 log = logging.getLogger(__name__)
 
@@ -54,6 +54,7 @@ try:
 except Exception:
     pass
 log.info("Configured default timezone %s" % TIMEZONE)
+set_timezone_var(TIMEZONE)
 
 
 class DummyStatsLogger(object):

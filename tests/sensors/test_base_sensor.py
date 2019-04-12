@@ -26,7 +26,7 @@ from airflow.operators.dummy_operator import DummyOperator
 from airflow.sensors.base_sensor_operator import BaseSensorOperator
 from airflow.utils import timezone
 from xTool.utils.state import State
-from airflow.utils.timezone import datetime
+from xTool.utils.timezone import datetime
 from datetime import timedelta
 from time import sleep
 

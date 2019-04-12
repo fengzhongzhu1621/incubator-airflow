@@ -23,7 +23,8 @@ from mock import Mock
 
 from airflow.models import TaskInstance
 from airflow.ti_deps.deps.runnable_exec_date_dep import RunnableExecDateDep
-from airflow.utils.timezone import datetime
+from xTool.utils.timezone import datetime
+
 
 class RunnableExecDateDepTest(unittest.TestCase):
 

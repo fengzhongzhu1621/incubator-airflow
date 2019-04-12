@@ -37,7 +37,7 @@ from airflow.contrib.operators.pubsub_operator import (
     PubSubSubscriptionDeleteOperator
 )
 from airflow.contrib.sensors.pubsub_sensor import PubSubPullSensor
-from airflow.utils import dates
+from xTool.utils import dates
 
 project = 'your-project-id'  # Change this to your own GCP project_id
 topic = 'example-topic'  # Cloud Pub/Sub topic

@@ -21,7 +21,7 @@ import unittest
 from airflow import DAG
 from airflow import configuration
 from airflow.sensors.sql_sensor import SqlSensor
-from airflow.utils.timezone import datetime
+from xTool.utils.timezone import datetime
 
 configuration.load_test_config()
 

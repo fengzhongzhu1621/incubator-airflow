@@ -65,7 +65,7 @@ from airflow.models import (DagModel, DagBag, TaskInstance,
 from airflow.ti_deps.dep_context import (DepContext, SCHEDULER_DEPS)
 from airflow.utils import cli as cli_utils
 from airflow.utils import db as db_utils
-from airflow.utils.dates import parse_execution_date
+from xTool.utils.dates import parse_execution_date
 from xTool.utils.net import get_hostname
 from xTool.utils.log.logging_mixin import LoggingMixin
 from xTool.utils.log.logging_mixin import (redirect_stderr,

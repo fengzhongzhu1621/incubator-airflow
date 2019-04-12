@@ -28,7 +28,7 @@ from airflow.api.common.experimental.get_task import get_task
 from airflow.api.common.experimental.get_task_instance import get_task_instance
 from airflow.exceptions import AirflowException
 from xTool.exceptions import XToolException
-from airflow.utils.dates import parse_execution_date
+from xTool.utils.dates import parse_execution_date
 from xTool.utils.log.logging_mixin import LoggingMixin
 from airflow.www.app import csrf
 

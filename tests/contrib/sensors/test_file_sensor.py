@@ -27,7 +27,7 @@ from airflow import models, DAG
 from airflow.exceptions import AirflowSensorTimeout
 from airflow.contrib.sensors.file_sensor import FileSensor
 from airflow.settings import Session
-from airflow.utils.timezone import datetime
+from xTool.utils.timezone import datetime
 
 TEST_DAG_ID = 'unit_tests'
 DEFAULT_DATE = datetime(2015, 1, 1)

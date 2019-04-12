@@ -26,7 +26,7 @@ from elasticsearch_dsl import Search
 from xTool.utils.helpers import parse_template_string
 from airflow.utils.log.file_task_handler import FileTaskHandler
 from xTool.utils.log.logging_mixin import LoggingMixin
-from airflow.utils.dates import parse_execution_date
+from xTool.utils.dates import parse_execution_date
 
 
 class ElasticsearchTaskHandler(FileTaskHandler, LoggingMixin):

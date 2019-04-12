@@ -46,7 +46,7 @@ from airflow.operators.bash_operator import BashOperator
 from airflow.task.task_runner.base_task_runner import BaseTaskRunner
 from airflow.utils import timezone
 
-from airflow.utils.dates import days_ago
+from xTool.utils.dates import days_ago
 from xTool.decorators.db import provide_session
 from xTool.utils.state import State
 from xTool.utils.timeout import timeout

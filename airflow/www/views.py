@@ -90,8 +90,8 @@ from xTool.utils.state import State
 from xTool.decorators.db import create_session
 from xTool.decorators.db import provide_session
 from xTool.utils.helpers import alchemy_to_dict
-from airflow.utils.dates import infer_time_unit, scale_time_units, parse_execution_date
-from airflow.utils.timezone import datetime
+from xTool.utils.dates import infer_time_unit, scale_time_units, parse_execution_date
+from xTool.utils.timezone import datetime
 from xTool.utils.net import get_hostname
 from airflow.www import utils as wwwutils
 from airflow.www.forms import (DateTimeForm, DateTimeWithNumRunsForm,

@@ -42,7 +42,7 @@ from airflow.operators.dummy_operator import DummyOperator
 from airflow.settings import Session
 from airflow.utils import dates, timezone
 from xTool.utils.state import State
-from airflow.utils.timezone import datetime
+from xTool.utils.timezone import datetime
 from airflow.www_rbac import app as application
 
 

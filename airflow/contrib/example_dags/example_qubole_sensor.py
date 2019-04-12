@@ -30,7 +30,7 @@ this example.*
 
 from airflow import DAG
 from airflow.contrib.sensors.qubole_sensor import QuboleFileSensor, QubolePartitionSensor
-from airflow.utils import dates
+from xTool.utils import dates
 
 default_args = {
     'owner': 'airflow',

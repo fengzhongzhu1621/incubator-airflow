@@ -25,7 +25,7 @@ import logging
 
 from airflow import jobs, models
 from xTool.utils.state import State
-from airflow.utils.timezone import datetime
+from xTool.utils.timezone import datetime
 
 DEV_NULL = '/dev/null'
 TEST_DAG_FOLDER = os.path.join(

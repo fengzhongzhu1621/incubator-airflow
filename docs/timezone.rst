@@ -55,7 +55,7 @@ Because Airflow uses time-zone-aware datetime objects. If your code creates date
 
 .. code:: python
 
-    from airflow.utils import timezone
+    from xTool.utils import timezone
 
     now = timezone.utcnow()
     a_date = timezone.datetime(2017,1,1)

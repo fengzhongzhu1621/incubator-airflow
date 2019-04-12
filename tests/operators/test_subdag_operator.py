@@ -27,7 +27,7 @@ from airflow.executors.sequential_executor import SequentialExecutor
 from airflow.models import DAG, DagBag
 from airflow.operators.dummy_operator import DummyOperator
 from airflow.operators.subdag_operator import SubDagOperator
-from airflow.utils.timezone import datetime
+from xTool.utils.timezone import datetime
 
 DEFAULT_DATE = datetime(2016, 1, 1)
 
