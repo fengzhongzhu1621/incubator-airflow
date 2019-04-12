@@ -36,6 +36,8 @@ from airflow.logging_config import configure_logging
 from airflow.utils.sqlalchemy import setup_event_handlers
 from airflow.exceptions import AirflowConfigException
 from xTool.exceptions import XToolConfigException
+from xTool.db import alchemy_orm
+
 
 log = logging.getLogger(__name__)
 
@@ -199,7 +201,7 @@ def configure_orm(disable_connection_pool=False):
 
     Session = scoped_session(
         sessionmaker(autocommit=False, autoflush=False, bind=engine))
-
+    alchemy_orm.Session = Session
 
 def dispose_orm():
     """ Properly close pooled database connections """
