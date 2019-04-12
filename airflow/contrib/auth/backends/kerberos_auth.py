@@ -35,7 +35,7 @@ from flask import url_for, redirect
 from airflow import settings
 from airflow import models
 from airflow import configuration
-from airflow.utils.db import provide_session
+from xTool.decorators.db import provide_session
 from xTool.utils.log.logging_mixin import LoggingMixin
 
 login_manager = flask_login.LoginManager()

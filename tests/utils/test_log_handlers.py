@@ -30,7 +30,7 @@ from airflow.operators.python_operator import PythonOperator
 from airflow.utils.timezone import datetime
 from xTool.utils.log.logging_mixin import set_context
 from airflow.utils.log.file_task_handler import FileTaskHandler
-from airflow.utils.db import create_session
+from xTool.decorators.db import create_session
 from airflow.utils.state import State
 
 DEFAULT_DATE = datetime(2016, 1, 1)

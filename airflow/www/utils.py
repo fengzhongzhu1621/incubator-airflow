@@ -40,7 +40,7 @@ import wtforms
 from wtforms.compat import text_type
 
 from airflow import configuration, models, settings
-from airflow.utils.db import create_session
+from xTool.decorators.db import create_session
 from airflow.utils.dates import parse_execution_date
 from xTool.misc import NumpyJsonEncoder
 

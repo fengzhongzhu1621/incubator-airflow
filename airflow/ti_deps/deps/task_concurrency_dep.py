@@ -18,7 +18,7 @@
 # under the License.
 
 from airflow.ti_deps.deps.base_ti_dep import BaseTIDep
-from airflow.utils.db import provide_session
+from xTool.decorators.db import provide_session
 
 
 class TaskConcurrencyDep(BaseTIDep):

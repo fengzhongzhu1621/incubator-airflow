@@ -27,7 +27,7 @@ import random
 
 from airflow.models import Connection
 from airflow.exceptions import AirflowException
-from airflow.utils.db import provide_session
+from xTool.decorators.db import provide_session
 from xTool.utils.log.logging_mixin import LoggingMixin
 
 CONN_ENV_PREFIX = 'AIRFLOW_CONN_'

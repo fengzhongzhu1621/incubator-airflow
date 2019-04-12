@@ -24,7 +24,8 @@ import time
 
 from airflow.hooks.base_hook import BaseHook
 from airflow.exceptions import AirflowException
-from xTool.utils.log.logging_mixin import LoggingMixin
+from xTool.exceptions import XToolException
+from airflow.utils.log.logging_mixin import LoggingMixin
 from airflow.contrib.kubernetes import kube_client
 
 
@@ -179,7 +180,7 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
             conn_data['spark_home'] = extra.get('spark-home', None)
             conn_data['spark_binary'] = extra.get('spark-binary', 'spark-submit')
             conn_data['namespace'] = extra.get('namespace', 'default')
-        except AirflowException:
+        except (AirflowException, XToolException):
             self.log.debug(
                 "Could not load connection string %s, defaulting to %s",
                 self._conn_id, conn_data['master']

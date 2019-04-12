@@ -47,7 +47,7 @@ from airflow.task.task_runner.base_task_runner import BaseTaskRunner
 from airflow.utils import timezone
 
 from airflow.utils.dates import days_ago
-from airflow.utils.db import provide_session
+from xTool.decorators.db import provide_session
 from airflow.utils.state import State
 from xTool.utils.timeout import timeout
 from airflow.utils.dag_processing import SimpleDag, SimpleDagBag

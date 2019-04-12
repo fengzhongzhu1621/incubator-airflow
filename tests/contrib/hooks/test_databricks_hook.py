@@ -33,6 +33,7 @@ from airflow.contrib.hooks.databricks_hook import (
 from airflow.exceptions import AirflowException
 from airflow.models import Connection
 from airflow.utils import db
+from xTool.decorators.db import provide_session
 
 try:
     from unittest import mock
@@ -153,7 +154,7 @@ class DatabricksHookTest(unittest.TestCase):
     """
     Tests for DatabricksHook.
     """
-    @db.provide_session
+    @provide_session
     def setUp(self, session=None):
         conn = session.query(Connection) \
             .filter(Connection.conn_id == DEFAULT_CONN_ID) \
@@ -368,7 +369,7 @@ class DatabricksHookTokenTest(unittest.TestCase):
     """
     Tests for DatabricksHook when auth is done with token.
     """
-    @db.provide_session
+    @provide_session
     def setUp(self, session=None):
         conn = session.query(Connection) \
             .filter(Connection.conn_id == DEFAULT_CONN_ID) \

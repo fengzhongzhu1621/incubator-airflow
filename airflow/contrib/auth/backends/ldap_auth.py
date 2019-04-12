@@ -34,7 +34,7 @@ from airflow import models
 from airflow import configuration
 from airflow.exceptions import AirflowConfigException
 from xTool.exceptions import XToolConfigException
-from airflow.utils.db import provide_session
+from xTool.decorators.db import provide_session
 
 import traceback
 import re

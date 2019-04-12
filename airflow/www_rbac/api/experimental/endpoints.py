@@ -29,7 +29,7 @@ from xTool.utils.log.logging_mixin import LoggingMixin
 from airflow.utils.dates import parse_execution_date
 from airflow.www_rbac.app import csrf
 from airflow import models
-from airflow.utils.db import create_session
+from xTool.decorators.db import create_session
 from xTool.exceptions import XToolException
 
 from flask import g, Blueprint, jsonify, request, url_for

@@ -19,7 +19,7 @@
 
 from airflow.exceptions import AirflowBadRequest, PoolNotFound
 from airflow.models import Pool
-from airflow.utils.db import provide_session
+from xTool.decorators.db import provide_session
 
 
 @provide_session

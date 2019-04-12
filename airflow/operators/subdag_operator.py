@@ -21,7 +21,7 @@ from airflow.exceptions import AirflowException
 from airflow.executors.sequential_executor import SequentialExecutor
 from airflow.models import BaseOperator, Pool
 from airflow.utils.decorators import apply_defaults
-from airflow.utils.db import provide_session
+from xTool.decorators.db import provide_session
 
 
 class SubDagOperator(BaseOperator):

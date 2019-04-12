@@ -19,7 +19,7 @@
 
 from collections import namedtuple
 
-from airflow.utils.db import provide_session
+from xTool.decorators.db import provide_session
 
 
 class BaseTIDep(object):

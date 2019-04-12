@@ -19,7 +19,7 @@
 
 from airflow.models import TaskInstance
 from airflow.sensors.base_sensor_operator import BaseSensorOperator
-from airflow.utils.db import provide_session
+from xTool.decorators.db import provide_session
 from airflow.utils.decorators import apply_defaults
 from airflow.utils.state import State
 

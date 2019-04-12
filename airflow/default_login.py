@@ -31,7 +31,7 @@ from flask import url_for, redirect
 
 from airflow import settings
 from airflow import models
-from airflow.utils.db import provide_session
+from xTool.decorators.db import provide_session
 
 DEFAULT_USERNAME = 'airflow'
 
