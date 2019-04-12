@@ -29,7 +29,7 @@ from airflow.models import DAG
 from airflow.operators.dummy_operator import DummyOperator
 from airflow.operators.python_operator import PythonOperator
 from airflow.operators.subdag_operator import SubDagOperator
-from airflow.utils.trigger_rule import TriggerRule
+from xTool.rules.trigger_rule import TriggerRule
 import time
 
 DEFAULT_DATE = datetime(2016, 1, 1)

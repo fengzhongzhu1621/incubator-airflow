@@ -174,7 +174,7 @@ def configure_adapters():
         pass
 
 
-configure_adapters()
+# configure_adapters()
 
 # Ensure we close DB connections at scheduler and gunicon worker terminations
-atexit.register(dispose_orm)
+# atexit.register(dispose_orm)

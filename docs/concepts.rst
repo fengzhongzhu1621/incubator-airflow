@@ -666,7 +666,7 @@ For example, consider the following dag:
   from airflow.models import DAG
   from airflow.operators.dummy_operator import DummyOperator
   from airflow.operators.latest_only_operator import LatestOnlyOperator
-  from airflow.utils.trigger_rule import TriggerRule
+  from xTool.rules.trigger_rule import TriggerRule
 
 
   dag = DAG(

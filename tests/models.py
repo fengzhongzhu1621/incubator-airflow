@@ -51,9 +51,9 @@ from airflow.operators.python_operator import PythonOperator
 from airflow.operators.python_operator import ShortCircuitOperator
 from airflow.ti_deps.deps.trigger_rule_dep import TriggerRuleDep
 from airflow.utils import timezone
-from airflow.utils.weight_rule import WeightRule
+from xTool.rules.weight_rule import WeightRule
 from airflow.utils.state import State
-from airflow.utils.trigger_rule import TriggerRule
+from xTool.rules.trigger_rule import TriggerRule
 from mock import patch, ANY
 from parameterized import parameterized
 from tempfile import mkdtemp, NamedTemporaryFile

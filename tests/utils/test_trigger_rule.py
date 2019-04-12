@@ -18,7 +18,7 @@
 # under the License.
 
 import unittest
-from airflow.utils.trigger_rule import TriggerRule
+from xTool.rules.trigger_rule import TriggerRule
 
 
 class TestTriggerRule(unittest.TestCase):

@@ -18,7 +18,7 @@
 # under the License.
 
 import unittest
-from airflow.utils.weight_rule import WeightRule
+from xTool.rules.weight_rule import WeightRule
 
 
 class TestWeightRule(unittest.TestCase):
