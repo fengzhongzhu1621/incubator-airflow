@@ -65,6 +65,6 @@ _hooks = {
 
 
 if not _os.environ.get('AIRFLOW_USE_NEW_IMPORTS', False):
-    from airflow.utils.helpers import AirflowImporter
+    from xTool.utils.module_loading import XToolImporter
 
-    airflow_importer = AirflowImporter(sys.modules[__name__], _hooks)
+    airflow_importer = XToolImporter(sys.modules[__name__], _hooks)

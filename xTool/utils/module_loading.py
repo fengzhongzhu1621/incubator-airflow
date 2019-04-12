@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 
+from __future__ import absolute_import
+from __future__ import division
 from __future__ import print_function
+from __future__ import unicode_literals
 
 import os
 import sys
@@ -192,7 +195,8 @@ class XToolImporter(object):
             warnings.warn(
                 "Importing '{i}' directly from '{m}' has been "
                 "deprecated. Please import from "
-                "'{m}.[operator_module]' instead.".format(
+                "'{m}.[operator_module]' instead. Support for direct "
+                "imports will be dropped entirely in future version.".format(
                     i=attribute, m=self._parent_module.__name__),
                 DeprecationWarning)
 
