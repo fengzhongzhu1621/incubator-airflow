@@ -409,7 +409,7 @@ class Airflow(AirflowBaseView):
 
     @app.errorhandler(500)
     def show_traceback(self):
-        from airflow.utils import asciiart as ascii_
+        from xTool.utils import asciiart as ascii_
         return render_template(
             'airflow/traceback.html',
             hostname=socket.getfqdn(),

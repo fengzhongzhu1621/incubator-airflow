@@ -726,7 +726,7 @@ class Airflow(BaseView):
 
     @current_app.errorhandler(500)
     def show_traceback(self):
-        from airflow.utils import asciiart as ascii_
+        from xTool.utils import asciiart as ascii_
         try:
             callable_path = conf.get('core', 'hostname_callable')
         except (AirflowConfigException, XToolConfigException):
