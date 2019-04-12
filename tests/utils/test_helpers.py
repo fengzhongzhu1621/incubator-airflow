@@ -25,7 +25,6 @@ import signal
 import time
 import unittest
 
-from airflow.utils import helpers
 from xTool.utils.helpers import reap_process_group
 from xTool.utils.helpers import reduce_in_chunks
 from xTool.utils.helpers import chunks

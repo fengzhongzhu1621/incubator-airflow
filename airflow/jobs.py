@@ -59,7 +59,6 @@ from airflow.settings import Stats
 from airflow.task.task_runner import get_task_runner
 from airflow.ti_deps.dep_context import DepContext, QUEUE_DEPS, RUN_DEPS
 from xTool.utils import asciiart
-from airflow.utils import helpers
 from xTool.utils.configuration import tmp_configuration_copy
 from airflow.utils.dag_processing import (SimpleDag,
                                           SimpleDagBag)
