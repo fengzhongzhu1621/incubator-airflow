@@ -27,3 +27,4 @@ under the License.
 - **支持基于zookeeper的failover**
 - **增加额外的配置参数**
 - **原生支持系统时区**
+- **抽象出公共的xTool库**
