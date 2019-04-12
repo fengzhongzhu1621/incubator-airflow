@@ -28,13 +28,14 @@ import time
 import zipfile
 from abc import ABCMeta, abstractmethod
 from collections import defaultdict
+from datetime import datetime
 
 from six import itervalues, iteritems
 
-from airflow.dag.base_dag import BaseDag, BaseDagBag
-from airflow.exceptions import AirflowException
-from datetime import datetime
+from xTool.exceptions import XToolException
 from xTool.utils.log.logging_mixin import LoggingMixin
+
+from airflow.dag.base_dag import BaseDag, BaseDagBag
 
 
 class SimpleDag(BaseDag):
@@ -162,6 +163,6 @@ class SimpleDagBag(BaseDagBag):
         :rtype: SimpleDag
         """
         if dag_id not in self.dag_id_to_simple_dag:
-            raise AirflowException("Unknown DAG ID {}".format(dag_id))
+            raise XToolException("Unknown DAG ID {}".format(dag_id))
         return self.dag_id_to_simple_dag[dag_id]
 
