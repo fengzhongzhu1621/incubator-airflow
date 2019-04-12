@@ -7,11 +7,11 @@ from __future__ import print_function
 # 把你当前模块所有的字符串（string literals）转为unicode
 from __future__ import unicode_literals
 
-from base64 import b64encode
-from builtins import str
 import os
 import json
 from tempfile import mkstemp
+from base64 import b64encode
+from builtins import str
 import copy
 from collections import OrderedDict
 
@@ -25,6 +25,8 @@ from xTool.utils.helpers import expand_env_var
 from xTool.utils.helpers import run_command
 from xTool.utils.log.logging_mixin import LoggingMixin
 from xTool.exceptions import XToolConfigException
+from xTool.misc import USE_WINDOWS
+
 
 standard_library.install_aliases()
 
@@ -62,6 +64,24 @@ def read_default_config_file(file_path):
     else:
         with open(file_path, encoding='utf-8') as f:
             return f.read()
+
+
+def tmp_configuration_copy(cfg_dict, chmod=0o600):
+    """
+    Returns a path for a temporary file including a full copy of the configuration
+    settings.
+    :return: a path to a temporary file
+    """
+    cfg_dict = conf.as_dict(display_sensitive=True, raw=True)
+    temp_fd, cfg_path = mkstemp()
+
+    with os.fdopen(temp_fd, 'w') as temp_file:
+        if chmod is not None:
+            if not USE_WINDOWS:
+                os.fchmod(temp_fd, chmod)
+        json.dump(cfg_dict, temp_file)
+
+    return cfg_path
 
 
 class XToolConfigParser(ConfigParser):

@@ -60,7 +60,7 @@ from airflow.task.task_runner import get_task_runner
 from airflow.ti_deps.dep_context import DepContext, QUEUE_DEPS, RUN_DEPS
 from xTool.utils import asciiart
 from airflow.utils import helpers
-from airflow.utils.configuration import tmp_configuration_copy
+from xTool.utils.configuration import tmp_configuration_copy
 from airflow.utils.dag_processing import (SimpleDag,
                                           SimpleDagBag)
 from xTool.decorators.db import create_session
@@ -2786,7 +2786,8 @@ class BackfillJob(BaseJob):
                                 cfg_path = None
                                 if executor.__class__ in (executors.LocalExecutor,
                                                           executors.SequentialExecutor):
-                                    cfg_path = tmp_configuration_copy()
+                                    cfg_dict = conf.as_dict(display_sensitive=True, raw=True)
+                                    cfg_path = tmp_configuration_copy(cfg_dict)
 
                                 # 将任务实例加入 executors 中的等待执行队列 queued_tasks
                                 executor.queue_task_instance(

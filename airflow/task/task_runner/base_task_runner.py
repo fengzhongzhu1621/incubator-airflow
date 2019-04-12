@@ -27,7 +27,7 @@ import threading
 from xTool.utils.log.logging_mixin import LoggingMixin
 
 from airflow import configuration as conf
-from airflow.utils.configuration import tmp_configuration_copy
+from xTool.utils.configuration import tmp_configuration_copy
 from xTool.misc import USE_WINDOWS
 from airflow.exceptions import AirflowConfigException
 from xTool.exceptions import XToolConfigException
@@ -62,7 +62,8 @@ class BaseTaskRunner(LoggingMixin):
                 self.run_as_user = None
 
         # Always provide a copy of the configuration file settings
-        cfg_path = tmp_configuration_copy()
+        cfg_dict = conf.as_dict(display_sensitive=True, raw=True)
+        cfg_path = tmp_configuration_copy(cfg_dict)
 
         # Add sudo commands to change user if we need to. Needed to handle SubDagOperator
         # case using a SequentialExecutor.
