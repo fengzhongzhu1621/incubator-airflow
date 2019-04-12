@@ -43,6 +43,41 @@ class XToolDagCycleException(XToolException):
     pass
 
 
+class DagNotFound(XToolNotFoundException):
+    """Raise when a DAG is not available in the system"""
+    pass
+
+
+class DagRunNotFound(XToolNotFoundException):
+    """Raise when a DAG Run is not available in the system"""
+    pass
+
+
+class DagRunAlreadyExists(XToolBadRequest):
+    """Raise when creating a DAG run for DAG which already has DAG run entry"""
+    pass
+
+
+class DagFileExists(XToolBadRequest):
+    """Raise when a DAG ID is still in DagBag i.e., DAG file is in DAG folder"""
+    pass
+
+
+class TaskNotFound(XToolNotFoundException):
+    """Raise when a Task is not available in the system"""
+    pass
+
+
+class TaskInstanceNotFound(XToolNotFoundException):
+    """Raise when a Task Instance is not available in the system"""
+    pass
+
+
+class PoolNotFound(XToolNotFoundException):
+    """Raise when a Pool is not available in the system"""
+    pass
+
+
 class XToolTimeoutError(AssertionError):
 
     """Thrown when a timeout occurs in the `timeout` context manager."""
