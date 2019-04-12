@@ -22,8 +22,8 @@ under the License.
 
 ## 特性
 
-- **支持windows**:  
+- **支持windows环境开发调试**
 - **SQL优化性能提升**
-- **支持failover**
+- **支持基于zookeeper的failover**
 - **增加额外的配置参数**
-- **时区本地化**
+- **原生支持系统时区**
