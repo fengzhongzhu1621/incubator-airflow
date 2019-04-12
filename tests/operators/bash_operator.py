@@ -19,7 +19,7 @@ from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.models import State
 from airflow.operators.bash_operator import BashOperator
-from airflow.utils import timezone
+from xTool.utils import timezone
 
 DEFAULT_DATE = datetime(2016, 1, 1, tzinfo=timezone.utc)
 END_DATE = datetime(2016, 1, 2, tzinfo=timezone.utc)

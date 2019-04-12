@@ -28,7 +28,7 @@ from airflow.operators.python_operator import PythonOperator, BranchPythonOperat
 from airflow.operators.python_operator import ShortCircuitOperator
 from airflow.operators.dummy_operator import DummyOperator
 from airflow.settings import Session
-from airflow.utils import timezone
+from xTool.utils import timezone
 from xTool.utils.state import State
 
 from airflow.exceptions import AirflowException

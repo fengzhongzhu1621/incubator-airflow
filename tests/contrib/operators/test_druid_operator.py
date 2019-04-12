@@ -23,7 +23,7 @@ import unittest
 
 from airflow import DAG, configuration
 from airflow.contrib.operators.druid_operator import DruidOperator
-from airflow.utils import timezone
+from xTool.utils import timezone
 from airflow.models import TaskInstance
 
 DEFAULT_DATE = timezone.datetime(2017, 1, 1)

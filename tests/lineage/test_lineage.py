@@ -22,7 +22,7 @@ from airflow.lineage import apply_lineage, prepare_lineage
 from airflow.lineage.datasets import File
 from airflow.models import DAG, TaskInstance as TI
 from airflow.operators.dummy_operator import DummyOperator
-from airflow.utils import timezone
+from xTool.utils import timezone
 
 DEFAULT_DATE = timezone.datetime(2016, 1, 1)
 

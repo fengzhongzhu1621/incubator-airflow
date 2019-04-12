@@ -23,7 +23,7 @@ from airflow import AirflowException, configuration
 from airflow.contrib.operators.gcp_compute_operator import GceInstanceStartOperator, \
     GceInstanceStopOperator, GceSetMachineTypeOperator
 from airflow.models import TaskInstance, DAG
-from airflow.utils import timezone
+from xTool.utils import timezone
 
 try:
     # noinspection PyProtectedMember

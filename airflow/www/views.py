@@ -84,7 +84,7 @@ from airflow.ti_deps.dep_context import DepContext, QUEUE_DEPS, SCHEDULER_DEPS
 from airflow.models import BaseOperator
 from airflow.operators.subdag_operator import SubDagOperator
 
-from airflow.utils import timezone
+from xTool.utils import timezone
 from xTool.misc import json_ser
 from xTool.utils.state import State
 from xTool.decorators.db import create_session

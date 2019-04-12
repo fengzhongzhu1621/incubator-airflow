@@ -44,7 +44,7 @@ from airflow.models import DAG, DagModel, DagBag, DagRun, Pool, TaskInstance as 
 from airflow.operators.dummy_operator import DummyOperator
 from airflow.operators.bash_operator import BashOperator
 from airflow.task.task_runner.base_task_runner import BaseTaskRunner
-from airflow.utils import timezone
+from xTool.utils import timezone
 
 from xTool.utils.dates import days_ago
 from xTool.decorators.db import provide_session

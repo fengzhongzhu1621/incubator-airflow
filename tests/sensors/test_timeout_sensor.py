@@ -24,7 +24,7 @@ from datetime import timedelta
 from airflow import DAG, configuration
 from airflow.exceptions import AirflowSensorTimeout, AirflowSkipException
 from airflow.sensors.base_sensor_operator import BaseSensorOperator
-from airflow.utils import timezone
+from xTool.utils import timezone
 from airflow.utils.decorators import apply_defaults
 from xTool.utils.timezone import datetime
 

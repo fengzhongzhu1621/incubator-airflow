@@ -21,8 +21,8 @@ from datetime import datetime, timedelta
 import pendulum
 import unittest
 
-from airflow.utils import dates
-from airflow.utils import timezone
+from xTool.utils import dates
+from xTool.utils import timezone
 
 
 class Dates(unittest.TestCase):

@@ -16,7 +16,7 @@ import unittest
 from airflow import DAG
 from airflow.contrib.operators.mongo_to_s3 import MongoToS3Operator
 from airflow.models import TaskInstance
-from airflow.utils import timezone
+from xTool.utils import timezone
 
 try:
     from unittest import mock

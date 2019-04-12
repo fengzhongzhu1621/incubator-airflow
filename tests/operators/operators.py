@@ -21,7 +21,7 @@ from __future__ import print_function
 
 from airflow import DAG, configuration, operators
 from xTool.utils.tests import skipUnlessImported
-from airflow.utils import timezone
+from xTool.utils import timezone
 
 from collections import OrderedDict
 

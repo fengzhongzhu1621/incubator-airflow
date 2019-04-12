@@ -24,7 +24,7 @@ from airflow import DAG, configuration
 from airflow.models import TaskInstance
 
 from airflow.contrib.operators.spark_submit_operator import SparkSubmitOperator
-from airflow.utils import timezone
+from xTool.utils import timezone
 
 from datetime import timedelta
 

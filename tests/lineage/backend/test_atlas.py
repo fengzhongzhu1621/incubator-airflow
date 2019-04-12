@@ -24,7 +24,7 @@ from airflow.lineage.backend.atlas import AtlasBackend
 from airflow.lineage.datasets import File
 from airflow.models import DAG, TaskInstance as TI
 from airflow.operators.dummy_operator import DummyOperator
-from airflow.utils import timezone
+from xTool.utils import timezone
 from xTool.exceptions import XToolConfigException
 
 from backports.configparser import DuplicateSectionError

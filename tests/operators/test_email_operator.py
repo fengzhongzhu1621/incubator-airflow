@@ -25,7 +25,7 @@ import unittest
 
 from airflow import configuration, DAG
 from airflow.operators.email_operator import EmailOperator
-from airflow.utils import timezone
+from xTool.utils import timezone
 
 DEFAULT_DATE = timezone.datetime(2016, 1, 1)
 END_DATE = timezone.datetime(2016, 1, 2)

@@ -28,7 +28,7 @@ import pendulum
 from airflow import configuration
 from airflow.models import TaskInstance, DAG
 from airflow.operators.dummy_operator import DummyOperator
-from airflow.utils import timezone
+from xTool.utils import timezone
 from airflow.utils.log.es_task_handler import ElasticsearchTaskHandler
 from xTool.utils.state import State
 from xTool.utils.timezone import datetime

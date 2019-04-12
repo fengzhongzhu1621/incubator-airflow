@@ -22,7 +22,7 @@ import os
 import unittest
 
 from airflow.utils.log.file_processor_handler import FileProcessorHandler
-from airflow.utils import timezone
+from xTool.utils import timezone
 from datetime import timedelta
 from freezegun import freeze_time
 

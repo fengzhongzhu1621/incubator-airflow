@@ -35,7 +35,7 @@ from airflow.exceptions import AirflowException
 from airflow.hooks.hive_hooks import HiveCliHook, HiveMetastoreHook, HiveServer2Hook
 from airflow import DAG, configuration
 from airflow.operators.hive_operator import HiveOperator
-from airflow.utils import timezone
+from xTool.utils import timezone
 from xTool.utils.tests import assertEqualIgnoreMultipleSpaces
 
 

@@ -25,7 +25,7 @@ from airflow import models
 from airflow.contrib.operators.ssh_operator import SSHOperator
 from airflow.models import DAG, TaskInstance
 from airflow.settings import Session
-from airflow.utils import timezone
+from xTool.utils import timezone
 from xTool.utils.timezone import datetime
 
 TEST_DAG_ID = 'unit_tests'

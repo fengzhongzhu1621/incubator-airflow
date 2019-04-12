@@ -50,7 +50,7 @@ from airflow.operators.bash_operator import BashOperator
 from airflow.operators.python_operator import PythonOperator
 from airflow.operators.python_operator import ShortCircuitOperator
 from airflow.ti_deps.deps.trigger_rule_dep import TriggerRuleDep
-from airflow.utils import timezone
+from xTool.utils import timezone
 from xTool.rules.weight_rule import WeightRule
 from xTool.utils.state import State
 from xTool.rules.trigger_rule import TriggerRule

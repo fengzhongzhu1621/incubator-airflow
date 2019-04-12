@@ -24,7 +24,7 @@ from airflow.exceptions import AirflowSensorTimeout
 from airflow.models import DagRun, TaskInstance
 from airflow.operators.dummy_operator import DummyOperator
 from airflow.sensors.base_sensor_operator import BaseSensorOperator
-from airflow.utils import timezone
+from xTool.utils import timezone
 from xTool.utils.state import State
 from xTool.utils.timezone import datetime
 from datetime import timedelta

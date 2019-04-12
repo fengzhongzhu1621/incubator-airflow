@@ -59,7 +59,7 @@ from airflow.api.common.experimental.mark_tasks import set_dag_run_state
 from airflow.models import XCom, DagRun
 from airflow.ti_deps.dep_context import DepContext, QUEUE_DEPS, SCHEDULER_DEPS
 
-from airflow.utils import timezone
+from xTool.utils import timezone
 from xTool.misc import json_ser
 from xTool.utils.state import State
 from xTool.utils.dates import parse_execution_date

@@ -31,7 +31,7 @@ from airflow import configuration, DAG
 from airflow.models import TaskInstance
 from airflow.operators.python_operator import PythonVirtualenvOperator
 from airflow.settings import Session
-from airflow.utils import timezone
+from xTool.utils import timezone
 
 from airflow.exceptions import AirflowException
 import logging

@@ -25,7 +25,7 @@ from mock import patch
 from airflow import DAG
 from airflow import configuration
 from airflow.contrib.sensors.redis_key_sensor import RedisKeySensor
-from airflow.utils import timezone
+from xTool.utils import timezone
 
 DEFAULT_DATE = timezone.datetime(2017, 1, 1)
 

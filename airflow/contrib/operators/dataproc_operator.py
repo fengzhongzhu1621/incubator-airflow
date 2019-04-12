@@ -32,7 +32,7 @@ from airflow.models import BaseOperator
 from airflow.utils.decorators import apply_defaults
 from airflow.version import version
 from googleapiclient.errors import HttpError
-from airflow.utils import timezone
+from xTool.utils import timezone
 
 
 class DataprocClusterCreateOperator(BaseOperator):

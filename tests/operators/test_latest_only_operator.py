@@ -26,7 +26,7 @@ from airflow import configuration, DAG, settings
 from airflow.models import TaskInstance
 from airflow.operators.latest_only_operator import LatestOnlyOperator
 from airflow.operators.dummy_operator import DummyOperator
-from airflow.utils import timezone
+from xTool.utils import timezone
 from xTool.utils.state import State
 from freezegun import freeze_time
 

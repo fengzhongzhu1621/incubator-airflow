@@ -30,7 +30,7 @@ from airflow import settings
 import airflow.bin.cli as cli
 from airflow.bin.cli import get_num_ready_workers_running, run, get_dag
 from airflow.models import TaskInstance
-from airflow.utils import timezone
+from xTool.utils import timezone
 from xTool.utils.state import State
 from airflow.settings import Session
 from airflow import models

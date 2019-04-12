@@ -22,7 +22,7 @@ from __future__ import print_function
 import unittest
 
 from airflow import DAG, configuration
-from airflow.utils import timezone
+from xTool.utils import timezone
 
 from airflow.contrib.operators.snowflake_operator import SnowflakeOperator
 

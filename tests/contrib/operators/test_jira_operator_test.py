@@ -27,7 +27,7 @@ from airflow import DAG, configuration
 from airflow.contrib.operators.jira_operator import JiraOperator
 from airflow import models
 from airflow.utils import db
-from airflow.utils import timezone
+from xTool.utils import timezone
 
 DEFAULT_DATE = timezone.datetime(2017, 1, 1)
 jira_client_mock = Mock(
