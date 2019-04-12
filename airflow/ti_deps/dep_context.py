@@ -26,7 +26,7 @@ from airflow.ti_deps.deps.not_skipped_dep import NotSkippedDep
 from airflow.ti_deps.deps.runnable_exec_date_dep import RunnableExecDateDep
 from airflow.ti_deps.deps.valid_state_dep import ValidStateDep
 from airflow.ti_deps.deps.task_concurrency_dep import TaskConcurrencyDep
-from airflow.utils.state import State
+from xTool.utils.state import State
 
 
 class DepContext(object):

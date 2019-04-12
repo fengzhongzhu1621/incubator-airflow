@@ -24,7 +24,7 @@ from mock import Mock
 from airflow.models import DAG, BaseOperator
 from airflow.ti_deps.dep_context import DepContext
 from airflow.ti_deps.deps.prev_dagrun_dep import PrevDagrunDep
-from airflow.utils.state import State
+from xTool.utils.state import State
 
 
 class PrevDagrunDepTest(unittest.TestCase):

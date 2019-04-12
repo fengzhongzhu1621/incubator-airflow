@@ -24,7 +24,7 @@ import unittest
 import logging
 
 from airflow import jobs, models
-from airflow.utils.state import State
+from xTool.utils.state import State
 from airflow.utils.timezone import datetime
 
 DEV_NULL = '/dev/null'

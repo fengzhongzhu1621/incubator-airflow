@@ -22,7 +22,7 @@ from builtins import str
 import subprocess
 
 from airflow.executors.base_executor import BaseExecutor
-from airflow.utils.state import State
+from xTool.utils.state import State
 from xTool.misc import USE_WINDOWS
 
 

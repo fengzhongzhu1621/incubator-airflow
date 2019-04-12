@@ -18,7 +18,7 @@
 import json
 import time
 from xTool.utils.log.logging_mixin import LoggingMixin
-from airflow.utils.state import State
+from xTool.utils.state import State
 from datetime import datetime as dt
 from airflow.contrib.kubernetes.kubernetes_request_factory import \
     pod_request_factory as pod_factory

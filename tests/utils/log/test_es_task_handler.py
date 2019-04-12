@@ -30,7 +30,7 @@ from airflow.models import TaskInstance, DAG
 from airflow.operators.dummy_operator import DummyOperator
 from airflow.utils import timezone
 from airflow.utils.log.es_task_handler import ElasticsearchTaskHandler
-from airflow.utils.state import State
+from xTool.utils.state import State
 from airflow.utils.timezone import datetime
 from .elasticmock import elasticmock
 

@@ -24,7 +24,7 @@ from mock import Mock
 
 from airflow.models import TaskInstance
 from airflow.ti_deps.deps.not_in_retry_period_dep import NotInRetryPeriodDep
-from airflow.utils.state import State
+from xTool.utils.state import State
 from airflow.utils.timezone import datetime
 
 

@@ -17,7 +17,7 @@
 # specific language governing permissions and limitations
 # under the License.
 from airflow.executors.base_executor import BaseExecutor
-from airflow.utils.state import State
+from xTool.utils.state import State
 
 from airflow import settings
 

@@ -29,7 +29,7 @@ from airflow.operators.python_operator import ShortCircuitOperator
 from airflow.operators.dummy_operator import DummyOperator
 from airflow.settings import Session
 from airflow.utils import timezone
-from airflow.utils.state import State
+from xTool.utils.state import State
 
 from airflow.exceptions import AirflowException
 import logging

@@ -25,7 +25,7 @@ import sys
 from airflow import configuration, settings
 from airflow.jobs import SchedulerJob
 from airflow.models import DagBag, DagModel, DagRun, TaskInstance
-from airflow.utils.state import State
+from xTool.utils.state import State
 
 SUBDIR = 'scripts/perf/dags'
 DAG_IDS = ['perf_dag_1', 'perf_dag_2']

@@ -21,7 +21,7 @@ import unittest
 from mock import Mock
 
 from airflow.ti_deps.deps.not_skipped_dep import NotSkippedDep
-from airflow.utils.state import State
+from xTool.utils.state import State
 
 
 class NotSkippedDepTest(unittest.TestCase):

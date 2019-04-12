@@ -20,7 +20,7 @@
 import unittest
 
 from airflow.executors.base_executor import BaseExecutor
-from airflow.utils.state import State
+from xTool.utils.state import State
 
 from datetime import datetime
 

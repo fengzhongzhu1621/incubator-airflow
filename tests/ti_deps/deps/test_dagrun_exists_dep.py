@@ -18,7 +18,7 @@
 # under the License.
 
 import unittest
-from airflow.utils.state import State
+from xTool.utils.state import State
 from mock import Mock, patch
 
 from airflow.models import DAG, DagRun

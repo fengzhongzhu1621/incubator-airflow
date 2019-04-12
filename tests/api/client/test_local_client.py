@@ -28,7 +28,7 @@ from airflow.api.client.local_client import Client
 from airflow import models
 from airflow import settings
 from airflow.utils import timezone
-from airflow.utils.state import State
+from xTool.utils.state import State
 
 EXECDATE = timezone.utcnow()
 EXECDATE_NOFRACTIONS = EXECDATE.replace(microsecond=0)

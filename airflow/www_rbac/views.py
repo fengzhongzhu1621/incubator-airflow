@@ -61,7 +61,7 @@ from airflow.ti_deps.dep_context import DepContext, QUEUE_DEPS, SCHEDULER_DEPS
 
 from airflow.utils import timezone
 from xTool.misc import json_ser
-from airflow.utils.state import State
+from xTool.utils.state import State
 from airflow.utils.dates import parse_execution_date
 from xTool.decorators.db import provide_session
 from xTool.utils.helpers import alchemy_to_dict

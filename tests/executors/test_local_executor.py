@@ -20,7 +20,7 @@
 import unittest
 
 from airflow.executors.local_executor import LocalExecutor
-from airflow.utils.state import State
+from xTool.utils.state import State
 from xTool.utils.timeout import timeout
 
 

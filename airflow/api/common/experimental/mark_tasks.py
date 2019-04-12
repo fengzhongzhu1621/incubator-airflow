@@ -23,7 +23,7 @@ from airflow.jobs import BackfillJob
 from airflow.models import DagRun, TaskInstance
 from airflow.operators.subdag_operator import SubDagOperator
 from airflow.settings import Session
-from airflow.utils.state import State
+from xTool.utils.state import State
 
 from sqlalchemy import or_
 

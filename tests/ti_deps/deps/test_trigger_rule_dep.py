@@ -23,7 +23,7 @@ from datetime import datetime
 from airflow.models import BaseOperator, TaskInstance
 from xTool.rules.trigger_rule import TriggerRule
 from airflow.ti_deps.deps.trigger_rule_dep import TriggerRuleDep
-from airflow.utils.state import State
+from xTool.utils.state import State
 
 
 class TriggerRuleDepTest(unittest.TestCase):

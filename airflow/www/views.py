@@ -86,7 +86,7 @@ from airflow.operators.subdag_operator import SubDagOperator
 
 from airflow.utils import timezone
 from xTool.misc import json_ser
-from airflow.utils.state import State
+from xTool.utils.state import State
 from xTool.decorators.db import create_session
 from xTool.decorators.db import provide_session
 from xTool.utils.helpers import alchemy_to_dict

@@ -22,7 +22,7 @@ from celery.contrib.testing.worker import start_worker
 
 from airflow.executors.celery_executor import CeleryExecutor
 from airflow.executors.celery_executor import app
-from airflow.utils.state import State
+from xTool.utils.state import State
 
 # leave this it is used by the test worker
 import celery.contrib.testing.tasks  # noqa: F401

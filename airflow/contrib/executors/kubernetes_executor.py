@@ -30,7 +30,7 @@ from airflow.contrib.kubernetes.worker_configuration import WorkerConfiguration
 from airflow.executors.base_executor import BaseExecutor
 from airflow.executors import Executors
 from airflow.models import TaskInstance, KubeResourceVersion, KubeWorkerIdentifier
-from airflow.utils.state import State
+from xTool.utils.state import State
 from airflow import configuration, settings
 from airflow.exceptions import AirflowConfigException, AirflowException
 from xTool.utils.log.logging_mixin import LoggingMixin

@@ -19,7 +19,7 @@
 
 from airflow.ti_deps.deps.base_ti_dep import BaseTIDep
 from xTool.decorators.db import provide_session
-from airflow.utils.state import State
+from xTool.utils.state import State
 
 
 class DagrunRunningDep(BaseTIDep):

@@ -59,7 +59,7 @@ class KubernetesPodOperatorTest(unittest.TestCase):
     @mock.patch("airflow.contrib.kubernetes.pod_launcher.PodLauncher.run_pod")
     @mock.patch("airflow.contrib.kubernetes.kube_client.get_kube_client")
     def test_config_path(self, client_mock, launcher_mock):
-        from airflow.utils.state import State
+        from xTool.utils.state import State
 
         file_path = "/tmp/fake_file"
         k = KubernetesPodOperator(

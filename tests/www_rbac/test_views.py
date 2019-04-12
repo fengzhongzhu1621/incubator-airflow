@@ -41,7 +41,7 @@ from airflow.models import DAG, DagRun, TaskInstance
 from airflow.operators.dummy_operator import DummyOperator
 from airflow.settings import Session
 from airflow.utils import dates, timezone
-from airflow.utils.state import State
+from xTool.utils.state import State
 from airflow.utils.timezone import datetime
 from airflow.www_rbac import app as application
 
@@ -552,7 +552,7 @@ class ViewWithDateTimeAndNumRunsAndDagRunsFormTester:
 
     def setUp(self):
         from airflow.www_rbac.views import dagbag
-        from airflow.utils.state import State
+        from xTool.utils.state import State
         dag = DAG(self.DAG_ID, start_date=self.DEFAULT_DATE)
         dagbag.bag_dag(dag, parent_dag=dag, root_dag=dag)
         self.runs = []

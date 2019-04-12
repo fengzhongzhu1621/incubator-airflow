@@ -48,7 +48,7 @@ from airflow.utils import timezone
 
 from airflow.utils.dates import days_ago
 from xTool.decorators.db import provide_session
-from airflow.utils.state import State
+from xTool.utils.state import State
 from xTool.utils.timeout import timeout
 from airflow.utils.dag_processing import SimpleDag, SimpleDagBag
 from xTool.utils.file import list_py_file_paths

@@ -96,7 +96,7 @@ from xTool.utils.helpers import is_container
 from xTool.utils.helpers import validate_key
 from xTool.utils.helpers import ask_yesno
 from airflow.utils.operator_resources import Resources
-from airflow.utils.state import State
+from xTool.utils.state import State
 from xTool.rules.trigger_rule import TriggerRule
 from xTool.rules.weight_rule import WeightRule
 from xTool.utils.net import get_hostname

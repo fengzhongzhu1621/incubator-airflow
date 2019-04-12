@@ -27,7 +27,7 @@ from airflow.exceptions import AirflowException
 from airflow.hooks.base_hook import BaseHook
 from airflow import configuration
 from xTool.utils.log.logging_mixin import LoggingMixin
-from airflow.utils.state import State
+from xTool.utils.state import State
 from xTool.utils.file import mkdir_p
 
 from qds_sdk.qubole import Qubole

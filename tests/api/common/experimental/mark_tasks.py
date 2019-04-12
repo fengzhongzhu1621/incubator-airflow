@@ -24,7 +24,7 @@ from airflow.api.common.experimental.mark_tasks import (
     set_state, _create_dagruns, set_dag_run_state)
 from airflow.settings import Session
 from airflow.utils.dates import days_ago
-from airflow.utils.state import State
+from xTool.utils.state import State
 from datetime import datetime, timedelta
 
 DEV_NULL = "/dev/null"

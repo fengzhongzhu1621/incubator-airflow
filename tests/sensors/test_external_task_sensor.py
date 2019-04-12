@@ -28,7 +28,7 @@ from airflow.operators.bash_operator import BashOperator
 from airflow.operators.dummy_operator import DummyOperator
 from airflow.sensors.external_task_sensor import ExternalTaskSensor
 from airflow.sensors.time_sensor import TimeSensor
-from airflow.utils.state import State
+from xTool.utils.state import State
 from airflow.utils.timezone import datetime
 
 configuration.load_test_config()

@@ -27,7 +27,7 @@ from airflow.jobs import LocalTaskJob
 from airflow.models import TaskInstance as TI
 from airflow.task.task_runner import BashTaskRunner
 from airflow.utils import timezone
-from airflow.utils.state import State
+from xTool.utils.state import State
 
 from logging.config import dictConfig
 

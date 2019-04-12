@@ -21,7 +21,7 @@ from builtins import range
 
 from airflow import configuration
 from xTool.utils.log.logging_mixin import LoggingMixin
-from airflow.utils.state import State
+from xTool.utils.state import State
 
 
 PARALLELISM = configuration.conf.getint('core', 'PARALLELISM')

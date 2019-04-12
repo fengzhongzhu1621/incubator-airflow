@@ -45,7 +45,7 @@ from airflow import configuration, settings
 from airflow.models import BaseOperator
 from airflow.operators.subdag_operator import SubDagOperator
 from xTool.misc import NumpyJsonEncoder
-from airflow.utils.state import State
+from xTool.utils.state import State
 
 AUTHENTICATE = configuration.getboolean('webserver', 'AUTHENTICATE')
 

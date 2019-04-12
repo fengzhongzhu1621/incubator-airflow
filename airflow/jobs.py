@@ -68,7 +68,7 @@ from airflow.utils.email import send_email, get_email_address_list
 from xTool.utils.log.logging_mixin import LoggingMixin, set_context, StreamLogWriter
 from xTool.utils.net import get_hostname
 from xTool.utils.helpers import reduce_in_chunks
-from airflow.utils.state import State
+from xTool.utils.state import State
 
 from xTool.misc import USE_WINDOWS
 

@@ -22,7 +22,7 @@ import json
 
 from airflow.exceptions import DagRunAlreadyExists, DagNotFound
 from airflow.models import DagRun, DagBag
-from airflow.utils.state import State
+from xTool.utils.state import State
 
 
 def _trigger_dag(
