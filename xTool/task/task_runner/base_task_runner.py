@@ -1,21 +1,4 @@
 # -*- coding: utf-8 -*-
-#
-# Licensed to the Apache Software Foundation (ASF) under one
-# or more contributor license agreements.  See the NOTICE file
-# distributed with this work for additional information
-# regarding copyright ownership.  The ASF licenses this file
-# to you under the Apache License, Version 2.0 (the
-# "License"); you may not use this file except in compliance
-# with the License.  You may obtain a copy of the License at
-#
-#   http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an
-# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied.  See the License for the
-# specific language governing permissions and limitations
-# under the License.
 
 from __future__ import unicode_literals
 
@@ -45,6 +28,7 @@ class BaseTaskRunner(LoggingMixin):
         associated task instance. job表中类型为LocalTaskJob的记录，即消费者job.
         :type local_task_job: airflow.jobs.LocalTaskJob
         """
+        # 文件配置对象
         self.conf = conf
         # Pass task instance context into log handlers to setup the logger.
         super(BaseTaskRunner, self).__init__(local_task_job.task_instance)
@@ -58,49 +42,50 @@ class BaseTaskRunner(LoggingMixin):
         else:
             try:
                 self.run_as_user = self.conf.get('core', 'default_impersonation')
-            except (AirflowConfigException, XToolConfigException):
+            except XToolConfigException:
                 self.run_as_user = None
 
-        # Always provide a copy of the configuration file settings
-        # 创建一个配置文件的拷贝，保存到临时文件
+        # 将配置文件转换为字典
         cfg_dict = self.conf.as_dict(display_sensitive=True, raw=True)
         # 将配置字典复制到临时文件中，并返回临时文件的路径
-        cfg_path = tmp_configuration_copy(cfg_dict)
+        self._cfg_path = tmp_configuration_copy(cfg_dict)
 
-        # Add sudo commands to change user if we need to. Needed to handle SubDagOperator
-        # case using a SequentialExecutor.
+        # 修改临时文件的用户
         self.log.debug("Planning to run as the %s user", self.run_as_user)
         if self.run_as_user and (self.run_as_user != getpass.getuser()):
             # Give ownership of file to user; only they can read and write
             subprocess.call(
-                ['sudo', 'chown', self.run_as_user, cfg_path],
+                ['sudo', 'chown', self.run_as_user, self._cfg_path],
                 close_fds=True
             )
 
             # propagate PYTHONPATH environment variable
+            # 用于在导入模块的时候搜索路径，例如 export PYTHONPATH=$PYTHONPATH:`pwd`:'pwd'/slim
             pythonpath_value = os.environ.get(PYTHONPATH_VAR, '')
             popen_prepend = ['sudo', '-E', '-H', '-u', self.run_as_user]
 
             if pythonpath_value:
                 popen_prepend.append('{}={}'.format(PYTHONPATH_VAR, pythonpath_value))
 
-        self._cfg_path = cfg_path
+        # 构造worker需要执行的命令
         self._command = popen_prepend + self._task_instance.command_as_list(
             raw=True,
             pickle_id=local_task_job.pickle_id,
             mark_success=local_task_job.mark_success,
             job_id=local_task_job.id,
             pool=local_task_job.pool,
-            cfg_path=cfg_path,
+            cfg_path=self._cfg_path,
         )
         self.process = None
 
     def _read_task_logs(self, stream):
         while True:
+            # 阻塞操作
             line = stream.readline()
+            # 转换为unicode编码
             if isinstance(line, bytes):
                 line = line.decode('utf-8')
-            if len(line) == 0:
+            if not line:
                 break
             self.log.info('Job %s: Subtask %s %s',
                           self._task_instance.job_id, self._task_instance.task_id,
@@ -173,9 +158,7 @@ class BaseTaskRunner(LoggingMixin):
         raise NotImplementedError()
 
     def on_finish(self):
-        """删除临时配置文件
-        A callback that should be called when this is done running.
-        """
+        """删除临时配置文件 ."""
         if USE_WINDOWS:
             try:
                 os.remove(self._cfg_path)
