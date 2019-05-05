@@ -77,7 +77,7 @@ class XToolConfigParser(ConfigParser):
 
     examples:
         # 创建配置对象，读取默认配置
-        conf = AirflowConfigParser(default_config=parameterized_config(DEFAULT_CONFIG))
+        conf = XToolConfigParser(default_config=parameterized_config(DEFAULT_CONFIG))
         # 读取正式环境配置文件，覆盖默认配置
         conf.read(AIRFLOW_CONFIG)
     """
@@ -90,6 +90,7 @@ class XToolConfigParser(ConfigParser):
 
     deprecated_options = {}
 
+    # 过期配置警告模版
     deprecation_format_string = (
         'The {old} option in [{section}] has been renamed to {new} - the old '
         'setting has been used, but please update your config.'
@@ -99,17 +100,19 @@ class XToolConfigParser(ConfigParser):
         super(XToolConfigParser, self).__init__(*args, **kwargs)
         # 创建默认配置文件解析器
         self.defaults = ConfigParser(*args, **kwargs)
-        # 读取默认配置
+        # 从字符串读取默认配置
         if default_config is not None:
             self.defaults.read_string(default_config)
 
         self.is_validated = False
 
     def _validate(self):
+        """添加配置验证逻辑 ."""
         self.is_validated = True
 
     def _get_env_var_option(self, section, key):
-        """把环境变量的值中包含的”~”和”~user”转换成用户目录，并获取配置结果值 ."""
+        """从环境变量中获取配置的值，
+        把环境变量的值中包含的”~”和”~user”转换成用户目录，并获取配置结果值 ."""
         # must have format XTOOL__{SECTION}__{KEY} (note double underscore)
         env_var = '{E}__{S}__{K}'.format(E=self.env_prefix, S=section.upper(), K=key.upper())
         if env_var in os.environ:
@@ -124,31 +127,33 @@ class XToolConfigParser(ConfigParser):
         fallback_key = key + '_cmd'
         # if this is a valid command key...
         if (section, key) in self.as_command_stdout:
+            # 如果用户自定义配置中存在以"_cmd"结尾的配置值
+            # 则执行此配置值的shell命令，获取其返回值作为真正的配置项的值
             if super(XToolConfigParser, self) \
                     .has_option(section, fallback_key):
                 command = super(XToolConfigParser, self) \
                     .get(section, fallback_key)
+                # 执行shell命令，返回标准输出（Unicode编码）
                 return run_command(command)
 
     def get(self, section, key, **kwargs):
+        """返回配置值 ."""
         section = str(section).lower()
         key = str(key).lower()
 
-        # 首先从环境变量中获取配置值，如果环境变量中存在，则不再从配置文件中获取
+        # 1. 首先从环境变量中获取配置值，如果环境变量中存在，则不再从配置文件中获取
+        #    过期的配置输出告警，并返回配置值
         option = self._get_env_var_option(section, key)
         if option is not None:
             return option
-        # 判断是否是过期配置
-        deprecated_name = self.deprecated_options.get(section, {}).get(key, None)
+        deprecated_name = self.deprecated_options.get(section, {}).get(key)
         if deprecated_name:
             option = self._get_env_var_option(section, deprecated_name)
             if option is not None:
                 self._warn_deprecate(section, key, deprecated_name)
                 return option
-        # 然后从最新的配置文件中获取
+        # 2. 从用户自定义配置文件中获取
         if super(XToolConfigParser, self).has_option(section, key):
-            # Use the parent's methods to get the actual config here to be able to
-            # separate the config from default config.
             return expand_env_var(
                 super(XToolConfigParser, self).get(section, key, **kwargs))
         if deprecated_name:
@@ -159,9 +164,7 @@ class XToolConfigParser(ConfigParser):
                     deprecated_name,
                     **kwargs
                 ))
-
-        # 获得带有_cmd后缀的配置
-        # 执行表达式，获取结果
+        # 3. 获得带有_cmd后缀的配置，执行表达式，获取结果
         option = self._get_cmd_option(section, key)
         if option:
             return option
@@ -170,8 +173,7 @@ class XToolConfigParser(ConfigParser):
             if option:
                 self._warn_deprecate(section, key, deprecated_name)
                 return option
-
-        # 从默认配置文件中获取
+        # 4. 从默认配置文件中获取
         if self.defaults.has_option(section, key):
             return expand_env_var(
                 self.defaults.get(section, key, **kwargs))
@@ -210,10 +212,12 @@ class XToolConfigParser(ConfigParser):
         self._validate()
 
     def read_dict(self, *args, **kwargs):
+        """从字典中获取配置 ."""
         super(XToolConfigParser, self).read_dict(*args, **kwargs)
         self._validate()
 
     def has_option(self, section, option):
+        """判断配置是否存在 ."""
         try:
             # Using self.get() to avoid reimplementing the priority order
             # of config variables (env, config, cmd, defaults)
@@ -223,32 +227,28 @@ class XToolConfigParser(ConfigParser):
             return False
 
     def remove_option(self, section, option, remove_default=True):
-        """
-        Remove an option if it exists in config from a file or
-        default config. If both of config have the same option, this removes
-        the option in both configs unless remove_default=False.
-        """
+        """删除配置 ."""
+        # 删除用户自定义配置
         if super(XToolConfigParser, self).has_option(section, option):
             super(XToolConfigParser, self).remove_option(section, option)
-
+        # 删除默认配置
         if self.defaults.has_option(section, option) and remove_default:
             self.defaults.remove_option(section, option)
 
     def getsection(self, section):
-        """
-        Returns the section as a dict. Values are converted to int, float, bool
-        as required.
-        :param section: section from the config
-        :return: dict
-        """
+        """根据配置段名获得所有的配置项 ."""
+        # 判断配置端是否存在
         if section not in self._sections and section not in self.defaults._sections:
             return None
 
+        # 复制默认配置端的内容
         _section = copy.deepcopy(self.defaults._sections[section])
 
+        # 使用用户自定义配置端更新默认配置端
         if section in self._sections:
             _section.update(copy.deepcopy(self._sections[section]))
-            # 遍历section下所有的key，对value进行格式化处理
+        
+        # 遍历section下所有的key，对value进行格式化处理
         for key, val in iteritems(_section):
             try:
                 val = int(val)
@@ -265,6 +265,7 @@ class XToolConfigParser(ConfigParser):
 
 
     def _warn_deprecate(self, section, key, deprecated_name):
+        """输出过期配置警告信息 ."""
         warnings.warn(
             self.deprecation_format_string.format(
                 old=deprecated_name,

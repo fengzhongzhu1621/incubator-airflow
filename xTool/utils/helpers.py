@@ -288,6 +288,8 @@ def expand_env_var(env_var):
         return env_var
     while True:
         # 把env_var中包含的”~”和”~user”转换成用户目录
+        # os.path.expandvars: 返回参数，其中的环境变量被扩展。参数中形如$name或者${name}的部分被替换成环境变量name的值。如果格式不正确或者引用了不存在的变量，则不进行替换（或者扩展）。
+        #                     在Windows上, 除了$name和${name}之外还支持如%name%这样的扩展。
         interpolated = os.path.expanduser(os.path.expandvars(str(env_var)))
         # 如果相等则说明已经全部替换成功
         if interpolated == env_var:
@@ -298,9 +300,7 @@ def expand_env_var(env_var):
 
 
 def run_command(command):
-    """
-    Runs command and returns stdout
-    """
+    """执行shell命令，返回标准输出（Unicode编码） ."""
     if platform.system() == 'Windows':
         close_fds = False
     else:
@@ -310,6 +310,7 @@ def run_command(command):
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         close_fds=close_fds)
+    # 将结果转换为unicode编码
     output, stderr = [stream.decode(sys.getdefaultencoding(), 'ignore')
                       for stream in process.communicate()]
 
@@ -318,7 +319,5 @@ def run_command(command):
             "Cannot execute {}. Error code is: {}. Output: {}, Stderr: {}"
             .format(command, process.returncode, output, stderr)
         )
-
+    # 返回unicode编码的标准输出
     return output
-
-
