@@ -98,7 +98,7 @@ class PoolNotFound(AirflowNotFoundException):
     pass
 
 
-class XToolException(Exception):
+class XToolException(AirflowException):
     """
     Base class for all Airflow's errors.
     Each custom exception should be derived from this class
@@ -116,7 +116,7 @@ class XToolNotFoundException(XToolException):
     status_code = 404
 
 
-class XToolConfigException(XToolException):
+class XToolConfigException(XToolException, AirflowConfigException):
     pass
 
 
