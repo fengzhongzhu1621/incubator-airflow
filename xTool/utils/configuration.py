@@ -34,7 +34,7 @@ log = LoggingMixin().log
 
 
 def read_config_file(file_path):
-    """读取默认配置 ."""
+    """根据文件路径，读取文件内容 ."""
     if six.PY2:
         with open(file_path) as f:
             config = f.read()
@@ -54,33 +54,18 @@ def parameterized_config(template):
     return template.format(**all_vars)
 
 
-def read_default_config_file(file_path):
-    """根据文件路径，读取文件内容 ."""
-    # 获得配置文件路径名
-    if six.PY2:
-        with open(file_path) as f:
-            config = f.read()
-            return config.decode('utf-8')
-    else:
-        with open(file_path, encoding='utf-8') as f:
-            return f.read()
-
-
 def tmp_configuration_copy(cfg_dict, chmod=0o600):
-    """
-    Returns a path for a temporary file including a full copy of the configuration
-    settings.
-    :return: a path to a temporary file
-    """
-    cfg_dict = conf.as_dict(display_sensitive=True, raw=True)
+    """将配置字典复制到临时文件中，并返回临时文件的路径 ."""
+    # 创建临时文件
     temp_fd, cfg_path = mkstemp()
-
+    # 写临时文件
     with os.fdopen(temp_fd, 'w') as temp_file:
         if chmod is not None:
             if not USE_WINDOWS:
                 os.fchmod(temp_fd, chmod)
+        # 将json数据写入到临时文件
         json.dump(cfg_dict, temp_file)
-
+    # 返回临时文件的路径
     return cfg_path
 
 
@@ -112,7 +97,7 @@ class XToolConfigParser(ConfigParser):
 
     def __init__(self, default_config=None, *args, **kwargs):
         super(XToolConfigParser, self).__init__(*args, **kwargs)
-        # 创建配置文件解析器
+        # 创建默认配置文件解析器
         self.defaults = ConfigParser(*args, **kwargs)
         # 读取默认配置
         if default_config is not None:

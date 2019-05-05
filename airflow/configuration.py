@@ -43,11 +43,11 @@ from xTool.crypto.fernet import generate_fernet_key
 #from xTool.utils.configuration import parameterized_config
 from xTool.utils.helpers import expand_env_var
 from xTool.utils.helpers import run_command
-from xTool.utils.configuration import read_default_config_file
+from xTool.utils.configuration import read_config_file
 from xTool.utils.configuration import XToolConfigParser
 from xTool.utils.file import mkdir_p
 
-from airflow.exceptions import AirflowConfigException
+from xTool.exceptions import AirflowConfigException
 from xTool.utils.log.logging_mixin import LoggingMixin
 
 standard_library.install_aliases()
@@ -74,11 +74,12 @@ def parameterized_config(template):
 
 def _read_default_config_file(file_name):
     """读取默认配置 ."""
-    # 获得默认配置路径
+    # 获得默认配置模版路径
     templates_dir = os.path.join(os.path.dirname(__file__), 'config_templates')
     # 获得配置文件路径名
     file_path = os.path.join(templates_dir, file_name)
-    return read_default_config_file(file_path)
+    # 读取配置文件的内容
+    return read_config_file(file_path)
 
 
 class AirflowConfigParser(XToolConfigParser):
@@ -117,6 +118,7 @@ class AirflowConfigParser(XToolConfigParser):
 
     def __init__(self, default_config=None, *args, **kwargs):
         super(AirflowConfigParser, self).__init__(default_config, *args, **kwargs)
+        # 获得默认配置文件解析器
         self.airflow_defaults = self.defaults
 
     def _validate(self):
@@ -168,10 +170,11 @@ class AirflowConfigParser(XToolConfigParser):
         """
         cfg = {}
         configs = [
-            ('default', self.airflow_defaults),
-            ('airflow.cfg', self),
+            ('default', self.airflow_defaults),       # 默认配置文件解析器
+            ('airflow.cfg', self),                    # 用户自定义配置文件解析器
         ]
 
+        # 将配置文件转换为字典格式
         for (source_name, config) in configs:
             for section in config.sections():
                 sect = cfg.setdefault(section, OrderedDict())
@@ -181,6 +184,7 @@ class AirflowConfigParser(XToolConfigParser):
                     sect[k] = val
 
         # add env vars and overwrite because they have priority
+        # 用户环境变量的配置覆盖配置文件的配置，环境变量有较高的优先级
         for ev in [ev for ev in os.environ if ev.startswith('AIRFLOW__')]:
             try:
                 _, section, key = ev.split('__')
@@ -207,6 +211,7 @@ class AirflowConfigParser(XToolConfigParser):
                 elif raw:
                     opt = opt.replace('%', '%%')
                 cfg.setdefault(section, OrderedDict()).update({key: opt})
+                # 去掉bash命令
                 del cfg[section][key + '_cmd']
 
         return cfg
