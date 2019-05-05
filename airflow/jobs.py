@@ -56,7 +56,7 @@ from airflow import executors, models, settings
 from airflow.exceptions import AirflowException
 from airflow.models import DAG, DagRun, DagModel
 from airflow.settings import Stats
-from airflow.task.task_runner import get_task_runner
+from xTool.task.task_runner import get_task_runner
 from airflow.ti_deps.dep_context import DepContext, QUEUE_DEPS, RUN_DEPS
 from xTool.utils import asciiart
 from xTool.utils.configuration import tmp_configuration_copy
@@ -3087,7 +3087,7 @@ class LocalTaskJob(BaseJob):
     def _execute(self):
         """调用run()函数时执行 ."""
         # 获得任务实例运行器，用来运行消费者进程
-        self.task_runner = get_task_runner(self)
+        self.task_runner = get_task_runner(self, conf)
 
         # 注册job终止信号处理函数
         def signal_handler(signum, frame):

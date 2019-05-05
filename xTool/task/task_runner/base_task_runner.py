@@ -25,8 +25,6 @@ import subprocess
 import threading
 
 from xTool.utils.log.logging_mixin import LoggingMixin
-
-from airflow import configuration as conf
 from xTool.utils.configuration import tmp_configuration_copy
 from xTool.misc import USE_WINDOWS
 from xTool.exceptions import AirflowConfigException
@@ -41,13 +39,13 @@ class BaseTaskRunner(LoggingMixin):
     Runs Airflow task instances by invoking the `airflow run` command with raw
     mode enabled in a subprocess.
     """
-
-    def __init__(self, local_task_job):
+    def __init__(self, local_task_job, conf):
         """
         :param local_task_job: The local task job associated with running the
         associated task instance. job表中类型为LocalTaskJob的记录，即消费者job.
         :type local_task_job: airflow.jobs.LocalTaskJob
         """
+        self.conf = conf
         # Pass task instance context into log handlers to setup the logger.
         super(BaseTaskRunner, self).__init__(local_task_job.task_instance)
         # 获得job关联的任务实例
@@ -59,13 +57,13 @@ class BaseTaskRunner(LoggingMixin):
             self.run_as_user = self._task_instance.run_as_user
         else:
             try:
-                self.run_as_user = conf.get('core', 'default_impersonation')
+                self.run_as_user = self.conf.get('core', 'default_impersonation')
             except (AirflowConfigException, XToolConfigException):
                 self.run_as_user = None
 
         # Always provide a copy of the configuration file settings
         # 创建一个配置文件的拷贝，保存到临时文件
-        cfg_dict = conf.as_dict(display_sensitive=True, raw=True)
+        cfg_dict = self.conf.as_dict(display_sensitive=True, raw=True)
         # 将配置字典复制到临时文件中，并返回临时文件的路径
         cfg_path = tmp_configuration_copy(cfg_dict)
 

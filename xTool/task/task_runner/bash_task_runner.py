@@ -19,8 +19,7 @@
 
 import psutil
 
-from airflow.task.task_runner.base_task_runner import BaseTaskRunner
-from airflow import configuration
+from xTool.task.task_runner.base_task_runner import BaseTaskRunner
 from xTool.utils.helpers import reap_process_group
 
 
@@ -28,8 +27,8 @@ class BashTaskRunner(BaseTaskRunner):
     """
     Runs the raw Airflow task by invoking through the Bash shell.
     """
-    def __init__(self, local_task_job):
-        super(BashTaskRunner, self).__init__(local_task_job)
+    def __init__(self, local_task_job, conf):
+        super(BashTaskRunner, self).__init__(local_task_job, self.conf)
 
     def start(self):
         """执行bash命令 .
@@ -47,7 +46,7 @@ class BashTaskRunner(BaseTaskRunner):
     def terminate(self):
         """终止bash进程 ."""
         if self.process and psutil.pid_exists(self.process.pid):
-            reap_process_group(self.process.pid, self.log, configuration.conf.getint(
+            reap_process_group(self.process.pid, self.log, self.conf.getint(
                 'core', 'KILLED_TASK_CLEANUP_TIME'
             ))
 
