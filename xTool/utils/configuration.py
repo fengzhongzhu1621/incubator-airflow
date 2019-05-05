@@ -263,7 +263,56 @@ class XToolConfigParser(ConfigParser):
             _section[key] = val
         return _section
 
+    def as_dict(
+            self, display_sensitive=False, raw=False):
+        """将配置文件转换为配置字典 ."""
+        cfg = {}
+        configs = (
+            self.defaults,       # 默认配置文件解析器
+            self,                # 用户自定义配置文件解析器
+        )
 
+        # 遍历所有配置端，将配置文件转换为字典格式
+        for parser in configs:
+            for section in parser.sections():
+                # 将配置端保存到有序字典
+                sect = cfg.setdefault(section, OrderedDict())
+                # items(self, section, raw=False, vars=None)
+                #     - 在raw为true的情况下，忽略%的替换语法，直接输出
+                #     - 在raw为false的情况下，vars中包含要替换的key，%语法中的内容被替换
+                for (k, val) in parser.items(section=section, raw=raw):
+                    sect[k] = val
+
+        # 用户环境变量的配置覆盖配置文件的配置，环境变量有较高的优先级
+        for ev in [ev for ev in os.environ if ev.startswith('%s__' % self.env_prefix)]:
+            try:
+                _, section, key = ev.split('__')
+                # 从环境变量中获取配置的值
+                opt = self._get_env_var_option(section, key)
+            except ValueError:
+                continue
+            if (not display_sensitive and ev != '%s__CORE__UNIT_TEST_MODE' % self.env_prefix):
+                opt = '< hidden >'
+            elif raw:
+                opt = opt.replace('%', '%%')
+            cfg.setdefault(section.lower(), OrderedDict()).update(
+                {key.lower(): opt})
+
+        # add bash commands
+        for (section, key) in self.as_command_stdout:
+            # 从shell命令中获得配置项的值
+            opt = self._get_cmd_option(section, key)
+            if opt:
+                if not display_sensitive:
+                    opt = '< hidden >'
+                elif raw:
+                    opt = opt.replace('%', '%%')
+                cfg.setdefault(section, OrderedDict()).update({key: opt})
+                # 去掉bash命令
+                del cfg[section][key + '_cmd']
+
+        return cfg
+        
     def _warn_deprecate(self, section, key, deprecated_name):
         """输出过期配置警告信息 ."""
         warnings.warn(

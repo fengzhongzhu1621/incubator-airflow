@@ -118,8 +118,6 @@ class AirflowConfigParser(XToolConfigParser):
 
     def __init__(self, default_config=None, *args, **kwargs):
         super(AirflowConfigParser, self).__init__(default_config, *args, **kwargs)
-        # 获得默认配置文件解析器
-        self.airflow_defaults = self.defaults
 
     def _validate(self):
         if (
@@ -152,70 +150,6 @@ class AirflowConfigParser(XToolConfigParser):
 
         self.is_validated = True
 
-    def as_dict(
-            self, display_source=False, display_sensitive=False, raw=False):
-        """
-        Returns the current configuration as an OrderedDict of OrderedDicts.
-        :param display_source: If False, the option value is returned. If True,
-            a tuple of (option_value, source) is returned. Source is either
-            'airflow.cfg', 'default', 'env var', or 'cmd'.
-        :type display_source: bool
-        :param display_sensitive: If True, the values of options set by env
-            vars and bash commands will be displayed. If False, those options
-            are shown as '< hidden >'
-        :type display_sensitive: bool
-        :param raw: Should the values be output as interpolated values, or the
-            "raw" form that can be fed back in to ConfigParser
-        :type raw: bool
-        """
-        cfg = {}
-        configs = [
-            ('default', self.airflow_defaults),       # 默认配置文件解析器
-            ('airflow.cfg', self),                    # 用户自定义配置文件解析器
-        ]
-
-        # 将配置文件转换为字典格式
-        for (source_name, config) in configs:
-            for section in config.sections():
-                sect = cfg.setdefault(section, OrderedDict())
-                for (k, val) in config.items(section=section, raw=raw):
-                    if display_source:
-                        val = (val, source_name)
-                    sect[k] = val
-
-        # add env vars and overwrite because they have priority
-        # 用户环境变量的配置覆盖配置文件的配置，环境变量有较高的优先级
-        for ev in [ev for ev in os.environ if ev.startswith('AIRFLOW__')]:
-            try:
-                _, section, key = ev.split('__')
-                opt = self._get_env_var_option(section, key)
-            except ValueError:
-                continue
-            if (not display_sensitive and ev != 'AIRFLOW__CORE__UNIT_TEST_MODE'):
-                opt = '< hidden >'
-            elif raw:
-                opt = opt.replace('%', '%%')
-            if display_source:
-                opt = (opt, 'env var')
-            cfg.setdefault(section.lower(), OrderedDict()).update(
-                {key.lower(): opt})
-
-        # add bash commands
-        for (section, key) in self.as_command_stdout:
-            opt = self._get_cmd_option(section, key)
-            if opt:
-                if not display_sensitive:
-                    opt = '< hidden >'
-                if display_source:
-                    opt = (opt, 'cmd')
-                elif raw:
-                    opt = opt.replace('%', '%%')
-                cfg.setdefault(section, OrderedDict()).update({key: opt})
-                # 去掉bash命令
-                del cfg[section][key + '_cmd']
-
-        return cfg
-
     def load_test_config(self):
         """
         Load the unit test configuration.
@@ -237,7 +171,7 @@ class AirflowConfigParser(XToolConfigParser):
 DEFAULT_CONFIG = _read_default_config_file('default_airflow.cfg')
 TEST_CONFIG = _read_default_config_file('default_test.cfg')
 
-# 创建配置文件目录
+# 创建用户自定义配置文件目录
 if 'AIRFLOW_HOME' not in os.environ:
     AIRFLOW_HOME = expand_env_var('~/airflow')
 else:
@@ -318,7 +252,7 @@ log.info("Reading the config from %s", AIRFLOW_CONFIG)
 
 # 创建配置对象，读取默认配置
 conf = AirflowConfigParser(default_config=parameterized_config(DEFAULT_CONFIG))
-# 读取正式环境配置文件，覆盖默认配置
+# 读取正式环境用户自定义配置文件，相同的配置项会覆盖默认配置
 conf.read(AIRFLOW_CONFIG)
 
 # 自动生成rbac webserver配置文件
