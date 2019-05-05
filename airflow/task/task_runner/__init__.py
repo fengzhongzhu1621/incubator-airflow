@@ -19,13 +19,13 @@
 
 from airflow import configuration
 from airflow.task.task_runner.bash_task_runner import BashTaskRunner
-from airflow.exceptions import AirflowException
+from xTool.exceptions import AirflowException
 
 _TASK_RUNNER = configuration.conf.get('core', 'TASK_RUNNER')
 
 
 def get_task_runner(local_task_job):
-    """获得任务实例运行器
+    """获得任务实例运行器，用于消费者worker
     Get the task runner that can be used to run the given job.
 
     :param local_task_job: The LocalTaskJob associated with the TaskInstance
