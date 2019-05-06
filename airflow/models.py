@@ -1167,7 +1167,7 @@ class TaskInstance(Base, LoggingMixin):
                 cfg_path = cfg_path.replace("\\", "/")
         iso = execution_date.isoformat()
         if USE_WINDOWS:
-            #cmd = ["python3.6", "C:/Users/linda/airflow/airflow", "run", str(dag_id), str(task_id), str(iso)]
+            # 需要在环境变量->系统变量中设置 PYTHON_SCRIPT=C:/Users/user/AppData/Local/Programs/Python/Python36-32/Scripts
             cmd = ["python3.6", "%PYTHON_SCRIPT%/airflow", "run", str(dag_id), str(task_id), str(iso)]
         else:
             cmd = ["airflow", "run", str(dag_id), str(task_id), str(iso)]
@@ -1613,6 +1613,7 @@ class TaskInstance(Base, LoggingMixin):
         self.test_mode = test_mode
         # 将db中任务实例记录更新到orm模型
         self.refresh_from_db(session=session, lock_for_update=True)
+        # 任务实例中获得job_id
         self.job_id = job_id
         # 获得任务实例运行所在机器的主机名
         try:

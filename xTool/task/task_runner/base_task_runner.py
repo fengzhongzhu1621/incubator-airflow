@@ -10,7 +10,6 @@ import threading
 from xTool.utils.log.logging_mixin import LoggingMixin
 from xTool.utils.configuration import tmp_configuration_copy
 from xTool.misc import USE_WINDOWS
-from xTool.exceptions import AirflowConfigException
 from xTool.exceptions import XToolConfigException
 
 
@@ -18,7 +17,7 @@ PYTHONPATH_VAR = 'PYTHONPATH'
 
 
 class BaseTaskRunner(LoggingMixin):
-    """
+    """任务执行器，根据指定的job构造一个命令行，启动一个shell进程运行此命令
     Runs Airflow task instances by invoking the `airflow run` command with raw
     mode enabled in a subprocess.
     """
@@ -58,8 +57,6 @@ class BaseTaskRunner(LoggingMixin):
                 ['sudo', 'chown', self.run_as_user, self._cfg_path],
                 close_fds=True
             )
-
-            # propagate PYTHONPATH environment variable
             # 用于在导入模块的时候搜索路径，例如 export PYTHONPATH=$PYTHONPATH:`pwd`:'pwd'/slim
             pythonpath_value = os.environ.get(PYTHONPATH_VAR, '')
             popen_prepend = ['sudo', '-E', '-H', '-u', self.run_as_user]
@@ -67,7 +64,7 @@ class BaseTaskRunner(LoggingMixin):
             if pythonpath_value:
                 popen_prepend.append('{}={}'.format(PYTHONPATH_VAR, pythonpath_value))
 
-        # 构造worker需要执行的命令
+        # 构造worker需要执行的shell命令
         self._command = popen_prepend + self._task_instance.command_as_list(
             raw=True,
             pickle_id=local_task_job.pickle_id,
@@ -80,7 +77,7 @@ class BaseTaskRunner(LoggingMixin):
 
     def _read_task_logs(self, stream):
         while True:
-            # 阻塞操作
+            # 阻塞操作，获取命令的执行结果
             line = stream.readline()
             # 转换为unicode编码
             if isinstance(line, bytes):

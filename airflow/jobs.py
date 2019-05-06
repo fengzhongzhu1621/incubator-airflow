@@ -3086,9 +3086,6 @@ class LocalTaskJob(BaseJob):
 
     def _execute(self):
         """调用run()函数时执行 ."""
-        # 获得任务实例运行器，用来运行消费者进程
-        self.task_runner = get_task_runner(self, conf)
-
         # 注册job终止信号处理函数
         def signal_handler(signum, frame):
             """Setting kill signal handler"""
@@ -3098,6 +3095,7 @@ class LocalTaskJob(BaseJob):
         signal.signal(signal.SIGTERM, signal_handler)
 
         # 任务实例执行前的验证，将任务实例的状态从 QUEUE 改为 RUNNING
+        # 将job_id保存到任务实例中
         if not self.task_instance._check_and_change_state_before_execution(
                 mark_success=self.mark_success,
                 ignore_all_deps=self.ignore_all_deps,
@@ -3109,6 +3107,9 @@ class LocalTaskJob(BaseJob):
             self.log.info("Task is not able to be run")
             return
 
+        # 获得任务实例运行器，用来运行消费者进程
+        self.task_runner = get_task_runner(self, conf)
+        
         try:
             # 如果依赖满足，则调用任务实例运行器执行任务实例
             # 执行airflow run --raw 命令
