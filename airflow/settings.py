@@ -33,7 +33,8 @@ from sqlalchemy.pool import NullPool
 
 from airflow import configuration as conf
 from airflow.logging_config import configure_logging
-from xTool.db.alchemy_orm import setup_event_handlers
+from xTool.db.alchemy_orm import (setup_event_handlers, 
+                                  configure_adapters)
 from airflow.exceptions import AirflowConfigException
 from xTool.exceptions import XToolConfigException
 from xTool.db import alchemy_orm
@@ -221,20 +222,6 @@ def dispose_orm():
         engine = None
 
 
-def configure_adapters():
-    from pendulum import Pendulum
-    try:
-        from sqlite3 import register_adapter
-        register_adapter(Pendulum, lambda val: val.isoformat(' '))
-    except ImportError:
-        pass
-    try:
-        import MySQLdb.converters
-        MySQLdb.converters.conversions[Pendulum] = MySQLdb.converters.DateTime2literal
-    except ImportError:
-        pass
-
-
 def validate_session():
     try:
         worker_precheck = conf.getboolean('core', 'worker_precheck')
@@ -281,7 +268,6 @@ configure_action_logging()
 atexit.register(dispose_orm)
 
 # Const stuff
-
 KILOBYTE = 1024
 MEGABYTE = KILOBYTE * KILOBYTE
 WEB_COLORS = {'LIGHTBLUE': '#4d9de0',
