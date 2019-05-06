@@ -1607,7 +1607,8 @@ class Airflow(BaseView):
         fails_totals = defaultdict(int)
         for tf in ti_fails:
             dict_key = (tf.dag_id, tf.task_id, tf.execution_date)
-            fails_totals[dict_key] += tf.duration
+            duration = tf.duration if tf.duration else 0
+            fails_totals[dict_key] += duration
 
         for ti in tis:
             if ti.duration:
