@@ -36,6 +36,6 @@ def get_task_runner(local_task_job, conf):
         return BashTaskRunner(local_task_job, conf)
     elif _TASK_RUNNER == "CgroupTaskRunner":
         from airflow.contrib.task_runner.cgroup_task_runner import CgroupTaskRunner
-        return CgroupTaskRunner(local_task_job)
+        return CgroupTaskRunner(local_task_job, conf)
     else:
         raise XToolException("Unknown task runner type {}".format(_TASK_RUNNER))

@@ -54,8 +54,8 @@ class CgroupTaskRunner(BaseTaskRunner):
     airflow ALL= (root) NOEXEC: !/bin/chmod /CGROUPS_FOLDER/cpu/airflow/* *
     """
 
-    def __init__(self, local_task_job):
-        super(CgroupTaskRunner, self).__init__(local_task_job)
+    def __init__(self, local_task_job, conf):
+        super(CgroupTaskRunner, self).__init__(local_task_job, conf)
         self.process = None
         self._finished_running = False
         self._cpu_shares = None
