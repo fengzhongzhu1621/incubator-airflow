@@ -1,4 +1,9 @@
-#coding: utf-8
+# coding: utf-8
+
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+from __future__ import unicode_literals
 
 import atexit
 import os
@@ -10,10 +15,17 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import scoped_session, sessionmaker
 from sqlalchemy.pool import NullPool
 
+import datetime
+from sqlalchemy.types import DateTime, TypeDecorator
+import pendulum
+
 from xTool.utils.log.logging_mixin import LoggingMixin
+
+
+utc = pendulum.timezone('UTC')
 log = LoggingMixin().log
 
-
+engine = None
 Session = None
 
 
@@ -114,7 +126,10 @@ def configure_orm(sql_alchemy_conn,
                   pool_recycle=1800,
                   reconnect_timeout=300,
                   autocommit=False,
-                  disable_connection_pool=False):
+                  disable_connection_pool=False,
+                  encoding="utf-8",
+                  echo=False):
+    """配置DB ."""
     log.debug("Setting up DB connection pool (PID %s)" % os.getpid())
     global engine
     global Session
@@ -134,12 +149,17 @@ def configure_orm(sql_alchemy_conn,
         engine_args['pool_size'] = pool_size
         engine_args['pool_recycle'] = pool_recycle
 
+    engine_args['encoding'] = encoding
+    # For Python2 we get back a newstr and need a str
+    engine_args['encoding'] = engine_args['encoding'].__str__()
+    engine_args['echo'] = echo
+
     # 连接数据库
     engine = create_engine(sql_alchemy_conn, **engine_args)
     # 设置数据库事件处理函数
-    reconnect_timeout = conf.getint('core', 'SQL_ALCHEMY_RECONNECT_TIMEOUT')
     setup_event_handlers(engine, reconnect_timeout)
 
+    # 创建全局线程安全session
     Session = scoped_session(
         sessionmaker(autocommit=autocommit,
                      autoflush=False,
@@ -178,3 +198,46 @@ def configure_adapters():
 
 # Ensure we close DB connections at scheduler and gunicon worker terminations
 # atexit.register(dispose_orm)
+
+
+class UtcDateTime(TypeDecorator):
+    """
+    Almost equivalent to :class:`~sqlalchemy.types.DateTime` with
+    ``timezone=True`` option, but it differs from that by:
+    - Never silently take naive :class:`~datetime.datetime`, instead it
+      always raise :exc:`ValueError` unless time zone aware value.
+    - :class:`~datetime.datetime` value's :attr:`~datetime.datetime.tzinfo`
+      is always converted to UTC.
+    - Unlike SQLAlchemy's built-in :class:`~sqlalchemy.types.DateTime`,
+      it never return naive :class:`~datetime.datetime`, but time zone
+      aware value, even with SQLite or MySQL.
+    - Always returns DateTime in UTC
+    """
+
+    impl = DateTime(timezone=True)
+
+    def process_bind_param(self, value, dialect):
+        if value is not None:
+            if not isinstance(value, datetime.datetime):
+                raise TypeError('expected datetime.datetime, not ' +
+                                repr(value))
+            elif value.tzinfo is None:
+                raise ValueError('naive datetime is disallowed')
+
+            return value.astimezone(utc)
+
+    def process_result_value(self, value, dialect):
+        """
+        Processes DateTimes from the DB making sure it is always
+        returning UTC. Not using timezone.convert_to_utc as that
+        converts to configured TIMEZONE while the DB might be
+        running with some other setting. We assume UTC datetimes
+        in the database.
+        """
+        if value is not None:
+            if value.tzinfo is None:
+                value = value.replace(tzinfo=utc)
+            else:
+                value = value.astimezone(utc)
+
+        return value

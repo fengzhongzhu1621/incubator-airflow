@@ -440,7 +440,7 @@ class CustomSQLAInterface(SQLAInterface):
         clean_column_names()
 
     def is_utcdatetime(self, col_name):
-        from airflow.utils.sqlalchemy import UtcDateTime
+        from xTool.db.alchemy_orm import UtcDateTime
         obj = self.list_columns[col_name].type
         return isinstance(obj, UtcDateTime) or \
             isinstance(obj, sqla.types.TypeDecorator) and \

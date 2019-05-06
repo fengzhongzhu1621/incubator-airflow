@@ -33,7 +33,7 @@ from sqlalchemy.pool import NullPool
 
 from airflow import configuration as conf
 from airflow.logging_config import configure_logging
-from airflow.utils.sqlalchemy import setup_event_handlers
+from xTool.db.alchemy_orm import setup_event_handlers
 from airflow.exceptions import AirflowConfigException
 from xTool.exceptions import XToolConfigException
 from xTool.db import alchemy_orm
@@ -57,6 +57,7 @@ log.info("Configured default timezone %s" % TIMEZONE)
 set_timezone_var(TIMEZONE)
 
 
+# 默认的日志收集器
 class DummyStatsLogger(object):
     @classmethod
     def incr(cls, stat, count=1, rate=1):
@@ -102,6 +103,7 @@ LOGGING_LEVEL = logging.INFO
 # the prefix to append to gunicorn worker processes after init
 GUNICORN_WORKER_READY_PREFIX = "[ready] "
 
+# 日志格式
 LOG_FORMAT = conf.get('core', 'log_format')
 SIMPLE_LOG_FORMAT = conf.get('core', 'simple_log_format')
 
@@ -166,7 +168,7 @@ def configure_orm(disable_connection_pool=False):
         # 0 means no limit, which could lead to exceeding the Database connection limit.
         try:
             pool_size = conf.getint('core', 'SQL_ALCHEMY_POOL_SIZE')
-        except (AirflowConfigException, XToolConfigException):
+        except AirflowConfigException:
             pool_size = 5
 
         # The DB server already has a value for wait_timeout (number of seconds after
@@ -175,7 +177,7 @@ def configure_orm(disable_connection_pool=False):
         # pool_recycle to an equal or smaller value.
         try:
             pool_recycle = conf.getint('core', 'SQL_ALCHEMY_POOL_RECYCLE')
-        except (AirflowConfigException, XToolConfigException):
+        except AirflowConfigException:
             pool_recycle = 1800
 
         log.info("setting.configure_orm(): Using pool settings. pool_size={}, "
@@ -203,6 +205,7 @@ def configure_orm(disable_connection_pool=False):
     Session = scoped_session(
         sessionmaker(autocommit=False, autoflush=False, bind=engine))
     alchemy_orm.Session = Session
+
 
 def dispose_orm():
     """ Properly close pooled database connections """
