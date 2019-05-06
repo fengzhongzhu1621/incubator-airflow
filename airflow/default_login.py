@@ -25,11 +25,8 @@ the new module will override this one.
 """
 
 import flask_login
-from flask_login import login_required, current_user, logout_user
-
 from flask import url_for, redirect
 
-from airflow import settings
 from airflow import models
 from xTool.decorators.db import provide_session
 

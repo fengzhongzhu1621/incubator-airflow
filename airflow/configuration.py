@@ -24,30 +24,19 @@ from __future__ import print_function
 # 把你当前模块所有的字符串（string literals）转为unicode
 from __future__ import unicode_literals
 
-from builtins import str
-from collections import OrderedDict
-import copy
-import errno
 from future import standard_library
 import os
-import shlex
 import six
 from six import iteritems
-import subprocess
-import sys
 import warnings
-
-from backports.configparser import ConfigParser
 from zope.deprecation import deprecated as _deprecated
+
 from xTool.crypto.fernet import generate_fernet_key
-#from xTool.utils.configuration import parameterized_config
+from xTool.exceptions import AirflowConfigException
 from xTool.utils.helpers import expand_env_var
-from xTool.utils.helpers import run_command
 from xTool.utils.configuration import read_config_file
 from xTool.utils.configuration import XToolConfigParser
 from xTool.utils.file import mkdir_p
-
-from xTool.exceptions import AirflowConfigException
 from xTool.utils.log.logging_mixin import LoggingMixin
 
 standard_library.install_aliases()
@@ -84,7 +73,8 @@ def _read_default_config_file(file_name):
 
 class AirflowConfigParser(XToolConfigParser):
     env_prefix = "AIRFLOW"
-	
+
+
     # These configuration elements can be fetched as the stdout of commands
     # following the "{section}__{name}__cmd" pattern, the idea behind this
     # is to not store password on boxes in text files.
@@ -127,7 +117,6 @@ class AirflowConfigParser(XToolConfigParser):
             raise AirflowConfigException(
                 "error: cannot use sqlite with the {}".format(
                     self.get('core', 'executor')))
-
         elif (
             self.getboolean("webserver", "authenticate") and
             self.get("webserver", "owner_mode") not in ['user', 'ldapgroup']
@@ -136,7 +125,6 @@ class AirflowConfigParser(XToolConfigParser):
             raise AirflowConfigException(
                 "error: owner_mode option should be either "
                 "'user' or 'ldapgroup' when filtering by owner is set")
-
         elif (
             # 如果开启了webserver认证，启用了ldapgroup，则认证后端必须是ldap_auth
             self.getboolean("webserver", "authenticate") and
@@ -167,7 +155,7 @@ class AirflowConfigParser(XToolConfigParser):
 # Setting AIRFLOW_HOME and AIRFLOW_CONFIG from environment variables, using
 # "~/airflow" and "~/airflow/airflow.cfg" respectively as defaults.
 
-# 读取配置文件
+# 读取默认配置文件
 DEFAULT_CONFIG = _read_default_config_file('default_airflow.cfg')
 TEST_CONFIG = _read_default_config_file('default_test.cfg')
 
@@ -178,7 +166,7 @@ else:
     AIRFLOW_HOME = expand_env_var(os.environ['AIRFLOW_HOME'])
 mkdir_p(AIRFLOW_HOME)
 
-# 获得配置文件路径
+# 获得用户自定义配置文件路径
 if 'AIRFLOW_CONFIG' not in os.environ:
     # 首先从当前用户的home路径下获取配置文件
     # 然后从AIRFLOW_HOME下的获取
@@ -191,8 +179,6 @@ else:
     AIRFLOW_CONFIG = expand_env_var(os.environ['AIRFLOW_CONFIG'])
 
 # 获得测试目录下dags的目录
-# Set up dags folder for unit tests
-# this directory won't exist if users install via pip
 _TEST_DAGS_FOLDER = os.path.join(
     os.path.dirname(os.path.dirname(os.path.realpath(__file__))),
     'tests',
@@ -203,7 +189,6 @@ else:
     TEST_DAGS_FOLDER = os.path.join(AIRFLOW_HOME, 'dags')
 
 # 获得测试目录下plugins的目录
-# Set up plugins folder for unit tests
 _TEST_PLUGINS_FOLDER = os.path.join(
     os.path.dirname(os.path.dirname(os.path.realpath(__file__))),
     'tests',
@@ -214,17 +199,16 @@ else:
     TEST_PLUGINS_FOLDER = os.path.join(AIRFLOW_HOME, 'plugins')
 
 
-# 获得单元测试配置文件
+# 获得用户自定义的单元测试配置文件
 TEST_CONFIG_FILE = AIRFLOW_HOME + '/unittests.cfg'
 
 # 如果需要创建一个新的配置文件，则需要产生一个44字节的随机数
-# only generate a Fernet key if we need to create a new config file
 if not os.path.isfile(TEST_CONFIG_FILE) or not os.path.isfile(AIRFLOW_CONFIG):
     FERNET_KEY = generate_fernet_key()
 else:
     FERNET_KEY = ''
 
-# 自动生成单元测试配置文件
+# 如果用户自定义的单元测试配置文件不存在，则从默认配置模版中生成
 TEMPLATE_START = (
     '# ----------------------- TEMPLATE BEGINS HERE -----------------------')
 if not os.path.isfile(TEST_CONFIG_FILE):
@@ -235,7 +219,7 @@ if not os.path.isfile(TEST_CONFIG_FILE):
         cfg = parameterized_config(TEST_CONFIG)
         f.write(cfg.split(TEMPLATE_START)[-1].strip())
 
-# 自动生成默认配置文件
+# 如果用户自定义配置文件不存在，则从默认配置模版中生成
 if not os.path.isfile(AIRFLOW_CONFIG):
     log.info(
         'Creating new Airflow config file in: %s',
@@ -272,7 +256,7 @@ if conf.getboolean('core', 'unit_test_mode'):
     conf.load_test_config()
 
 # Historical convenience functions to access config entries
-
+# 下面是过期的方法
 load_test_config = conf.load_test_config
 get = conf.get
 getboolean = conf.getboolean
@@ -282,7 +266,7 @@ getsection = conf.getsection
 has_option = conf.has_option
 remove_option = conf.remove_option
 as_dict = conf.as_dict
-set = conf.set # noqa
+set = conf.set  # noqa
 
 for func in [load_test_config, get, getboolean, getfloat, getint, has_option,
              remove_option, as_dict, set]:
