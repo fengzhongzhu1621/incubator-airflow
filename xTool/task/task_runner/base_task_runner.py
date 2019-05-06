@@ -33,23 +33,47 @@ class BaseTaskRunner(LoggingMixin):
         super(BaseTaskRunner, self).__init__(local_task_job.task_instance)
         # 获得job关联的任务实例
         self._task_instance = local_task_job.task_instance
-
-        popen_prepend = []
+        
         # 获得任务设置的执行用户
+        self.run_as_user = self._get_run_as_user()
+        # 创建配置文件
+        self._cfg_path = self._create_conf_file()
+
+        # 获得命令前缀
+        popen_prepend = self._get_command_prefix()
+        # 构造worker需要执行的shell命令
+        self._command = popen_prepend + self._task_instance.command_as_list(
+            raw=True,
+            pickle_id=local_task_job.pickle_id,
+            mark_success=local_task_job.mark_success,
+            job_id=local_task_job.id,
+            pool=local_task_job.pool,
+            cfg_path=self._cfg_path,
+        )
+        self.process = None
+
+    def _get_run_as_user(self):
+        """获得任务设置的执行用户 ."""
         if self._task_instance.run_as_user:
-            self.run_as_user = self._task_instance.run_as_user
+            run_as_user = self._task_instance.run_as_user
         else:
             try:
-                self.run_as_user = self.conf.get('core', 'default_impersonation')
+                run_as_user = self.conf.get('core', 'default_impersonation')
             except XToolConfigException:
-                self.run_as_user = None
+                run_as_user = None
+        return run_as_user
 
+    def _create_conf_file(self):
+        """创建配置文件 ."""
         # 将配置文件转换为字典
         cfg_dict = self.conf.as_dict(display_sensitive=True, raw=True)
         # 将配置字典复制到临时文件中，并返回临时文件的路径
-        self._cfg_path = tmp_configuration_copy(cfg_dict)
+        cfg_path = tmp_configuration_copy(cfg_dict)
+        return cfg_path
 
-        # 修改临时文件的用户
+    def _get_command_prefix(self):
+        """获得命令前缀 ."""
+        popen_prepend = []
         self.log.debug("Planning to run as the %s user", self.run_as_user)
         if self.run_as_user and (self.run_as_user != getpass.getuser()):
             # Give ownership of file to user; only they can read and write
@@ -63,17 +87,7 @@ class BaseTaskRunner(LoggingMixin):
 
             if pythonpath_value:
                 popen_prepend.append('{}={}'.format(PYTHONPATH_VAR, pythonpath_value))
-
-        # 构造worker需要执行的shell命令
-        self._command = popen_prepend + self._task_instance.command_as_list(
-            raw=True,
-            pickle_id=local_task_job.pickle_id,
-            mark_success=local_task_job.mark_success,
-            job_id=local_task_job.id,
-            pool=local_task_job.pool,
-            cfg_path=self._cfg_path,
-        )
-        self.process = None
+        return popen_prepend
 
     def _read_task_logs(self, stream):
         while True:
@@ -84,9 +98,13 @@ class BaseTaskRunner(LoggingMixin):
                 line = line.decode('utf-8')
             if not line:
                 break
-            self.log.info('Job %s: Subtask %s %s',
-                          self._task_instance.job_id, self._task_instance.task_id,
-                          line.rstrip('\n'))
+            # 捕获异常防止编码异常
+            try:
+                self.log.info('Job %s: Subtask %s %s',
+                               self._task_instance.job_id, self._task_instance.task_id,
+                               line.rstrip('\n'))
+            except Exception as e:
+                pass
 
     def run_command(self, run_with, join_args=False):
         """运行任务实例： airflow run --raw
@@ -122,9 +140,7 @@ class BaseTaskRunner(LoggingMixin):
             preexec_fn=preexec_fn
         )
 
-        # 启动一个线程，在命令执行完成后记录相关日志
-        # airflow run --raw 命令执行完成后打印日志
-        # Start daemon thread to read subprocess logging output
+        # 启动一个线程，airflow run --raw 命令执行完成后打印日志
         log_reader = threading.Thread(
             target=self._read_task_logs,
             args=(proc.stdout,),
@@ -155,7 +171,7 @@ class BaseTaskRunner(LoggingMixin):
         raise NotImplementedError()
 
     def on_finish(self):
-        """删除临时配置文件 ."""
+        """子进程执行完毕后，删除临时配置文件 ."""
         if USE_WINDOWS:
             try:
                 os.remove(self._cfg_path)
