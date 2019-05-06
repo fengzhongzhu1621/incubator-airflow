@@ -101,8 +101,8 @@ class BaseTaskRunner(LoggingMixin):
             # 捕获异常防止编码异常
             try:
                 self.log.info('Job %s: Subtask %s %s',
-                               self._task_instance.job_id, self._task_instance.task_id,
-                               line.rstrip('\n'))
+                              self._task_instance.job_id, self._task_instance.task_id,
+                              line.rstrip('\n'))
             except Exception as e:
                 pass
 

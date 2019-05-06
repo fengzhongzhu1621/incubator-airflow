@@ -215,7 +215,7 @@ def pprinttable(rows):
 
 def reap_process_group(pid, log, sig=signal.SIGTERM,
                        timeout=60):
-    """
+    """终止进程id为pid的子进程（包括进程id的所有子进程）
     Tries really hard to terminate all children (including grandchildren). Will send
     sig (SIGTERM) to the process group of pid. If any process is alive after timeout
     a SIGKILL will be send.
@@ -227,11 +227,12 @@ def reap_process_group(pid, log, sig=signal.SIGTERM,
     """
     if USE_WINDOWS:
         return True
+
     def on_terminate(p):
         """进程被关闭时的回调，打印进程ID和返回码 ."""
         log.info("Process %s (%s) terminated with exit code %s", p, p.pid, p.returncode)
 
-    # 不允许杀死自己
+    # 不允许杀死自己，pid必须是子进程
     if pid == os.getpid():
         raise RuntimeError("I refuse to kill myself")
 

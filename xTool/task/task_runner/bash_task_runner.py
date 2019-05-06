@@ -1,21 +1,4 @@
 # -*- coding: utf-8 -*-
-#
-# Licensed to the Apache Software Foundation (ASF) under one
-# or more contributor license agreements.  See the NOTICE file
-# distributed with this work for additional information
-# regarding copyright ownership.  The ASF licenses this file
-# to you under the Apache License, Version 2.0 (the
-# "License"); you may not use this file except in compliance
-# with the License.  You may obtain a copy of the License at
-#
-#   http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an
-# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied.  See the License for the
-# specific language governing permissions and limitations
-# under the License.
 
 import psutil
 
@@ -28,7 +11,7 @@ class BashTaskRunner(BaseTaskRunner):
     Runs the raw Airflow task by invoking through the Bash shell.
     """
     def __init__(self, local_task_job, conf):
-        super(BashTaskRunner, self).__init__(local_task_job, self.conf)
+        super(BashTaskRunner, self).__init__(local_task_job, conf)
 
     def start(self):
         """执行bash命令 .
@@ -41,6 +24,17 @@ class BashTaskRunner(BaseTaskRunner):
         self.process = self.run_command(['bash', '-c'], join_args=True)
 
     def return_code(self):
+        """检查子进程状态
+
+            0 正常结束
+            1 sleep
+            2 子进程不存在
+            -15 kill
+            None 在运行
+
+            poll() == 0 判断子进程是否正常结束 正确
+
+        """
         return self.process.poll()
 
     def terminate(self):
