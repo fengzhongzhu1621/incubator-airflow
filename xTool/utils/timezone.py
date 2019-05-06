@@ -29,6 +29,7 @@ utc = pendulum.timezone('UTC')
 
 
 def set_timezone_var(timezone):
+    global TIMEZONE
     TIMEZONE = timezone
 
 
