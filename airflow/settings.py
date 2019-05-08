@@ -34,14 +34,13 @@ from sqlalchemy.pool import NullPool
 from airflow import configuration as conf
 from airflow.logging_config import configure_logging
 from airflow.utils.helpers import create_statsclient
-
-from xTool.db.alchemy_orm import (setup_event_handlers, 
-                                  configure_adapters)
+from airflow.utils.helpers import set_default_timezone
 from airflow.exceptions import AirflowConfigException
-from xTool.exceptions import XToolConfigException
-from xTool.db import alchemy_orm
-from xTool.utils.timezone import set_timezone_var
 
+from xTool.db.alchemy_orm import setup_event_handlers
+from xTool.db.alchemy_orm import configure_adapters
+from xTool.db import alchemy_orm
+from xTool.exceptions import XToolConfigException
 
 
 log = logging.getLogger(__name__)
@@ -49,18 +48,7 @@ log = logging.getLogger(__name__)
 RBAC = conf.getboolean('webserver', 'rbac')
 
 # 设置默认时区
-TIMEZONE = pendulum.timezone('UTC')
-try:
-    tz = conf.get("core", "default_timezone")
-    if tz == "system":
-        TIMEZONE = pendulum.local_timezone()
-    else:
-        TIMEZONE = pendulum.timezone(tz)
-except Exception:
-    pass
-log.info("Configured default timezone %s" % TIMEZONE)
-set_timezone_var(TIMEZONE)
-
+TIMEZONE = set_default_timezone()
 
 # 采集到的数据会走 UDP 协议发给 StatsD，由 StatsD 解析、提取、计算处理后，周期性地发送给 Graphite。
 Stats = create_statsclient()
