@@ -178,6 +178,22 @@ def dispose_orm():
         engine = None
 
 
+def validate_session(engine, worker_precheck):
+    """验证数据库是否可用 ."""
+    if not worker_precheck:
+        return True
+    check_session = sessionmaker(bind=engine)
+    session = check_session()
+    try:
+        session.execute("select 1")
+        conn_status = True
+    except exc.DBAPIError as err:
+        log.error(err)
+        conn_status = False
+    session.close()
+    return conn_status
+
+
 def configure_adapters():
     from pendulum import Pendulum
     try:

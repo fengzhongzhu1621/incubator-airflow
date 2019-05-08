@@ -1073,6 +1073,7 @@ def worker(args):
     env = os.environ.copy()
     env['AIRFLOW_HOME'] = settings.AIRFLOW_HOME
 
+    # 验证数据库是否可用
     if not settings.validate_session():
         log = LoggingMixin().log
         log.error("Worker exiting... database connection precheck failed! ")

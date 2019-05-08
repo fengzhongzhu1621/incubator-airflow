@@ -162,23 +162,12 @@ def dispose_orm():
 
 
 def validate_session():
+    """验证数据库是否可用 ."""
     try:
         worker_precheck = conf.getboolean('core', 'worker_precheck')
-    except (AirflowConfigException, XToolConfigException):
+    except AirflowConfigException:
         worker_precheck = False
-    if not worker_precheck:
-        return True
-    else:
-        check_session = sessionmaker(bind=engine)
-        session = check_session()
-        try:
-            session.execute("select 1")
-            conn_status = True
-        except exc.DBAPIError as err:
-            log.error(err)
-            conn_status = False
-        session.close()
-        return conn_status
+    return alchemy_orm.validate_session(engine, worker_precheck)
 
 
 def configure_action_logging():
