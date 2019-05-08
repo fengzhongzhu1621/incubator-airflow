@@ -31,12 +31,9 @@ import sys
 
 from airflow import configuration
 from xTool.utils.log.logging_mixin import LoggingMixin
+from xTool.exceptions import XToolPluginException
 
 log = LoggingMixin().log
-
-
-class AirflowPluginException(Exception):
-    pass
 
 
 class AirflowPlugin(object):
@@ -56,7 +53,7 @@ class AirflowPlugin(object):
     def validate(cls):
         """验证插件必须定义name静态变量 ."""
         if not cls.name:
-            raise AirflowPluginException("Your plugin needs a name.")
+            raise XToolPluginException("Your plugin needs a name.")
 
 
 # 获得插件目录
