@@ -41,7 +41,7 @@ def configure_logging():
         prepare_classpath(config_path)
 
         logging_class_path = conf.get('core', 'logging_config_class')
-    except (AirflowConfigException, XToolConfigException):
+    except AirflowConfigException:
         log.debug('Could not find key logging_config_class in config')
 
     if logging_class_path:
@@ -62,6 +62,7 @@ def configure_logging():
                 .format(logging_class_path, err)
             )
     else:
+        # 获得默认日志配置
         from airflow.config_templates.airflow_local_settings import (
             DEFAULT_LOGGING_CONFIG as logging_config
         )

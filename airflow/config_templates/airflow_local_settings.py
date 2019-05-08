@@ -54,6 +54,7 @@ LOG_ID_TEMPLATE = conf.get('elasticsearch', 'ELASTICSEARCH_LOG_ID_TEMPLATE')
 
 END_OF_LOG_MARK = conf.get('elasticsearch', 'ELASTICSEARCH_END_OF_LOG_MARK')
 
+# 默认日志配置
 DEFAULT_LOGGING_CONFIG = {
     'version': 1,
     'disable_existing_loggers': False,
@@ -170,6 +171,7 @@ REMOTE_HANDLERS = {
     },
 }
 
+# 远程日志配置
 REMOTE_LOGGING = conf.get('core', 'remote_logging')
 
 if REMOTE_LOGGING and REMOTE_BASE_LOG_FOLDER.startswith('s3://'):
