@@ -37,10 +37,8 @@ from airflow.utils.helpers import create_statsclient
 from airflow.utils.helpers import set_default_timezone
 from airflow.exceptions import AirflowConfigException
 
-from xTool.db.alchemy_orm import setup_event_handlers
 from xTool.db.alchemy_orm import configure_adapters
 from xTool.db import alchemy_orm
-from xTool.exceptions import XToolConfigException
 
 
 log = logging.getLogger(__name__)
