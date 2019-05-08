@@ -115,58 +115,35 @@ def configure_vars():
 
 
 def configure_orm(disable_connection_pool=False):
-    log.debug("Setting up DB connection pool (PID %s)" % os.getpid())
+    pool_enabled = conf.getboolean('core', 'SQL_ALCHEMY_POOL_ENABLED')
+    try:
+        pool_size = conf.getint('core', 'SQL_ALCHEMY_POOL_SIZE')
+    except AirflowConfigException:
+        pool_size = 5
+    try:
+        pool_recycle = conf.getint('core', 'SQL_ALCHEMY_POOL_RECYCLE')
+    except AirflowConfigException:
+        pool_recycle = 1800
+    try:
+        encoding = conf.get('core', 'SQL_ENGINE_ENCODING')
+    except AirflowConfigException:
+        encoding = 'utf-8'
+    echo = conf.getboolean('core', 'SQL_ALCHEMY_ECHO')
+    reconnect_timeout = conf.getint('core', 'SQL_ALCHEMY_RECONNECT_TIMEOUT')
+    autocommit = False
+    sql_alchemy_conn = conf.get('core', 'SQL_ALCHEMY_CONN')
+
     global engine
     global Session
-    engine_args = {}
-
-    pool_connections = conf.getboolean('core', 'SQL_ALCHEMY_POOL_ENABLED')
-    # 不使用DB连接池
-    if disable_connection_pool or not pool_connections:
-        engine_args['poolclass'] = NullPool
-        log.debug("settings.configure_orm(): Using NullPool")
-    elif 'sqlite' not in SQL_ALCHEMY_CONN:
-        # Pool size engine args not supported by sqlite.
-        # If no config value is defined for the pool size, select a reasonable value.
-        # 0 means no limit, which could lead to exceeding the Database connection limit.
-        try:
-            pool_size = conf.getint('core', 'SQL_ALCHEMY_POOL_SIZE')
-        except AirflowConfigException:
-            pool_size = 5
-
-        # The DB server already has a value for wait_timeout (number of seconds after
-        # which an idle sleeping connection should be killed). Since other DBs may
-        # co-exist on the same server, SQLAlchemy should set its
-        # pool_recycle to an equal or smaller value.
-        try:
-            pool_recycle = conf.getint('core', 'SQL_ALCHEMY_POOL_RECYCLE')
-        except AirflowConfigException:
-            pool_recycle = 1800
-
-        log.info("setting.configure_orm(): Using pool settings. pool_size={}, "
-                 "pool_recycle={}".format(pool_size, pool_recycle))
-        engine_args['pool_size'] = pool_size
-        engine_args['pool_recycle'] = pool_recycle
-
-    try:
-        # Allow the user to specify an encoding for their DB otherwise default
-        # to utf-8 so jobs & users with non-latin1 characters can still use
-        # us.
-        engine_args['encoding'] = conf.get('core', 'SQL_ENGINE_ENCODING')
-    except (AirflowConfigException, XToolConfigException):
-        engine_args['encoding'] = 'utf-8'
-    # For Python2 we get back a newstr and need a str
-    engine_args['encoding'] = engine_args['encoding'].__str__()
-    engine_args['echo'] = conf.getboolean('core', 'SQL_ALCHEMY_ECHO')
-
-    # 连接数据库
-    engine = create_engine(SQL_ALCHEMY_CONN, **engine_args)
-    # 设置数据库事件处理函数
-    reconnect_timeout = conf.getint('core', 'SQL_ALCHEMY_RECONNECT_TIMEOUT')
-    setup_event_handlers(engine, reconnect_timeout)
-
-    Session = scoped_session(
-        sessionmaker(autocommit=False, autoflush=False, bind=engine))
+    (engine, Session) = alchemy_orm.configure_orm(sql_alchemy_conn,
+                                                  pool_enabled=pool_enabled,
+                                                  pool_size=pool_size,
+                                                  pool_recycle=pool_recycle,
+                                                  reconnect_timeout=reconnect_timeout,
+                                                  autocommit=autocommit,
+                                                  disable_connection_pool=disable_connection_pool,
+                                                  encoding=encoding,
+                                                  echo=echo)
     alchemy_orm.Session = Session
 
 

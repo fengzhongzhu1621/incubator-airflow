@@ -131,8 +131,6 @@ def configure_orm(sql_alchemy_conn,
                   echo=False):
     """配置DB ."""
     log.debug("Setting up DB connection pool (PID %s)" % os.getpid())
-    global engine
-    global Session
     engine_args = {}
 
     # 不使用DB连接池
@@ -148,10 +146,9 @@ def configure_orm(sql_alchemy_conn,
                  "pool_recycle={}".format(pool_size, pool_recycle))
         engine_args['pool_size'] = pool_size
         engine_args['pool_recycle'] = pool_recycle
-
-    engine_args['encoding'] = encoding
+        
     # For Python2 we get back a newstr and need a str
-    engine_args['encoding'] = engine_args['encoding'].__str__()
+    engine_args['encoding'] = encoding.__str__()
     engine_args['echo'] = echo
 
     # 连接数据库
@@ -164,6 +161,7 @@ def configure_orm(sql_alchemy_conn,
         sessionmaker(autocommit=autocommit,
                      autoflush=False,
                      bind=engine))
+    return (engine, Session)
 
 
 def dispose_orm():
