@@ -63,38 +63,7 @@ class AirflowDagCycleException(AirflowException):
     pass
 
 
-class DagNotFound(AirflowNotFoundException):
-    """Raise when a DAG is not available in the system"""
-    pass
-
-
-class DagRunNotFound(AirflowNotFoundException):
-    """Raise when a DAG Run is not available in the system"""
-    pass
-
-
-class DagRunAlreadyExists(AirflowBadRequest):
-    """Raise when creating a DAG run for DAG which already has DAG run entry"""
-    pass
-
-
-class DagFileExists(AirflowBadRequest):
-    """Raise when a DAG ID is still in DagBag i.e., DAG file is in DAG folder"""
-    pass
-
-
-class TaskNotFound(AirflowNotFoundException):
-    """Raise when a Task is not available in the system"""
-    pass
-
-
-class TaskInstanceNotFound(AirflowNotFoundException):
-    """Raise when a Task Instance is not available in the system"""
-    pass
-
-
-class PoolNotFound(AirflowNotFoundException):
-    """Raise when a Pool is not available in the system"""
+class AirflowPluginException(AirflowException):
     pass
 
 
@@ -137,6 +106,10 @@ class XToolSkipException(XToolException):
 
 
 class XToolDagCycleException(XToolException):
+    pass
+
+
+class XToolPluginException(XToolException, AirflowPluginException):
     pass
 
 
