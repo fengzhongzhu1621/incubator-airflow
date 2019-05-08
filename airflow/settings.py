@@ -25,11 +25,6 @@ from __future__ import unicode_literals
 import atexit
 import logging
 import os
-import pendulum
-
-from sqlalchemy import create_engine, exc
-from sqlalchemy.orm import scoped_session, sessionmaker
-from sqlalchemy.pool import NullPool
 
 from airflow import configuration as conf
 from airflow.logging_config import configure_logging
