@@ -33,12 +33,16 @@ from sqlalchemy.pool import NullPool
 
 from airflow import configuration as conf
 from airflow.logging_config import configure_logging
+from airflow.utils.helpers import create_statsclient
+
 from xTool.db.alchemy_orm import (setup_event_handlers, 
                                   configure_adapters)
 from airflow.exceptions import AirflowConfigException
 from xTool.exceptions import XToolConfigException
 from xTool.db import alchemy_orm
 from xTool.utils.timezone import set_timezone_var
+
+
 
 log = logging.getLogger(__name__)
 
@@ -58,38 +62,8 @@ log.info("Configured default timezone %s" % TIMEZONE)
 set_timezone_var(TIMEZONE)
 
 
-# 默认的日志收集器
-class DummyStatsLogger(object):
-    @classmethod
-    def incr(cls, stat, count=1, rate=1):
-        pass
-
-    @classmethod
-    def decr(cls, stat, count=1, rate=1):
-        pass
-
-    @classmethod
-    def gauge(cls, stat, value, rate=1, delta=False):
-        pass
-
-    @classmethod
-    def timing(cls, stat, dt):
-        pass
-
-
-Stats = DummyStatsLogger
-
 # 采集到的数据会走 UDP 协议发给 StatsD，由 StatsD 解析、提取、计算处理后，周期性地发送给 Graphite。
-if conf.getboolean('scheduler', 'statsd_on'):
-    from statsd import StatsClient
-
-    statsd = StatsClient(
-        host=conf.get('scheduler', 'statsd_host'),
-        port=conf.getint('scheduler', 'statsd_port'),
-        prefix=conf.get('scheduler', 'statsd_prefix'))
-    Stats = statsd
-else:
-    Stats = DummyStatsLogger
+Stats = create_statsclient()
 
 HEADER = """\
   ____________       _____________
