@@ -25,7 +25,9 @@ from xTool.utils.log.logging_mixin import LoggingMixin
 from xTool.utils.module_loading import integrate_plugins
 from xTool.utils.module_loading import get_class_from_plugin_module
 
+
 DEFAULT_EXECUTOR = None
+PARALLELISM = configuration.conf.getint('core', 'PARALLELISM')
 
 
 def _integrate_plugins():
@@ -69,23 +71,25 @@ def _get_executor(executor_name):
     look for it in the plugins
     """
     if executor_name == Executors.LocalExecutor:
-        return LocalExecutor()
+        return LocalExecutor(parallelism=PARALLELISM)
     elif executor_name == Executors.SequentialExecutor:
-        return SequentialExecutor()
+        return SequentialExecutor(parallelism=PARALLELISM)
     elif executor_name == Executors.CeleryExecutor:
         from airflow.executors.celery_executor import CeleryExecutor
-        return CeleryExecutor()
+        return CeleryExecutor(parallelism=PARALLELISM)
     elif executor_name == Executors.DaskExecutor:
         from airflow.executors.dask_executor import DaskExecutor
-        return DaskExecutor()
+        return DaskExecutor(parallelism=PARALLELISM)
     elif executor_name == Executors.MesosExecutor:
         from airflow.contrib.executors.mesos_executor import MesosExecutor
-        return MesosExecutor()
+        return MesosExecutor(parallelism=PARALLELISM)
     elif executor_name == Executors.KubernetesExecutor:
         from airflow.contrib.executors.kubernetes_executor import KubernetesExecutor
-        return KubernetesExecutor()
+        return KubernetesExecutor(parallelism=PARALLELISM)
     else:
         # Loading plugins
         _integrate_plugins()
         # 从插件模块中获取指定类
-        return get_class_from_plugin_module(executor_name)
+        args = []
+        kwargs = {'parallelism': PARALLELISM}
+        return get_class_from_plugin_module(executor_name, *args, **kwargs)

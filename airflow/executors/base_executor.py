@@ -19,17 +19,13 @@
 
 from builtins import range
 
-from airflow import configuration
 from xTool.utils.log.logging_mixin import LoggingMixin
 from xTool.utils.state import State
 
 
-PARALLELISM = configuration.conf.getint('core', 'PARALLELISM')
-
-
 class BaseExecutor(LoggingMixin):
 
-    def __init__(self, parallelism=PARALLELISM):
+    def __init__(self, parallelism):
         """
         Class to derive in order to interface with executor-type systems
         like Celery, Mesos, Yarn and the likes.
@@ -39,8 +35,11 @@ class BaseExecutor(LoggingMixin):
         :type parallelism: int
         """
         # 同一时间运行多少个job，0表示无限多
+        # 整个集群中同时运行的任务实例的总量
         self.parallelism = parallelism
+        # 准备入队的缓存任务队列
         self.queued_tasks = {}
+        # 已经入队的正在运行的任务队列
         self.running = {}
         self.event_buffer = {}
 
@@ -52,11 +51,11 @@ class BaseExecutor(LoggingMixin):
         pass
 
     def queue_command(self, task_instance, command, priority=1, queue=None):
-        """将任务实例放到本地可执行队列中 ."""
+        """将任务实例放到本地缓存队列中 ."""
         # 每个任务实例都有一个唯一key
         key = task_instance.key
         # 将没有运行，且没有在队列中的任务实例加入队列
-        if key not in self.queued_tasks and key not in self.running:
+        if not self.has_task(task_instance):
             self.log.info("Adding to queue: %s", command)
             self.queued_tasks[key] = (command, priority, queue, task_instance)
         else:
@@ -73,13 +72,14 @@ class BaseExecutor(LoggingMixin):
             ignore_ti_state=False,
             pool=None,
             cfg_path=None):
+        """构造shell命令行，并将其放入到缓存队列 ."""
         pool = pool or task_instance.pool
 
         # TODO (edgarRd): AIRFLOW-1985:
         # cfg_path is needed to propagate the config values if using impersonation
         # (run_as_user), given that there are different code paths running tasks.
         # For a long term solution we need to address AIRFLOW-1986
-        # 构造任务实例命令
+        # 构造任务实例shell命令
         command = task_instance.command(
             local=True,
             mark_success=mark_success,
@@ -90,7 +90,7 @@ class BaseExecutor(LoggingMixin):
             pool=pool,
             pickle_id=pickle_id,
             cfg_path=cfg_path)
-        # 将任务实例放入队列
+        # 将任务实例放入缓存队列
         self.queue_command(
             task_instance,
             command,
@@ -116,7 +116,7 @@ class BaseExecutor(LoggingMixin):
 
     def heartbeat(self):
         # Triggering new jobs
-        # 获得可运行job的数量
+        # 获得剩余可运行job的数量
         if not self.parallelism:
             open_slots = len(self.queued_tasks)
         else:

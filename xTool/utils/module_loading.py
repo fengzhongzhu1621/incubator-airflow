@@ -57,7 +57,7 @@ def integrate_plugins(modules):
         globals()[module._name] = module
 
 
-def get_class_from_plugin_module(name):
+def get_class_from_plugin_module(name, *args, **kwargs):
     """从插件模块中获取类 .
     
     Args:
@@ -74,7 +74,7 @@ def get_class_from_plugin_module(name):
     class_name = items[1]
     if plugin_module_name in globals():
         # 根据插件中的类名创建对象
-        return globals()[plugin_module_name].__dict__[class_name]()
+        return globals()[plugin_module_name].__dict__[class_name](*args, **kwargs)
     else:
         raise XToolException("Executor {0} not supported.".format(name))
 
