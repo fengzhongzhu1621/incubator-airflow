@@ -32,11 +32,14 @@ def make_module(name, objects):
 
     - name: 模块名称
     - objects: 模块中需要包含的对象列表
+
+    Examples:
+        make_module('airflow.operators.' + p.name, p.operators + p.sensors))
     """
     log.debug('Creating module %s', name)
     # 创建模块
     module = imp.new_module(name)
-    # 给模块设置_name属性 （插件名）
+    # 给模块设置_name属性 （插件名），即p.name
     module._name = name.split('.')[-1]
     # 给模块设置_object属性（插件中所有的类名）
     module._objects = objects
@@ -44,6 +47,36 @@ def make_module(name, objects):
     module.__dict__.update((o.__name__, o) for o in objects)
     # 返回新创建的模块
     return module
+
+
+def integrate_plugins(modules):
+    """Integrate plugins to the context."""
+    # 将模块加入到系统模块变量中
+    for module in modules:
+        sys.modules[module.__name__] = module
+        globals()[module._name] = module
+
+
+def get_class_from_plugin_module(name):
+    """从插件模块中获取类 .
+    
+    Args:
+        name: plugin_module.class_name
+    """
+    items = name.split('.')
+    if len(items) != 2:
+        raise XToolException(
+            "Executor {0} not supported: "
+            "please specify in format plugin_module.executor".format(name))
+    # items[0]：表示插件名
+    # items[1]：表示插件中的类名
+    plugin_module_name = items[0]
+    class_name = items[1]
+    if plugin_module_name in globals():
+        # 根据插件中的类名创建对象
+        return globals()[plugin_module_name].__dict__[class_name]()
+    else:
+        raise XToolException("Executor {0} not supported.".format(name))
 
 
 def load_backend_module_from_conf(section, key, default_backend, conf=None):

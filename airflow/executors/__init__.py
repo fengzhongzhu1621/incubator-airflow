@@ -17,23 +17,23 @@
 # specific language governing permissions and limitations
 # under the License.
 
-import sys
-from xTool.utils.log.logging_mixin import LoggingMixin
 from airflow import configuration
-from airflow.exceptions import AirflowException
 from airflow.executors.base_executor import BaseExecutor # noqa
 from airflow.executors.local_executor import LocalExecutor
 from airflow.executors.sequential_executor import SequentialExecutor
+from xTool.utils.log.logging_mixin import LoggingMixin
+from xTool.utils.module_loading import integrate_plugins
+from xTool.utils.module_loading import get_class_from_plugin_module
 
 DEFAULT_EXECUTOR = None
 
 
 def _integrate_plugins():
     """Integrate plugins to the context."""
+    # 加载插件模块
     from airflow.plugins_manager import executors_modules
-    for executors_module in executors_modules:
-        sys.modules[executors_module.__name__] = executors_module
-        globals()[executors_module._name] = executors_module
+    # 将模块加入到系统模块变量中
+    integrate_plugins(executors_modules)
 
 
 def GetDefaultExecutor():
@@ -87,16 +87,5 @@ def _get_executor(executor_name):
     else:
         # Loading plugins
         _integrate_plugins()
-        executor_path = executor_name.split('.')
-        if len(executor_path) != 2:
-            raise AirflowException(
-                "Executor {0} not supported: "
-                "please specify in format plugin_module.executor".format(executor_name))
-
-        # executor_path[0]：表示插件名
-        # executor_path[1]：表示插件中的类名
-        if executor_path[0] in globals():
-            # 根据插件中的类名创建对象
-            return globals()[executor_path[0]].__dict__[executor_path[1]]()
-        else:
-            raise AirflowException("Executor {0} not supported.".format(executor_name))
+        # 从插件模块中获取指定类
+        return get_class_from_plugin_module(executor_name)
