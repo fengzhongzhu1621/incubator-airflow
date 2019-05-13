@@ -26,8 +26,8 @@ from celery import states as celery_states
 
 from airflow.config_templates.default_celery import DEFAULT_CELERY_CONFIG
 from airflow.exceptions import AirflowException
-from airflow.executors.base_executor import BaseExecutor
 from airflow import configuration
+from xTool.executors.base_executor import BaseExecutor
 from xTool.utils.log.logging_mixin import LoggingMixin
 from xTool.utils.module_loading import import_string
 
@@ -36,7 +36,7 @@ To start the celery worker, run the command:
 airflow worker
 '''
 
-# 导入celery默认配置
+# 获得配置文件的路径，并导入celery默认配置
 if configuration.conf.has_option('celery', 'celery_config_options'):
     celery_configuration = import_string(
         configuration.conf.get('celery', 'celery_config_options')
@@ -44,8 +44,10 @@ if configuration.conf.has_option('celery', 'celery_config_options'):
 else:
     celery_configuration = DEFAULT_CELERY_CONFIG
 
+# 创建一个celery客户端
+celery_app_name = configuration.conf.get('celery', 'CELERY_APP_NAME')
 app = Celery(
-    configuration.conf.get('celery', 'CELERY_APP_NAME'),
+    celery_app_name,
     config_source=celery_configuration)
 
 
