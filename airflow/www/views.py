@@ -1054,11 +1054,25 @@ class Airflow(BaseView):
             return redirect(origin)
 
         executor.start()
-        executor.queue_task_instance(
-            ti,
+
+        # 将任务实例加入 executors 中的等待执行队列 queued_tasks
+        command = ti.command(
+            local=True,
+            mark_success=False,
             ignore_all_deps=ignore_all_deps,
+            ignore_depends_on_past=False,
             ignore_task_deps=ignore_task_deps,
-            ignore_ti_state=ignore_ti_state)
+            ignore_ti_state=ignore_ti_state,
+            pool=ti.pool,
+            pickle_id=None,
+            cfg_path=None)
+        # 将任务实例放入缓存队列
+        executor.queue_command(
+            ti,
+            command,
+            priority=ti.task.priority_weight_total,
+            queue=ti.task.queue)
+
         executor.heartbeat()
         flash(
             "Sent {} to the message queue, "

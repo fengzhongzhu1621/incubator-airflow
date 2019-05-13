@@ -54,9 +54,10 @@ class BaseExecutor(LoggingMixin):
         """将任务实例放到本地缓存队列中 ."""
         # 每个任务实例都有一个唯一key
         key = task_instance.key
-        # 将没有运行，且没有在队列中的任务实例加入队列
+        # 判断任务实例是否已经在队列中或正在运行
         if not self.has_task(task_instance):
             self.log.info("Adding to queue: %s", command)
+            # 将任务加入到缓冲队列
             self.queued_tasks[key] = (command, priority, queue, task_instance)
         else:
             self.log.info("could not queue task {}".format(key))
@@ -126,7 +127,7 @@ class BaseExecutor(LoggingMixin):
         self.log.debug("%s in queue", len(self.queued_tasks))
         self.log.debug("%s open slots", open_slots)
 
-        # 按优先级逆序，优先级大的放在前面，优先执行
+        # 按优先级逆序，优先级大的放在前面，优先执行；优先级默认为1
         sorted_queue = sorted(
             [(k, v) for k, v in self.queued_tasks.items()],
             key=lambda x: x[1][1],
@@ -134,7 +135,7 @@ class BaseExecutor(LoggingMixin):
 
         # 执行任务实例
         for i in range(min((open_slots, len(self.queued_tasks)))):
-            # 遍历队列，优先级大的优先执行
+            # 从缓冲队列中取出一个任务
             key, (command, _, queue, ti) = sorted_queue.pop(0)
             # TODO(jlowin) without a way to know what Job ran which tasks,
             # there is a danger that another Job started running a task
@@ -144,9 +145,9 @@ class BaseExecutor(LoggingMixin):
             # Backfill. This fix reduces the probability of a collision but
             # does NOT eliminate it.
             self.queued_tasks.pop(key)
-            # 从DB中获取最新的任务实例参数
+            # 从DB中获取最新的任务实例参数，因为任务实例的状态可能有变化
             ti.refresh_from_db()
-            # 将未运行的任务实例发给执行器处理
+            # 将未运行的任务实例放入执行队列，并发给执行器处理
             if ti.state != State.RUNNING:
                 self.running[key] = command
                 self.execute_async(key=key,
@@ -154,6 +155,7 @@ class BaseExecutor(LoggingMixin):
                                    queue=queue,
                                    executor_config=ti.executor_config)
             else:
+                # 正在运行的任务是不会重新执行的
                 self.logger.info(
                     'Task is already running, not sending to '
                     'executor: {}'.format(key))

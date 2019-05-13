@@ -2789,14 +2789,23 @@ class BackfillJob(BaseJob):
                                     cfg_path = tmp_configuration_copy(cfg_dict)
 
                                 # 将任务实例加入 executors 中的等待执行队列 queued_tasks
-                                executor.queue_task_instance(
-                                    ti,
+                                command = ti.command(
+                                    local=True,
                                     mark_success=self.mark_success,
-                                    pickle_id=pickle_id,
-                                    ignore_task_deps=self.ignore_task_deps,
+                                    ignore_all_deps=False,
                                     ignore_depends_on_past=ignore_depends_on_past,
-                                    pool=self.pool,
+                                    ignore_task_deps=self.ignore_task_deps,
+                                    ignore_ti_state=False,
+                                    pool=self.pool or ti.pool,
+                                    pickle_id=pickle_id,
                                     cfg_path=cfg_path)
+                                # 将任务实例放入缓存队列
+                                executor.queue_command(
+                                    ti,
+                                    command,
+                                    priority=ti.task.priority_weight_total,
+                                    queue=ti.task.queue)
+
                                 # 如果任务放到了executor的等待执行队列，记录此任务实例
                                 ti_status.running[key] = ti
                                 ti_status.to_run.pop(key)

@@ -475,15 +475,23 @@ def _run(args, dag, ti):
 
         # 将任务实例生成可执行的shell命令，发送给任务队列
         print("Sending to executor.")
-        executor.queue_task_instance(
-            ti,
+
+        command = ti.command(
+            local=True,
             mark_success=args.mark_success,
-            pickle_id=pickle_id,
             ignore_all_deps=args.ignore_all_dependencies,
             ignore_depends_on_past=args.ignore_depends_on_past,
             ignore_task_deps=args.ignore_dependencies,
             ignore_ti_state=args.force,
-            pool=args.pool)
+            pool=args.pool or ti.pool,
+            pickle_id=pickle_id,
+            cfg_path=None)
+        # 将任务实例放入缓存队列
+        executor.queue_command(
+            ti,
+            command,
+            priority=ti.task.priority_weight_total,
+            queue=ti.task.queue)
 
         # 执行shell命令: 同步或分布式异步celery worker执行命令（airflow run --local
         executor.heartbeat()
