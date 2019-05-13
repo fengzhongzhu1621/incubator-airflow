@@ -41,6 +41,7 @@ class BaseExecutor(LoggingMixin):
         self.queued_tasks = {}
         # 已经入队的正在运行的任务队列
         self.running = {}
+        # 记录任务完成的状态
         self.event_buffer = {}
 
     def start(self):  # pragma: no cover
@@ -62,49 +63,8 @@ class BaseExecutor(LoggingMixin):
         else:
             self.log.info("could not queue task {}".format(key))
 
-    def queue_task_instance(
-            self,
-            task_instance,
-            mark_success=False,
-            pickle_id=None,
-            ignore_all_deps=False,
-            ignore_depends_on_past=False,
-            ignore_task_deps=False,
-            ignore_ti_state=False,
-            pool=None,
-            cfg_path=None):
-        """构造shell命令行，并将其放入到缓存队列 ."""
-        pool = pool or task_instance.pool
-
-        # TODO (edgarRd): AIRFLOW-1985:
-        # cfg_path is needed to propagate the config values if using impersonation
-        # (run_as_user), given that there are different code paths running tasks.
-        # For a long term solution we need to address AIRFLOW-1986
-        # 构造任务实例shell命令
-        command = task_instance.command(
-            local=True,
-            mark_success=mark_success,
-            ignore_all_deps=ignore_all_deps,
-            ignore_depends_on_past=ignore_depends_on_past,
-            ignore_task_deps=ignore_task_deps,
-            ignore_ti_state=ignore_ti_state,
-            pool=pool,
-            pickle_id=pickle_id,
-            cfg_path=cfg_path)
-        # 将任务实例放入缓存队列
-        self.queue_command(
-            task_instance,
-            command,
-            priority=task_instance.task.priority_weight_total,
-            queue=task_instance.task.queue)
-
     def has_task(self, task_instance):
-        """判断任务实例是否已经在队列中或正在运行
-        Checks if a task is either queued or running in this executor
-
-        :param task_instance: TaskInstance
-        :return: True if the task is known to this executor
-        """
+        """判断任务实例是否已经在队列中或正在运行 ."""
         if task_instance.key in self.queued_tasks or task_instance.key in self.running:
             return True
 
@@ -191,12 +151,10 @@ class BaseExecutor(LoggingMixin):
             cleared_events = self.event_buffer
             self.event_buffer = dict()
         else:
-            for key in list(self.event_buffer.keys()):
-                # 任务实例的唯一key是由3部分组成的
+            for key in self.event_buffer:
                 dag_id, _, _, _ = key
                 if dag_id in dag_ids:
                     cleared_events[key] = self.event_buffer.pop(key)
-
         return cleared_events
 
     def execute_async(self,
