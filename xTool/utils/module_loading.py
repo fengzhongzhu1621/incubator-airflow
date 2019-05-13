@@ -57,8 +57,8 @@ def integrate_plugins(modules):
         globals()[module._name] = module
 
 
-def get_class_from_plugin_module(name, *args, **kwargs):
-    """从插件模块中获取类 .
+def create_object_from_plugin_module(name, *args, **kwargs):
+    """从插件模块中获取类实例 .
     
     Args:
         name: plugin_module.class_name

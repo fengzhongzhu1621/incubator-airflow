@@ -23,7 +23,7 @@ from airflow.executors.local_executor import LocalExecutor
 from airflow.executors.sequential_executor import SequentialExecutor
 from xTool.utils.log.logging_mixin import LoggingMixin
 from xTool.utils.module_loading import integrate_plugins
-from xTool.utils.module_loading import get_class_from_plugin_module
+from xTool.utils.module_loading import create_object_from_plugin_module
 
 
 DEFAULT_EXECUTOR = None
@@ -92,4 +92,4 @@ def _get_executor(executor_name):
         # 从插件模块中获取指定类
         args = []
         kwargs = {'parallelism': PARALLELISM}
-        return get_class_from_plugin_module(executor_name, *args, **kwargs)
+        return create_object_from_plugin_module(executor_name, *args, **kwargs)
