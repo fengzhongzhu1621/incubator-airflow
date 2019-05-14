@@ -69,22 +69,23 @@ def _get_executor(executor_name):
     In case the executor name is not know in airflow,
     look for it in the plugins
     """
+    parallelism = PARALLELISM
     if executor_name == Executors.LocalExecutor:
-        return LocalExecutor(parallelism=PARALLELISM)
+        return LocalExecutor(parallelism)
     elif executor_name == Executors.SequentialExecutor:
-        return SequentialExecutor(parallelism=PARALLELISM)
+        return SequentialExecutor(parallelism)
     elif executor_name == Executors.CeleryExecutor:
-        from airflow.executors.celery_executor import CeleryExecutor
-        return CeleryExecutor(parallelism=PARALLELISM)
+        from airflow.executors.celery_executor import CeleryExecutor, execute_command
+        return CeleryExecutor(parallelism, execute_command)
     elif executor_name == Executors.DaskExecutor:
         from airflow.executors.dask_executor import DaskExecutor
-        return DaskExecutor(parallelism=PARALLELISM)
+        return DaskExecutor()
     elif executor_name == Executors.MesosExecutor:
         from airflow.contrib.executors.mesos_executor import MesosExecutor
-        return MesosExecutor(parallelism=PARALLELISM)
+        return MesosExecutor(parallelism)
     elif executor_name == Executors.KubernetesExecutor:
         from airflow.contrib.executors.kubernetes_executor import KubernetesExecutor
-        return KubernetesExecutor(parallelism=PARALLELISM)
+        return KubernetesExecutor()
     else:
         # Loading plugins
         _integrate_plugins()

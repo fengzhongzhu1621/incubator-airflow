@@ -17,6 +17,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
+from airflow import configuration
 from airflow.exceptions import AirflowException
 from airflow.executors.sequential_executor import SequentialExecutor
 from airflow.models import BaseOperator, Pool
@@ -35,7 +36,7 @@ class SubDagOperator(BaseOperator):
     def __init__(
             self,
             subdag,
-            executor=SequentialExecutor(),
+            executor=SequentialExecutor(configuration.conf.getint('core', 'PARALLELISM')),
             *args, **kwargs):
         """
         This runs a sub dag. By convention, a sub dag's dag_id
