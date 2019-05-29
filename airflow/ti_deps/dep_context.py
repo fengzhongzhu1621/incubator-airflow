@@ -30,7 +30,7 @@ from xTool.utils.state import State
 
 
 class DepContext(object):
-    """
+    """依赖上下文
     A base class for contexts that specifies which dependencies should be evaluated in
     the context for a task instance to satisfy the requirements of the context. Also
     stores state related to the context that can be used by dependendency classes.
@@ -74,14 +74,19 @@ class DepContext(object):
             ignore_in_retry_period=False,
             ignore_task_deps=False,
             ignore_ti_state=False):
+        # 依赖集合
         self.deps = deps or set()
         # 是否根据上游任务失败的情况设置当前任务实例的状态
         self.flag_upstream_failed = flag_upstream_failed
+        # 忽略所有依赖，在 IGNOREABLE 开启时生效，默认关闭
         self.ignore_all_deps = ignore_all_deps
+        # 上一个周期的任务实例是否影响实例的运行
         self.ignore_depends_on_past = ignore_depends_on_past
         # 是否忽略重试时间
         self.ignore_in_retry_period = ignore_in_retry_period
+        # 忽略任务依赖，在 IS_TASK_DEP 开启时生效，默认关闭
         self.ignore_task_deps = ignore_task_deps
+        # 忽略任务实例依赖
         self.ignore_ti_state = ignore_ti_state
 
 
