@@ -28,7 +28,7 @@ import unittest
 import airflow.utils.logging
 from airflow import configuration
 from airflow.exceptions import AirflowException
-from airflow.utils.operator_resources import Resources
+from xTool.utils.operator_resources import Resources
 
 
 class LogUtilsTest(unittest.TestCase):

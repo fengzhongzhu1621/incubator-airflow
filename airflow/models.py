@@ -95,7 +95,7 @@ from xTool.utils.helpers import as_tuple
 from xTool.utils.helpers import is_container
 from xTool.utils.helpers import validate_key
 from xTool.utils.helpers import ask_yesno
-from airflow.utils.operator_resources import Resources
+from xTool.utils.operator_resources import Resources
 from xTool.utils.state import State
 from xTool.rules.trigger_rule import TriggerRule
 from xTool.rules.weight_rule import WeightRule
@@ -2657,7 +2657,18 @@ class BaseOperator(LoggingMixin):
         self.weight_rule = weight_rule
 
         # 给每个任务分配资源: 每个任务所分配的资源
-        self.resources = Resources(**(resources or {}))
+        cpus=configuration.conf.getint('operators', 'default_cpus'),
+        ram=configuration.conf.getint('operators', 'default_ram'),
+        disk=configuration.conf.getint('operators', 'default_disk'),
+        gpus=configuration.conf.getint('operators', 'default_gpus')
+        if not resources:
+            resources_kwargs = {"cpus": cpus, "ram": ram, "disk": disk, "gpus": gpus}
+        else:
+            resources.setdefault("cpus", cpus)
+            resources.setdefault("ram", ram)
+            resources.setdefault("disk", disk)
+            resources.setdefault("gpus", gpus)    
+        self.resources = Resources(**resources_kwargs)
         self.run_as_user = run_as_user
         # 任务并发数限制，[State.RUNNING, State.QUEUED]状态的任务实例的数量不能超过此阈值
         self.task_concurrency = task_concurrency

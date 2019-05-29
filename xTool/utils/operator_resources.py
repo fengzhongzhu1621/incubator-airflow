@@ -1,24 +1,6 @@
 # -*- coding: utf-8 -*-
-#
-# Licensed to the Apache Software Foundation (ASF) under one
-# or more contributor license agreements.  See the NOTICE file
-# distributed with this work for additional information
-# regarding copyright ownership.  The ASF licenses this file
-# to you under the Apache License, Version 2.0 (the
-# "License"); you may not use this file except in compliance
-# with the License.  You may obtain a copy of the License at
-#
-#   http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an
-# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied.  See the License for the
-# specific language governing permissions and limitations
-# under the License.
 
-from airflow import configuration
-from airflow.exceptions import AirflowException
+from xTool.exceptions import XToolException
 
 # Constants for resources (megabytes are the base unit)
 MB = 1
@@ -29,7 +11,7 @@ EB = 1024 * PB
 
 
 class Resource(object):
-    """
+    """单个资源
     Represents a resource requirement in an execution environment for an operator.
 
     :param name: Name of the resource
@@ -43,12 +25,14 @@ class Resource(object):
     """
     def __init__(self, name, units_str, qty):
         if qty < 0:
-            raise AirflowException(
+            raise XToolException(
                 'Received resource quantity {} for resource {} but resource quantity '
                 'must be non-negative.'.format(qty, name))
-
+        # 资源名称
         self._name = name
+        # 资源单位
         self._units_str = units_str
+        # 资源数量
         self._qty = qty
 
     def __eq__(self, other):
@@ -91,7 +75,7 @@ class GpuResource(Resource):
 
 
 class Resources(object):
-    """
+    """组合资源
     The resources required by an operator. Resources that are not specified will use the
     default values from the airflow config.
 
@@ -104,12 +88,7 @@ class Resources(object):
     :param gpus: The number of gpu units that are required
     :type gpus: long
     """
-    def __init__(self,
-                 cpus=configuration.conf.getint('operators', 'default_cpus'),
-                 ram=configuration.conf.getint('operators', 'default_ram'),
-                 disk=configuration.conf.getint('operators', 'default_disk'),
-                 gpus=configuration.conf.getint('operators', 'default_gpus')
-                 ):
+    def __init__(self, cpus, ram, disk, gpus):
         self.cpus = CpuResource(cpus)
         self.ram = RamResource(ram)
         self.disk = DiskResource(disk)
