@@ -36,7 +36,9 @@ class CeleryExecutor(BaseExecutor):
         self.execute_command = execute_command
 
     def start(self):
+        # 所有已分配的任务实例
         self.tasks = {}
+        # 任务实例的最新状态
         self.last_state = {}
 
     def execute_async(self, key, command,
@@ -47,7 +49,7 @@ class CeleryExecutor(BaseExecutor):
         # 向celery发送任务
         self.tasks[key] = self.execute_command.apply_async(
             args=[command], queue=queue)
-        # 记录当前任务的状态
+        # 记录任务的最新状态
         self.last_state[key] = celery_states.PENDING
 
     def sync(self):

@@ -50,15 +50,15 @@ app = Celery(
 
 @app.task
 def execute_command(command):
-    """执行shell命令 ."""
+    """airflow worker 执行shell命令 ."""
     log = LoggingMixin().log
     log.info("Executing command in Celery: %s", command)
     env = os.environ.copy()
     try:
+        # celery worker 收到消息后，执行消息中的shell命令
         subprocess.check_call(command, shell=True, stderr=subprocess.STDOUT,
                               close_fds=True, env=env)
     except subprocess.CalledProcessError as e:
         log.exception('execute_command encountered a CalledProcessError')
         log.error(e.output)
-
         raise AirflowException('Celery command failed')

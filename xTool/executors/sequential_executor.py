@@ -17,10 +17,11 @@ class SequentialExecutor(BaseExecutor):
         self.commands_to_run = []
 
     def execute_async(self, key, command, queue=None, executor_config=None):
+        """分发任务实例 ."""
         self.commands_to_run.append((key, command,))
 
     def sync(self):
-        """顺序执行所有的命令 ."""
+        """顺序执行所有的任务实例 ."""
         for key, command in self.commands_to_run:
             self.log.info("Executing command: %s", command)
 
