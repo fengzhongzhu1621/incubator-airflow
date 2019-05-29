@@ -79,7 +79,15 @@ def _get_executor(executor_name):
         return CeleryExecutor(parallelism, execute_command)
     elif executor_name == Executors.DaskExecutor:
         from airflow.executors.dask_executor import DaskExecutor
-        return DaskExecutor()
+        cluster_address = configuration.conf.get('dask', 'cluster_address')
+        tls_ca = configuration.conf.get('dask', 'tls_ca')
+        tls_key = configuration.conf.get('dask', 'tls_key')
+        tls_cert = configuration.conf.get('dask', 'tls_cert')        
+        return DaskExecutor(parallelism,
+                            cluster_address,
+                            tls_ca,
+                            tls_key,
+                            tls_cert)
     elif executor_name == Executors.MesosExecutor:
         from airflow.contrib.executors.mesos_executor import MesosExecutor
         return MesosExecutor(parallelism)
