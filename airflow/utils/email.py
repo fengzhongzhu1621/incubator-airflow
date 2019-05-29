@@ -35,7 +35,6 @@ from email.mime.application import MIMEApplication
 from email.utils import formatdate
 
 from airflow import configuration
-from airflow.exceptions import AirflowConfigException
 from xTool.utils.log.logging_mixin import LoggingMixin
 from xTool.exceptions import XToolConfigException
 
@@ -129,7 +128,7 @@ def send_MIME_email(e_from, e_to, mime_msg, dryrun=False):
     try:
         SMTP_USER = configuration.conf.get('smtp', 'SMTP_USER')
         SMTP_PASSWORD = configuration.conf.get('smtp', 'SMTP_PASSWORD')
-    except (AirflowConfigException, XToolConfigException):
+    except XToolConfigException:
         log.debug("No user/password found for SMTP, so logging in with no authentication.")
 
     if not dryrun:
