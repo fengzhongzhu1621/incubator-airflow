@@ -22,19 +22,7 @@ from __future__ import division
 from __future__ import print_function
 from __future__ import unicode_literals
 
-import os
-import re
-import time
-import zipfile
-from abc import ABCMeta, abstractmethod
-from collections import defaultdict
-from datetime import datetime
-
-from six import itervalues, iteritems
-
 from xTool.exceptions import XToolException
-from xTool.utils.log.logging_mixin import LoggingMixin
-
 from airflow.dag.base_dag import BaseDag, BaseDagBag
 
 

@@ -69,7 +69,7 @@ from xTool.utils.dates import parse_execution_date
 from xTool.utils.net import get_hostname
 from xTool.utils.log.logging_mixin import LoggingMixin
 from xTool.utils.log.logging_mixin import (redirect_stderr,
-                                             redirect_stdout)
+                                           redirect_stdout)
 from airflow.www.app import (cached_app, create_app)
 from airflow.www_rbac.app import cached_app as cached_app_rbac
 from airflow.www_rbac.app import create_app as create_app_rbac

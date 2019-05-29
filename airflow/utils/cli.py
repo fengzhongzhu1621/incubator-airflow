@@ -25,7 +25,6 @@ from __future__ import absolute_import
 import functools
 import getpass
 import json
-import socket
 import sys
 from argparse import Namespace
 from datetime import datetime

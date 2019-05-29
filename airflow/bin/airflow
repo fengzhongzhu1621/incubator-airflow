@@ -21,6 +21,7 @@ import os
 from airflow import configuration
 from airflow.bin.cli import CLIFactory
 
+
 if __name__ == '__main__':
 
     if configuration.conf.get("core", "security") == 'kerberos':
