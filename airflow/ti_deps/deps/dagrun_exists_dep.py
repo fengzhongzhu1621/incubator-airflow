@@ -17,7 +17,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
-from airflow.ti_deps.deps.base_ti_dep import BaseTIDep
+from xTool.ti_deps.deps.base_ti_dep import BaseTIDep
 from xTool.decorators.db import provide_session
 from xTool.utils.state import State
 
@@ -25,32 +25,22 @@ from xTool.utils.state import State
 class DagrunRunningDep(BaseTIDep):
     """验证Dagrun必须是RUNNING的状态 ."""
     NAME = "Dagrun Running"
+
+    # dep_context.ignore_all_deps 参数可以为True
     IGNOREABLE = True
 
     @provide_session
     def _get_dep_statuses(self, ti, session, dep_context):
+        # 获得当前任务实例关联的dag_run，最多有一个
         dag = ti.task.dag
         dagrun = ti.get_dagrun(session)
-        if not dagrun:
-            # The import is needed here to avoid a circular dependency
-            from airflow.models import DagRun
-            running_dagruns = DagRun.find(
-                dag_id=dag.dag_id,
-                state=State.RUNNING,
-                external_trigger=False,
-                session=session
-            )
 
-            if len(running_dagruns) >= dag.max_active_runs:
-                reason = ("The maximum number of active dag runs ({0}) for this task "
-                          "instance's DAG '{1}' has been reached.".format(
-                              dag.max_active_runs,
-                              ti.dag_id))
-            else:
-                reason = "Unknown reason"
+        if not dagrun:
+            # dagrun必须要存在
             yield self._failing_status(
-                reason="Task instance's dagrun did not exist: {0}.".format(reason))
+                reason="Task instance's dagrun did not exist"
         else:
+            # dagrun的状态必须是RUNNING
             if dagrun.state != State.RUNNING:
                 yield self._failing_status(
                     reason="Task instance's dagrun was not in the 'running' state but in "

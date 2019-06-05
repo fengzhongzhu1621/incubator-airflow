@@ -17,13 +17,15 @@
 # specific language governing permissions and limitations
 # under the License.
 
-from airflow.ti_deps.deps.base_ti_dep import BaseTIDep
+from xTool.ti_deps.deps.base_ti_dep import BaseTIDep
 from xTool.decorators.db import provide_session
 
 
 class DagUnpausedDep(BaseTIDep):
     """DAG是否被暂停的依赖 ."""
     NAME = "Dag Not Paused"
+
+    # dep_context.ignore_all_deps 参数可以为True
     IGNOREABLE = True
 
     @provide_session
