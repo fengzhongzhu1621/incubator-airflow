@@ -26,7 +26,9 @@ class TaskConcurrencyDep(BaseTIDep):
     This restricts the number of running task instances for a particular task.
     """
     NAME = "Task Concurrency"
+    # dep_context.ignore_all_deps 参数可以为True
     IGNOREABLE = True
+    # dep_context.ignore_task_deps 参数可以为True
     IS_TASK_DEP = True
 
     @provide_session

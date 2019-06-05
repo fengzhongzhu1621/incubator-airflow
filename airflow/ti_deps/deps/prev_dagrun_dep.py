@@ -17,7 +17,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
-from airflow.ti_deps.deps.base_ti_dep import BaseTIDep
+from xTool.ti_deps.deps.base_ti_dep import BaseTIDep
 from xTool.decorators.db import provide_session
 from xTool.utils.state import State
 
@@ -28,11 +28,15 @@ class PrevDagrunDep(BaseTIDep):
     task instance's task in the previous dagrun complete if we are depending on past.
     """
     NAME = "Previous Dagrun State"
+
+    # dep_context.ignore_all_deps 参数可以为True
     IGNOREABLE = True
+    # dep_context.ignore_task_deps 参数可以为True
     IS_TASK_DEP = True
 
     @provide_session
     def _get_dep_statuses(self, ti, session, dep_context):
+        # 上一个周期的任务实例是否影响实例的运行，默认为False，不忽略上一个调度的依赖
         if dep_context.ignore_depends_on_past:
             yield self._passing_status(
                 reason="The context specified that the state of past DAGs could be "
@@ -46,37 +50,56 @@ class PrevDagrunDep(BaseTIDep):
                 reason="The task did not have depends_on_past set.")
             return
 
-        # 如果任务设置了 depends_on_past = True
-        # 如果任务实例需要依赖上一个周期的任务实例
+        # 如果任务设置了 depends_on_past = True，即任务实例需要依赖上一个周期的任务实例
         # Don't depend on the previous task instance if we are the first task
         dag = ti.task.dag
+        # catchup默认为True，表示缺失的任务必须按调度时间补录
         if dag.catchup:
-            # 如果是单次调度，则直接通过，不受depends_on_past配置的影响
+            # 获得上一次调度时间，如果是单次调度，则返回None
             last_execution_date = dag.previous_schedule(ti.execution_date)
+            # 如果是单次调度，则直接通过，不受depends_on_past配置的影响
             if last_execution_date is None:
                 yield self._passing_status(
                     reason="This task does not have a schedule or is @once"
                 )
                 return
-            # 如果上一次调度早于任务的开始时间，则直接通过
-            if dag.previous_schedule(ti.execution_date) < ti.task.start_date:
+            # 判断是否是第一次调度；如果上一次调度早于任务的开始时间，则直接通过
+            #---------------------------------------------------------------------
+            #         ^                     ^                      ^            ^
+            #         |                     |                      |            |
+            #---------------------------------------------------------------------
+            #  last_execution_date     ti.execution_date
+            #                      ^                                    ^
+            #                      |                                    |
+            #                 ti.task.start_date                       now
+            if last_execution_date < ti.task.start_date:
                 yield self._passing_status(
                     reason="This task instance was the first task instance for its task.")
                 return
         else:
-            # 获得任务实例关联的dagrun
+            #---------------------------------------------------------------------
+            #         ^                     ^                      ^            ^
+            #         |                     |                      |            |
+            #---------------------------------------------------------------------
+            #  last_execution_date     ti.execution_date
+            #                      ^                                    ^
+            #                      |                                    |
+            #                 ti.last_run                              now
+            # 获得当前任务实例关联的dag_run，最多有一个
             dr = ti.get_dagrun()
             # 获得上一个dagrun，包含内外部调用及补录的记录
             last_dagrun = dr.get_previous_dagrun() if dr else None
-            # 如果不存在上个调度周期，即第一次调度，则直接通过
+            # 如果不存在上个调度周期，即是第一次调度，则直接通过
             if not last_dagrun:
                 yield self._passing_status(
                     reason="This task instance was the first task instance for its task.")
                 return
 
+        # 如果不是第一次调度
+
         # 根据当前任务实例获得上一个调度的同一个任务的任务实例
         previous_ti = ti.previous_ti
-        # 注意
+        # 注意这是异常情况
         # 1. 如果 depends_on_past = True ， @once，catchup=True; 最好禁止用户这样设置
         # 2. depends_on_past = True，@once, catchup=False, 可以保证once调度的上下依赖
         if not previous_ti:

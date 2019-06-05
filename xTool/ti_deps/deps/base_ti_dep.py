@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 
-
 from collections import namedtuple
 
 from xTool.decorators.db import provide_session

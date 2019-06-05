@@ -18,13 +18,15 @@
 # under the License.
 from datetime import datetime
 
-from airflow.ti_deps.deps.base_ti_dep import BaseTIDep
+from xTool.ti_deps.deps.base_ti_dep import BaseTIDep
 from xTool.decorators.db import provide_session
 
 
 class RunnableExecDateDep(BaseTIDep):
     """判断任务执行时间 必须小于等于当前时间  且 小于等于结束时间 ."""
     NAME = "Execution Date"
+
+    # dep_context.ignore_all_deps 参数可以为True
     IGNOREABLE = True
 
     @provide_session
@@ -32,6 +34,14 @@ class RunnableExecDateDep(BaseTIDep):
         cur_date = datetime.now()
 
         # 任务实例执行时间还未到
+        #-------------------------------------------------------------
+        #         ^                     ^                      ^
+        #         |                     |                      |
+        #-------------------------------------------------------------
+        #  last_execution_date     ti.execution_date
+        #                                                         ^
+        #                                                         |
+        #                                                        now
         if ti.execution_date > cur_date:
             yield self._failing_status(
                 reason="Execution date {0} is in the future (the current "
@@ -39,6 +49,14 @@ class RunnableExecDateDep(BaseTIDep):
                                               cur_date.isoformat()))
 
         # 任务实例执行时间必须小于等于任务结束时间
+        #-------------------------------------------------------------
+        #         ^                     ^                      ^
+        #         |                     |                      |
+        #-------------------------------------------------------------
+        #  last_execution_date     ti.execution_date
+        #                                                      ^          ^
+        #                                                      |          |
+        #                                              ti.task.end_date  now
         if ti.task.end_date and ti.execution_date > ti.task.end_date:
             yield self._failing_status(
                 reason="The execution date is {0} but this is after the task's end date "
@@ -47,6 +65,14 @@ class RunnableExecDateDep(BaseTIDep):
                     ti.task.end_date.isoformat()))
 
         # 任务实例执行时间必须小于等于DAG结束时间
+        #-------------------------------------------------------------
+        #         ^                     ^                      ^
+        #         |                     |                      |
+        #-------------------------------------------------------------
+        #  last_execution_date     ti.execution_date
+        #                                                      ^          ^
+        #                                                      |          |
+        #                                          ti.task.dag.end_date  now
         if (ti.task.dag and
                 ti.task.dag.end_date and
                 ti.execution_date > ti.task.dag.end_date):

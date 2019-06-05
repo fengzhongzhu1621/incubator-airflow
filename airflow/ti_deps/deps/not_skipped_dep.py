@@ -17,7 +17,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
-from airflow.ti_deps.deps.base_ti_dep import BaseTIDep
+from xTool.ti_deps.deps.base_ti_dep import BaseTIDep
 from xTool.decorators.db import provide_session
 from xTool.utils.state import State
 
@@ -25,9 +25,12 @@ from xTool.utils.state import State
 class NotSkippedDep(BaseTIDep):
     """验证任务实例的状态是否被标记为跳过 ."""
     NAME = "Task Instance Not Skipped"
+
+    # dep_context.ignore_all_deps 参数可以为True
     IGNOREABLE = True
 
     @provide_session
     def _get_dep_statuses(self, ti, session, dep_context):
+        # 已经被跳过的任务不能执行
         if ti.state == State.SKIPPED:
             yield self._failing_status(reason="The task instance has been skipped.")

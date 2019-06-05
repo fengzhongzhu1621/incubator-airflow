@@ -1382,7 +1382,7 @@ class TaskInstance(Base, LoggingMixin):
 
         dag = self.task.dag
         if dag:
-            # 获得当前任务实例关联的dag_run
+            # 获得当前任务实例关联的dag_run，最多有一个
             dr = self.get_dagrun(session=session)
 
             # LEGACY: most likely running from unit tests
@@ -1392,7 +1392,7 @@ class TaskInstance(Base, LoggingMixin):
                 previous_scheduled_date = dag.previous_schedule(self.execution_date)
                 if not previous_scheduled_date:
                     return None
-
+                # 返回上一个任务实例
                 return TaskInstance(task=self.task,
                                     execution_date=previous_scheduled_date)
 
@@ -1557,7 +1557,7 @@ class TaskInstance(Base, LoggingMixin):
 
     @provide_session
     def get_dagrun(self, session):
-        """获得当前任务实例关联的dag_run
+        """获得当前任务实例关联的dag_run，最多有一个
         Returns the DagRun for this TaskInstance
 
         :param session:
@@ -3499,7 +3499,7 @@ class DAG(BaseDag, LoggingMixin):
         self._dag_id = dag_id
         # dag文件的绝对路径
         self._full_filepath = full_filepath if full_filepath else ''
-        # 每个dag同时执行的任务实例的数量
+        # 每个dag同时执行的最大任务实例的数量
         self._concurrency = concurrency
         self._pickle_id = None
 
@@ -3859,6 +3859,7 @@ class DAG(BaseDag, LoggingMixin):
     @provide_session
     def concurrency_reached(self, session=None):
         """根据dagid，判断正在运行的任务实例是否超出了阈值
+        每个dag同时执行的最大任务实例的数量为 configuration.conf.getint('core', 'dag_concurrency')
         Returns a boolean indicating whether the concurrency limit for this DAG
         has been reached
         """

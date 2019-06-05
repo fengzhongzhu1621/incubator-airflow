@@ -82,7 +82,7 @@ class DepContext(object):
         self.ignore_all_deps = ignore_all_deps
         # 上一个周期的任务实例是否影响实例的运行
         self.ignore_depends_on_past = ignore_depends_on_past
-        # 是否忽略重试时间
+        # 是否忽略任务实例的重试时间
         self.ignore_in_retry_period = ignore_in_retry_period
         # 忽略任务依赖，在 IS_TASK_DEP 开启时生效，默认关闭
         self.ignore_task_deps = ignore_task_deps

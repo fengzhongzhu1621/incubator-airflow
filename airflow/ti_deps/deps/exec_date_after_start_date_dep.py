@@ -31,6 +31,14 @@ class ExecDateAfterStartDateDep(BaseTIDep):
     @provide_session
     def _get_dep_statuses(self, ti, session, dep_context):
         # 任务实例的调度时间必须大于等于任务的开始时间
+        #-------------------------------------------------------------
+        #         ^                     ^                      ^
+        #         |                     |                      |
+        #-------------------------------------------------------------
+        #  last_execution_date     ti.execution_date
+        #                      ^                                   ^
+        #                      |                                   |
+        #                ti.task.start_date                       now
         if ti.task.start_date and ti.execution_date < ti.task.start_date:
             yield self._failing_status(
                 reason="The execution date is {0} but this is before the task's start "
@@ -39,6 +47,14 @@ class ExecDateAfterStartDateDep(BaseTIDep):
                     ti.task.start_date.isoformat()))
 
         # 任务实例的调度时间必须大于等于dag的开始时间
+        #-------------------------------------------------------------
+        #         ^                     ^                      ^
+        #         |                     |                      |
+        #-------------------------------------------------------------
+        #  last_execution_date     ti.execution_date
+        #                      ^                                   ^
+        #                      |                                   |
+        #                ti.task.dag.start_date                   now
         if (ti.task.dag and ti.task.dag.start_date and
                 ti.execution_date < ti.task.dag.start_date):
             yield self._failing_status(

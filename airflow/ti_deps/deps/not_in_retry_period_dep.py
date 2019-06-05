@@ -18,40 +18,43 @@
 # under the License.
 from datetime import datetime
 
-from airflow.ti_deps.deps.base_ti_dep import BaseTIDep
+from xTool.ti_deps.deps.base_ti_dep import BaseTIDep
 from xTool.decorators.db import provide_session
 from xTool.utils.state import State
 
 
 class NotInRetryPeriodDep(BaseTIDep):
     NAME = "Not In Retry Period"
+
+    # dep_context.ignore_all_deps 参数可以为True
     IGNOREABLE = True
+    # dep_context.ignore_task_deps 参数可以为True
     IS_TASK_DEP = True
 
     @provide_session
     def _get_dep_statuses(self, ti, session, dep_context):
-        # 验证是否忽略重试时间
+        # 验证是否忽略重试时间，默认为False
         if dep_context.ignore_in_retry_period:
             yield self._passing_status(
                 reason="The context specified that being in a retry period was "
                        "permitted.")
             return
 
+        # 如果不忽略重试时间
         # 验证任务实例是否标记为重试，如果状态不为重试，则通过
         if ti.state != State.UP_FOR_RETRY:
             yield self._passing_status(
                 reason="The task instance was not marked for retrying.")
             return
 
-        # 任务实例已经标记为重试
-        # 但是还没有到下一次重试时间，如果运行就会失败
-        # Calculate the date first so that it is always smaller than the timestamp used by
-        # ready_for_retry
-        # 如果还没有到达重试时间
+        # 判断任务实例为重试状态，且任务重试时间还没有到达
+        # 只有当前时间大于等于下一次的重试时间，才会执行任务实例
+        # --------------------------------------------------------
+        #        ^               ^                         ^
+        #        |     {delay}   |                         |
+        #     ti.end_date     ti.next_retry_datetime()   datetime.now()
         if ti.is_premature:
             cur_date = datetime.now()
-            # 获得下一次重试开始时间
-            # 即当前时间 <= 下一次重试开始时间
             next_task_retry_date = ti.next_retry_datetime()
             yield self._failing_status(
                 reason="Task is not ready for retry yet but will be retried "
