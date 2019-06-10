@@ -85,6 +85,7 @@ from airflow.ti_deps.deps.not_in_retry_period_dep import NotInRetryPeriodDep
 from airflow.ti_deps.deps.prev_dagrun_dep import PrevDagrunDep
 from airflow.ti_deps.deps.trigger_rule_dep import TriggerRuleDep
 
+from airflow.models.errors import ImportError
 from airflow.models.kubernetes import KubeWorkerIdentifier, KubeResourceVersion
 from airflow.models.log import Log
 from airflow.models.slamiss import SlaMiss
