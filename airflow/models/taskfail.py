@@ -18,6 +18,7 @@
 # under the License.
 
 from sqlalchemy import Column, Index, Integer, String
+from sqlalchemy import DateTime
 
 from airflow.models.base import Base, ID_LEN
 
