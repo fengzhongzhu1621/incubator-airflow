@@ -85,6 +85,7 @@ from airflow.ti_deps.deps.not_in_retry_period_dep import NotInRetryPeriodDep
 from airflow.ti_deps.deps.prev_dagrun_dep import PrevDagrunDep
 from airflow.ti_deps.deps.trigger_rule_dep import TriggerRuleDep
 
+from airflow.models.log import Log
 from airflow.models.slamiss import SlaMiss
 from airflow.models.taskfail import TaskFail
 
@@ -2245,50 +2246,6 @@ class TaskInstance(Base, LoggingMixin):
         """
         self.raw = raw
         self._set_context(self)
-
-
-class Log(Base):
-    """
-    Used to actively log events to the database
-    """
-
-    __tablename__ = "log"
-
-    id = Column(Integer, primary_key=True)
-    dttm = Column(DateTime)
-    dag_id = Column(String(ID_LEN))
-    task_id = Column(String(ID_LEN))
-    event = Column(String(30))
-    execution_date = Column(DateTime)
-    owner = Column(String(500))
-    extra = Column(Text)
-
-    __table_args__ = (
-        Index('idx_log_dag', dag_id),
-    )
-
-    def __init__(self, event, task_instance, owner=None, extra=None, **kwargs):
-        self.dttm = datetime.now()
-        self.event = event
-        self.extra = extra
-
-        task_owner = None
-
-        if task_instance:
-            self.dag_id = task_instance.dag_id
-            self.task_id = task_instance.task_id
-            self.execution_date = task_instance.execution_date
-            task_owner = task_instance.task.owner
-
-        if 'task_id' in kwargs:
-            self.task_id = kwargs['task_id']
-        if 'dag_id' in kwargs:
-            self.dag_id = kwargs['dag_id']
-        if 'execution_date' in kwargs:
-            if kwargs['execution_date']:
-                self.execution_date = kwargs['execution_date']
-
-        self.owner = owner or task_owner
 
 
 @functools.total_ordering
