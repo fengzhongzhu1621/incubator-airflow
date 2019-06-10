@@ -18,10 +18,12 @@ from airflow.models.base import Base
 from airflow.models.xcom import XCom
 from airflow.models.log import Log
 from airflow import settings
+from airflow.models.base import Base, ID_LEN
 
 from xTool.utils.state import State
 from xTool.utils.log.logging_mixin import LoggingMixin
 from xTool.misc import USE_WINDOWS
+from xTool.decorators.db import provide_session
 
 
 Stats = settings.Stats
