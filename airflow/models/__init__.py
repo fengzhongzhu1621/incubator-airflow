@@ -85,6 +85,7 @@ from airflow.ti_deps.deps.not_in_retry_period_dep import NotInRetryPeriodDep
 from airflow.ti_deps.deps.prev_dagrun_dep import PrevDagrunDep
 from airflow.ti_deps.deps.trigger_rule_dep import TriggerRuleDep
 
+from airflow.models.kubernetes import KubeWorkerIdentifier, KubeResourceVersion
 from airflow.models.log import Log
 from airflow.models.slamiss import SlaMiss
 from airflow.models.taskfail import TaskFail
@@ -5701,60 +5702,6 @@ class ImportError(Base):
     timestamp = Column(DateTime)
     filename = Column(String(1024))
     stacktrace = Column(Text)
-
-
-class KubeResourceVersion(Base):
-    __tablename__ = "kube_resource_version"
-    one_row_id = Column(Boolean, server_default=sqltrue(), primary_key=True)
-    resource_version = Column(String(255))
-
-    @staticmethod
-    @provide_session
-    def get_current_resource_version(session=None):
-        (resource_version,) = session.query(KubeResourceVersion.resource_version).one()
-        return resource_version
-
-    @staticmethod
-    @provide_session
-    def checkpoint_resource_version(resource_version, session=None):
-        if resource_version:
-            session.query(KubeResourceVersion).update({
-                KubeResourceVersion.resource_version: resource_version
-            })
-            session.commit()
-
-    @staticmethod
-    @provide_session
-    def reset_resource_version(session=None):
-        session.query(KubeResourceVersion).update({
-            KubeResourceVersion.resource_version: '0'
-        })
-        session.commit()
-        return '0'
-
-
-class KubeWorkerIdentifier(Base):
-    __tablename__ = "kube_worker_uuid"
-    one_row_id = Column(Boolean, server_default=sqltrue(), primary_key=True)
-    worker_uuid = Column(String(255))
-
-    @staticmethod
-    @provide_session
-    def get_or_create_current_kube_worker_uuid(session=None):
-        (worker_uuid,) = session.query(KubeWorkerIdentifier.worker_uuid).one()
-        if worker_uuid == '':
-            worker_uuid = str(uuid.uuid4())
-            KubeWorkerIdentifier.checkpoint_kube_worker_uuid(worker_uuid, session)
-        return worker_uuid
-
-    @staticmethod
-    @provide_session
-    def checkpoint_kube_worker_uuid(worker_uuid, session=None):
-        if worker_uuid:
-            session.query(KubeWorkerIdentifier).update({
-                KubeWorkerIdentifier.worker_uuid: worker_uuid
-            })
-            session.commit()
 
 
 # To avoid circular import on Python2.7 we need to define this at the _bottom_
