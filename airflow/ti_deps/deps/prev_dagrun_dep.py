@@ -55,7 +55,7 @@ class PrevDagrunDep(BaseTIDep):
         dag = ti.task.dag
         # catchup默认为True，表示缺失的任务必须按调度时间补录
         if dag.catchup:
-            # 获得上一次调度时间，如果是单次调度，则返回None
+            # 使用croniter获得上一次调度时间，如果是单次调度，则返回None
             last_execution_date = dag.previous_schedule(ti.execution_date)
             # 如果是单次调度，则直接通过，不受depends_on_past配置的影响
             if last_execution_date is None:
@@ -118,7 +118,7 @@ class PrevDagrunDep(BaseTIDep):
         # 如果任务被标记为wait_for_downstream，
         # 则需要判断上一次任务实例的下游节点是否已经完成
         previous_ti.task = ti.task
-        # 如果设置了wait_for_downstream
+        # 如果设置了wait_for_downstream，默认为False
         # 验证上一个调度的任务实例的所有下游任务实例是否都执行完成
         if (ti.task.wait_for_downstream and
                 not previous_ti.are_dependents_done(session=session)):

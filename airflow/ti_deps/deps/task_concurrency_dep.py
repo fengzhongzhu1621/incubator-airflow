@@ -26,6 +26,7 @@ class TaskConcurrencyDep(BaseTIDep):
     This restricts the number of running task instances for a particular task.
     """
     NAME = "Task Concurrency"
+
     # dep_context.ignore_all_deps 参数可以为True
     IGNOREABLE = True
     # dep_context.ignore_task_deps 参数可以为True
@@ -33,10 +34,12 @@ class TaskConcurrencyDep(BaseTIDep):
 
     @provide_session
     def _get_dep_statuses(self, ti, session, dep_context):
+        # 任务并发数限制，State.RUNNING 状态的任务实例的数量不能超过此阈值，默认为None
         if ti.task.task_concurrency is None:
             yield self._passing_status(reason="Task concurrency is not set.")
             return
 
+        # 获得正在运行的任务实例的数量
         if ti.get_num_running_task_instances(session) >= ti.task.task_concurrency:
             yield self._failing_status(reason="The max task concurrency "
                                               "has been reached.")

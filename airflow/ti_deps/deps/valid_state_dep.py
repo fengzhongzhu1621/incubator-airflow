@@ -23,7 +23,10 @@ from xTool.decorators.db import provide_session
 
 
 class ValidStateDep(BaseTIDep):
+    """验证任务实例的状态 ."""
     NAME = "Task Instance State"
+
+    # dep_context.ignore_all_deps 参数可以为True
     IGNOREABLE = True
 
     """
@@ -51,6 +54,7 @@ class ValidStateDep(BaseTIDep):
 
     @provide_session
     def _get_dep_statuses(self, ti, session, dep_context):
+        # 忽略任务实例依赖
         if dep_context.ignore_ti_state:
             yield self._passing_status(
                 reason="Context specified that state should be ignored.")

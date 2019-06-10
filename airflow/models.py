@@ -2670,7 +2670,7 @@ class BaseOperator(LoggingMixin):
             resources.setdefault("gpus", gpus)    
         self.resources = Resources(**resources_kwargs)
         self.run_as_user = run_as_user
-        # 任务并发数限制，[State.RUNNING, State.QUEUED]状态的任务实例的数量不能超过此阈值
+        # 任务并发数限制，State.RUNNING 状态的任务实例的数量不能超过此阈值，默认为None
         self.task_concurrency = task_concurrency
         self.executor_config = executor_config or {}
 
