@@ -85,6 +85,7 @@ from airflow.ti_deps.deps.not_in_retry_period_dep import NotInRetryPeriodDep
 from airflow.ti_deps.deps.prev_dagrun_dep import PrevDagrunDep
 from airflow.ti_deps.deps.trigger_rule_dep import TriggerRuleDep
 
+from airflow.models.dagpickle import DagPickle
 from airflow.models.errors import ImportError
 from airflow.models.kubernetes import KubeWorkerIdentifier, KubeResourceVersion
 from airflow.models.log import Log
@@ -907,32 +908,6 @@ class Connection(Base, LoggingMixin):
                 self.log.error("Failed parsing the json for conn_id %s", self.conn_id)
 
         return obj
-
-
-class DagPickle(Base):
-    """
-    Dags can originate from different places (user repos, master repo, ...)
-    and also get executed in different places (different executors). This
-    object represents a version of a DAG and becomes a source of truth for
-    a BackfillJob execution. A pickle is a native python serialized object,
-    and in this case gets stored in the database for the duration of the job.
-
-    The executors pick up the DagPickle id and read the dag definition from
-    the database.
-    """
-    id = Column(Integer, primary_key=True)
-    pickle = Column(PickleType(pickler=dill))
-    created_dttm = Column(DateTime, default=func.now())
-    pickle_hash = Column(Text)
-
-    __tablename__ = "dag_pickle"
-
-    def __init__(self, dag):
-        self.dag_id = dag.dag_id
-        if hasattr(dag, 'template_env'):
-            dag.template_env = None
-        self.pickle_hash = hash(dag)
-        self.pickle = dag
 
 
 class TaskInstance(Base, LoggingMixin):
@@ -5695,14 +5670,6 @@ class Pool(Base):
         used_slots = self.used_slots(session=session)
         queued_slots = self.queued_slots(session=session)
         return self.slots - used_slots - queued_slots
-
-
-class ImportError(Base):
-    __tablename__ = "import_error"
-    id = Column(Integer, primary_key=True)
-    timestamp = Column(DateTime)
-    filename = Column(String(1024))
-    stacktrace = Column(Text)
 
 
 # To avoid circular import on Python2.7 we need to define this at the _bottom_
