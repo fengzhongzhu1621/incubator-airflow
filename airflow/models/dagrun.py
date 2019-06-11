@@ -12,7 +12,6 @@ from sqlalchemy.orm import reconstructor, relationship, synonym
 from sqlalchemy import DateTime
 
 from airflow.models.base import Base, ID_LEN, Stats
-from airflow.models.taskinstance import TaskInstance
 from airflow import configuration
 from airflow import settings
 from airflow.ti_deps.dep_context import DepContext, QUEUE_DEPS, RUN_DEPS
@@ -80,6 +79,7 @@ class DagRun(Base, LoggingMixin):
                 # session here, so something really weird goes on:
                 # if you try to close the session dag runs will end up detached
                 session = settings.Session()
+                from airflow.models.dagstat import DagStat
                 DagStat.set_dirty(self.dag_id, session=session)
 
     @declared_attr
@@ -171,6 +171,7 @@ class DagRun(Base, LoggingMixin):
         Returns the task instances for this dag run
         """
         # 获得当前dag实例的所有任务实例
+        from airflow.models.taskinstance import TaskInstance
         TI = TaskInstance
         tis = session.query(TI).filter(
             TI.dag_id == self.dag_id,

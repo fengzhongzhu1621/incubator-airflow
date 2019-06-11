@@ -18,10 +18,15 @@ from sqlalchemy.orm import reconstructor, relationship, synonym
 from airflow.models.base import Base
 from airflow.models.xcom import XCom
 from airflow.models.log import Log
+from airflow.models.dagrun import DagRun
 from airflow import settings
 from airflow.models.base import Base, ID_LEN, XCOM_RETURN_KEY
+from airflow import configuration
+from airflow.ti_deps.dep_context import DepContext, QUEUE_DEPS, RUN_DEPS
 
+from xTool.exceptions import XToolConfigException
 from xTool.utils.state import State
+from xTool.utils.net import get_hostname
 from xTool.utils.log.logging_mixin import LoggingMixin
 from xTool.misc import USE_WINDOWS
 from xTool.decorators.db import provide_session
@@ -718,8 +723,8 @@ class TaskInstance(Base, LoggingMixin):
         self.job_id = job_id
         # 获得任务实例运行所在机器的主机名
         try:
-            callable_path = conf.get('core', 'hostname_callable')
-        except (AirflowConfigException, XToolConfigException):
+            callable_path = configuration.conf.get('core', 'hostname_callable')
+        except XToolConfigException:
             callable_path = None        
         self.hostname = get_hostname(callable_path)
         self.operator = task.__class__.__name__
@@ -851,7 +856,7 @@ class TaskInstance(Base, LoggingMixin):
         self.job_id = job_id
         try:
             callable_path = conf.get('core', 'hostname_callable')
-        except (AirflowConfigException, XToolConfigException):
+        except XToolConfigException:
             callable_path = None         
         self.hostname = get_hostname(callable_path)
         self.operator = task.__class__.__name__

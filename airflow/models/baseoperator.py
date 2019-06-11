@@ -15,6 +15,9 @@ from airflow import configuration
 from airflow.lineage import apply_lineage, prepare_lineage
 from airflow.models.base import XCOM_RETURN_KEY
 from airflow.models.dag import DAG
+from airflow.ti_deps.deps.not_in_retry_period_dep import NotInRetryPeriodDep
+from airflow.ti_deps.deps.prev_dagrun_dep import PrevDagrunDep
+from airflow.ti_deps.deps.trigger_rule_dep import TriggerRuleDep
 
 from xTool.decorators.db import provide_session
 from xTool.utils.log.logging_mixin import LoggingMixin
