@@ -97,6 +97,8 @@ from airflow.models.taskinstance import TaskInstance
 from airflow.models.dagrun import DagRun
 from airflow.models.dagstate import DagStat
 from airflow.models.variable import Variable
+from airflow.models.knownevent import KnownEventType, KnownEvent
+from airflow.models.chart import Chart
 
 from airflow.ti_deps.dep_context import DepContext, QUEUE_DEPS, RUN_DEPS
 from xTool.utils.dates import cron_presets, date_range as utils_date_range
@@ -3146,69 +3148,6 @@ class DAG(BaseDag, LoggingMixin):
                 self._test_cycle_helper(visit_map, descendant_id)
 
         visit_map[task_id] = DagBag.CYCLE_DONE
-
-
-class Chart(Base):
-    __tablename__ = "chart"
-
-    id = Column(Integer, primary_key=True)
-    label = Column(String(200))
-    conn_id = Column(String(ID_LEN), nullable=False)
-    user_id = Column(Integer(), ForeignKey('users.id'), nullable=True)
-    chart_type = Column(String(100), default="line")
-    sql_layout = Column(String(50), default="series")
-    sql = Column(Text, default="SELECT series, x, y FROM table")
-    y_log_scale = Column(Boolean)
-    show_datatable = Column(Boolean)
-    show_sql = Column(Boolean, default=True)
-    height = Column(Integer, default=600)
-    default_params = Column(String(5000), default="{}")
-    owner = relationship(
-        "User", cascade=False, cascade_backrefs=False, backref='charts')
-    x_is_date = Column(Boolean, default=True)
-    iteration_no = Column(Integer, default=0)
-    last_modified = Column(DateTime, default=func.now())
-
-    def __repr__(self):
-        return self.label
-
-
-class KnownEventType(Base):
-    """公告类型 ."""
-    __tablename__ = "known_event_type"
-
-    id = Column(Integer, primary_key=True)
-    know_event_type = Column(String(200))
-
-    def __repr__(self):
-        return self.know_event_type
-
-
-class KnownEvent(Base):
-    """公告信息 ."""
-    __tablename__ = "known_event"
-
-    id = Column(Integer, primary_key=True)
-    # 公告标题
-    label = Column(String(200))
-    # 公告开始时间
-    start_date = Column(DateTime)
-    # 公告结束时间
-    end_date = Column(DateTime)
-    # 公告的用户
-    user_id = Column(Integer(), ForeignKey('users.id'),)
-    # 公告事件类型
-    known_event_type_id = Column(Integer(), ForeignKey('known_event_type.id'),)
-    reported_by = relationship(
-        "User", cascade=False, cascade_backrefs=False, backref='known_events')
-    event_type = relationship(
-        "KnownEventType",
-        cascade=False,
-        cascade_backrefs=False, backref='known_events')
-    description = Column(Text)
-
-    def __repr__(self):
-        return self.label
 
 
 # To avoid circular import on Python2.7 we need to define this at the _bottom_
