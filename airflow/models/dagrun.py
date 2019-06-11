@@ -11,8 +11,8 @@ from sqlalchemy.ext.declarative import declarative_base, declared_attr
 from sqlalchemy.orm import reconstructor, relationship, synonym
 from sqlalchemy import DateTime
 
-from airflow.models.base import Base, ID_LEN
-from airflow.models.task_instance import TaskInstance
+from airflow.models.base import Base, ID_LEN, Stats
+from airflow.models.taskinstance import TaskInstance
 from airflow import configuration
 from airflow import settings
 from airflow.ti_deps.dep_context import DepContext, QUEUE_DEPS, RUN_DEPS
@@ -20,10 +20,10 @@ from airflow.exceptions import (
     AirflowDagCycleException, AirflowException, AirflowSkipException
 )
 
+
+from xTool.utils.log.logging_mixin import LoggingMixin
 from xTool.utils.state import State
-
-
-Stats = settings.Stats
+from xTool.decorators.db import provide_session
 
 
 class DagRun(Base, LoggingMixin):

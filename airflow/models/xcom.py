@@ -6,10 +6,13 @@ import json
 from sqlalchemy import Column, Integer, String, Float, PickleType, Index, LargeBinary
 from sqlalchemy import DateTime
 from sqlalchemy.orm import reconstructor, relationship, synonym
+from sqlalchemy import func, or_, and_, true as sqltrue
 
 from airflow import configuration
+from airflow.models.base import Base, ID_LEN, XCOM_RETURN_KEY
 
 from xTool.utils.log.logging_mixin import LoggingMixin
+from xTool.decorators.db import provide_session
 
 
 class XCom(Base, LoggingMixin):

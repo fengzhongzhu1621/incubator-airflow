@@ -1,7 +1,10 @@
 # -*- coding: utf-8 -*-
 
-from sqlalchemy import Column, Integer, String, Float, PickleType, Index
+from sqlalchemy import Column, Integer, String, Float, PickleType, Index, ForeignKey, Text
 from sqlalchemy import DateTime
+from sqlalchemy.orm import reconstructor, relationship, synonym
+
+from airflow.models.base import Base, ID_LEN
 
 
 class KnownEventType(Base):

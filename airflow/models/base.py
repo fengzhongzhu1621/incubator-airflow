@@ -21,15 +21,12 @@ from typing import Any
 from sqlalchemy import MetaData
 from sqlalchemy.ext.declarative import declarative_base
 
-import airflow
+from airflow import settings
 
-SQL_ALCHEMY_SCHEMA = airflow.configuration.get("core", "SQL_ALCHEMY_SCHEMA")
 
-metadata = (
-    None
-    if not SQL_ALCHEMY_SCHEMA or SQL_ALCHEMY_SCHEMA.isspace()
-    else MetaData(schema=SQL_ALCHEMY_SCHEMA)
-)
-Base = declarative_base(metadata=metadata)  # type: Any
+Base = declarative_base()
 
 ID_LEN = 250
+XCOM_RETURN_KEY = 'return_value'
+Stats = settings.Stats
+

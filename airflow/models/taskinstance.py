@@ -13,12 +13,13 @@ from datetime import datetime, timedelta
 import dill
 from sqlalchemy import Column, Integer, String, Float, PickleType, Index
 from sqlalchemy import DateTime
+from sqlalchemy.orm import reconstructor, relationship, synonym
 
 from airflow.models.base import Base
 from airflow.models.xcom import XCom
 from airflow.models.log import Log
 from airflow import settings
-from airflow.models.base import Base, ID_LEN
+from airflow.models.base import Base, ID_LEN, XCOM_RETURN_KEY
 
 from xTool.utils.state import State
 from xTool.utils.log.logging_mixin import LoggingMixin

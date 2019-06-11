@@ -6,16 +6,12 @@ from datetime import datetime, timedelta
 from sqlalchemy import Column, Integer, String, Float, PickleType, Index, Boolean
 from sqlalchemy import DateTime
 
-from airflow.models.base import Base, ID_LEN
+from airflow.models.base import Base, ID_LEN, Stats
 from airflow.models.dagrun import DagRun
-from airflow import settings
 
 from xTool.decorators.db import provide_session
 from xTool.utils.log.logging_mixin import LoggingMixin
 from xTool.utils.state import State
-
-
-Stats = settings.Stats
 
 
 class DagStat(Base):

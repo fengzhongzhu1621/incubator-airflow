@@ -14,6 +14,11 @@ from sqlalchemy import DateTime
 
 from airflow.models.base import Base, ID_LEN
 from airflow import configuration
+from airflow.dag.base_dag import BaseDag, BaseDagBag
+
+from xTool.utils.log.logging_mixin import LoggingMixin
+from xTool.decorators.db import provide_session
+from xTool.utils.state import State
 
 
 @functools.total_ordering

@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
 
-from sqlalchemy import Column, Integer, String
+from sqlalchemy import Column, Integer, String, Text
 from sqlalchemy import DateTime
 
 from airflow.models.base import Base
-from airflow.models.task_instance import TaskInstance
+from airflow.models.taskinstance import TaskInstance
 
+from xTool.decorators.db import provide_session
 from xTool.utils.state import State
 
 

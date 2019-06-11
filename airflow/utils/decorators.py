@@ -17,6 +17,7 @@
 # specific language governing permissions and limitations
 # under the License.
 #
+import os
 
 from xTool.decorators.decorators import apply_defaults
 

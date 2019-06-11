@@ -9,8 +9,15 @@ from datetime import datetime, timedelta
 from sqlalchemy import Column, Integer, String, Float, PickleType, Index
 from sqlalchemy import DateTime
 
+from airflow.utils.decorators import apply_defaults
+from airflow import configuration
+from airflow.lineage import apply_lineage, prepare_lineage
+from airflow.models.base import XCOM_RETURN_KEY
+
 from xTool.decorators.db import provide_session
 from xTool.utils.log.logging_mixin import LoggingMixin
+from xTool.rules.weight_rule import WeightRule
+from xTool.rules.trigger_rule import TriggerRule
 
 
 @functools.total_ordering

@@ -18,10 +18,11 @@
 # under the License.
 
 from datetime import datetime
-from airflow.models import TaskInstance
-from airflow.utils.db import provide_session
-from airflow.utils.log.logging_mixin import LoggingMixin
-from airflow.utils.state import State
+from airflow.models.taskinstance import TaskInstance
+
+from xTool.utils.log.logging_mixin import LoggingMixin
+from xTool.utils.state import State
+from xTool.decorators.db import provide_session
 
 
 class SkipMixin(LoggingMixin):

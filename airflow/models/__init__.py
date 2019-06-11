@@ -95,7 +95,7 @@ from airflow.models.pool import Pool
 from airflow.models.xcom import XCom
 from airflow.models.taskinstance import TaskInstance
 from airflow.models.dagrun import DagRun
-from airflow.models.dagstate import DagStat
+from airflow.models.dagstat import DagStat
 from airflow.models.variable import Variable
 from airflow.models.knownevent import KnownEventType, KnownEvent
 from airflow.models.chart import Chart
@@ -274,8 +274,6 @@ def clear_task_instances(tis,
             # 设置为运行态，并重置开始时间
             dr.state = State.RUNNING
             dr.start_date = datetime.now()
-
-
 
 
 # To avoid circular import on Python2.7 we need to define this at the _bottom_

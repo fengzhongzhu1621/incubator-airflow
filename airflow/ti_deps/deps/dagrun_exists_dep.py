@@ -38,7 +38,7 @@ class DagrunRunningDep(BaseTIDep):
         if not dagrun:
             # dagrun必须要存在
             yield self._failing_status(
-                reason="Task instance's dagrun did not exist"
+                reason="Task instance's dagrun did not exist")
         else:
             # dagrun的状态必须是RUNNING
             if dagrun.state != State.RUNNING:

@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 import json
 
-from sqlalchemy import Column, Integer, String, Boolean
+from sqlalchemy import Column, Integer, String, Boolean, Text
 from sqlalchemy import DateTime
 from sqlalchemy.orm import reconstructor, relationship, synonym
+from sqlalchemy.ext.declarative import declarative_base, declared_attr
 
 from airflow import configuration
 from airflow.models.base import Base, ID_LEN

@@ -5,6 +5,8 @@ from sqlalchemy import DateTime
 
 from airflow.models.base import Base, ID_LEN
 from airflow.models.taskinstance import TaskInstance
+from airflow import configuration
+
 from xTool.decorators.db import provide_session
 
 
