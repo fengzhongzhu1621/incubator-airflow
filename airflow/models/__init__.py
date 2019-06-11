@@ -96,6 +96,7 @@ from airflow.models.xcom import XCom
 from airflow.models.taskinstance import TaskInstance
 from airflow.models.dagrun import DagRun
 from airflow.models.dagstate import DagStat
+from airflow.models.variable import Variable
 
 from airflow.ti_deps.dep_context import DepContext, QUEUE_DEPS, RUN_DEPS
 from xTool.utils.dates import cron_presets, date_range as utils_date_range
@@ -3208,107 +3209,6 @@ class KnownEvent(Base):
 
     def __repr__(self):
         return self.label
-
-
-class Variable(Base, LoggingMixin):
-    __tablename__ = "variable"
-
-    id = Column(Integer, primary_key=True)
-    key = Column(String(ID_LEN), unique=True)
-    _val = Column('val', Text)
-    is_encrypted = Column(Boolean, unique=False, default=False)
-
-    def __repr__(self):
-        # Hiding the value
-        return '{} : {}'.format(self.key, self._val)
-
-    def get_val(self):
-        log = LoggingMixin().log
-        if self._val and self.is_encrypted:
-            try:
-                fernet = get_fernet()
-                return fernet.decrypt(bytes(self._val, 'utf-8')).decode()
-            except InvalidFernetToken:
-                log.error("Can't decrypt _val for key={}, invalid token "
-                          "or value".format(self.key))
-                return None
-            except Exception:
-                log.error("Can't decrypt _val for key={}, FERNET_KEY "
-                          "configuration missing".format(self.key))
-                return None
-        else:
-            return self._val
-
-    def set_val(self, value):
-        if value:
-            fernet = get_fernet()
-            self._val = fernet.encrypt(bytes(value, 'utf-8')).decode()
-            self.is_encrypted = fernet.is_encrypted
-
-    @declared_attr
-    def val(cls):
-        return synonym('_val',
-                       descriptor=property(cls.get_val, cls.set_val))
-
-    @classmethod
-    def setdefault(cls, key, default, deserialize_json=False):
-        """
-        Like a Python builtin dict object, setdefault returns the current value
-        for a key, and if it isn't there, stores the default value and returns it.
-
-        :param key: Dict key for this Variable
-        :type key: String
-        :param default: Default value to set and return if the variable
-        isn't already in the DB
-        :type default: Mixed
-        :param deserialize_json: Store this as a JSON encoded value in the DB
-         and un-encode it when retrieving a value
-        :return: Mixed
-        """
-        default_sentinel = object()
-        obj = Variable.get(key, default_var=default_sentinel,
-                           deserialize_json=deserialize_json)
-        # 如果是空的json对象
-        if obj is default_sentinel:
-            if default is not None:
-                Variable.set(key, default, serialize_json=deserialize_json)
-                return default
-            else:
-                raise ValueError('Default Value must be set')
-        else:
-            return obj
-
-    @classmethod
-    @provide_session
-    def get(cls, key, default_var=None, deserialize_json=False, session=None):
-        obj = session.query(cls).filter(cls.key == key).first()
-        # 对象不存在获取默认值
-        if obj is None:
-            if default_var is not None:
-                return default_var
-            else:
-                raise KeyError('Variable {} does not exist'.format(key))
-        else:
-            # 是否存储的是json数据
-            if deserialize_json:
-                return json.loads(obj.val)
-            else:
-                return obj.val
-
-    @classmethod
-    @provide_session
-    def set(cls, key, value, serialize_json=False, session=None):
-
-        if serialize_json:
-            stored_value = json.dumps(value)
-        else:
-            stored_value = str(value)
-
-        session.query(cls).filter(cls.key == key).delete()
-        session.add(Variable(key=key, val=stored_value))
-        # TODO 写数据到数据库，但是不commit，其它的事务无法看到这个更新后的结果
-        # 作用是防止其它事务获取到正在修改的值
-        session.flush()
 
 
 # To avoid circular import on Python2.7 we need to define this at the _bottom_
