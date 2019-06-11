@@ -102,6 +102,7 @@ from airflow.models.chart import Chart
 from airflow.models.dag import DAG
 from airflow.models.dagmodel import DagModel
 from airflow.models.baseoperator import BaseOperator
+from airflow.models.user import User
 
 from airflow.ti_deps.dep_context import DepContext, QUEUE_DEPS, RUN_DEPS
 from xTool.utils.dates import cron_presets, date_range as utils_date_range
@@ -689,25 +690,6 @@ class DagBag(BaseDagBag, LoggingMixin):
         return dag_ids
 
 
-class User(Base):
-    __tablename__ = "users"
-
-    id = Column(Integer, primary_key=True)
-    username = Column(String(ID_LEN), unique=True)
-    email = Column(String(500))
-    superuser = False
-
-    def __repr__(self):
-        return self.username
-
-    def get_id(self):
-        return str(self.id)
-
-    def is_superuser(self):
-        return self.superuser
-
-
-        
 # To avoid circular import on Python2.7 we need to define this at the _bottom_
 from airflow.models.connection import Connection  # noqa: E402,F401
 from airflow.models.skipmixin import SkipMixin  # noqa: F401
