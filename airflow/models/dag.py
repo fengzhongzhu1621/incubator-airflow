@@ -9,6 +9,7 @@ import warnings
 from datetime import datetime, timedelta
 from collections import namedtuple, defaultdict
 
+import six
 from sqlalchemy import Column, Integer, String, Float, PickleType, Index
 from sqlalchemy import DateTime
 
@@ -16,9 +17,11 @@ from airflow.models.base import Base, ID_LEN
 from airflow import configuration
 from airflow.dag.base_dag import BaseDag, BaseDagBag
 
-from xTool.utils.log.logging_mixin import LoggingMixin
 from xTool.decorators.db import provide_session
+from xTool.utils.log.logging_mixin import LoggingMixin
 from xTool.utils.state import State
+from xTool.utils.helpers import validate_key
+from xTool.utils.dates import cron_presets, date_range as utils_date_range
 
 
 @functools.total_ordering
@@ -1425,6 +1428,7 @@ class DAG(BaseDag, LoggingMixin):
         Check to see if there are any cycles in the DAG. Returns False if no cycle found,
         otherwise raises exception.
         """
+        from airflow.models.dagbag import DagBag
 
         # default of int is 0 which corresponds to CYCLE_NEW
         visit_map = defaultdict(int)
@@ -1438,8 +1442,8 @@ class DAG(BaseDag, LoggingMixin):
         """
         Checks if a cycle exists from the input task using DFS traversal
         """
-
-        # print('Inspecting %s' % task_id)
+        
+        from airflow.models.dagbag import DagBag
         if visit_map[task_id] == DagBag.CYCLE_DONE:
             return False
 

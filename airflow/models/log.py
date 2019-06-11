@@ -17,10 +17,13 @@
 # specific language governing permissions and limitations
 # under the License.
 
+from datetime import datetime
+
 from sqlalchemy import Column, Integer, String, Text, Index
 from sqlalchemy import DateTime
 
 from airflow.models.base import Base, ID_LEN
+from airflow.executors import GetDefaultExecutor, LocalExecutor
 
 
 class Log(Base):

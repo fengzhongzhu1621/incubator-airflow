@@ -6,6 +6,7 @@ import functools
 import numbers
 from datetime import datetime, timedelta
 
+import six
 from sqlalchemy import Column, Integer, String, Float, PickleType, Index
 from sqlalchemy import DateTime
 
@@ -13,9 +14,12 @@ from airflow.utils.decorators import apply_defaults
 from airflow import configuration
 from airflow.lineage import apply_lineage, prepare_lineage
 from airflow.models.base import XCOM_RETURN_KEY
+from airflow.models.dag import DAG
 
 from xTool.decorators.db import provide_session
 from xTool.utils.log.logging_mixin import LoggingMixin
+from xTool.utils.helpers import validate_key
+from xTool.utils.operator_resources import Resources
 from xTool.rules.weight_rule import WeightRule
 from xTool.rules.trigger_rule import TriggerRule
 
@@ -314,18 +318,15 @@ class BaseOperator(LoggingMixin):
         self.weight_rule = weight_rule
 
         # 给每个任务分配资源: 每个任务所分配的资源
-        cpus=configuration.conf.getint('operators', 'default_cpus'),
-        ram=configuration.conf.getint('operators', 'default_ram'),
-        disk=configuration.conf.getint('operators', 'default_disk'),
-        gpus=configuration.conf.getint('operators', 'default_gpus')
         if not resources:
-            resources_kwargs = {"cpus": cpus, "ram": ram, "disk": disk, "gpus": gpus}
+            cpus=configuration.conf.getint('operators', 'default_cpus')
+            ram=configuration.conf.getint('operators', 'default_ram')
+            disk=configuration.conf.getint('operators', 'default_disk')
+            gpus=configuration.conf.getint('operators', 'default_gpus')
+            print(cpus, ram, disk, gpus)
+            self.resources = Resources(cpus, ram, disk, gpus)
         else:
-            resources.setdefault("cpus", cpus)
-            resources.setdefault("ram", ram)
-            resources.setdefault("disk", disk)
-            resources.setdefault("gpus", gpus)    
-        self.resources = Resources(**resources_kwargs)
+            self.resources = resources
         self.run_as_user = run_as_user
         # 任务并发数限制，State.RUNNING 状态的任务实例的数量不能超过此阈值，默认为None
         self.task_concurrency = task_concurrency
