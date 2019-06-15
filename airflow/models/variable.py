@@ -2,18 +2,19 @@
 import json
 
 from sqlalchemy import Column, Integer, String, Boolean, Text
-from sqlalchemy import DateTime
-from sqlalchemy.orm import reconstructor, relationship, synonym
-from sqlalchemy.ext.declarative import declarative_base, declared_attr
+from sqlalchemy.orm import synonym
+from sqlalchemy.ext.declarative import declared_attr
 
-from airflow import configuration
 from airflow.models.base import Base, ID_LEN
+from airflow import configuration
 
 from xTool.utils.log.logging_mixin import LoggingMixin
 from xTool.decorators.db import provide_session
+from xTool.crypto.fernet import get_fernet, InvalidFernetToken
 
 
 class Variable(Base, LoggingMixin):
+    """系统常量 ."""
     __tablename__ = "variable"
 
     id = Column(Integer, primary_key=True)
@@ -26,12 +27,16 @@ class Variable(Base, LoggingMixin):
         return '{} : {}'.format(self.key, self._val)
 
     def get_val(self):
+        """获得常量的值 ."""
         log = LoggingMixin().log
         if self._val and self.is_encrypted:
             try:
-                fernet = get_fernet()
+                # 解密常量值
+                fernet_key = configuration.conf.get('core', 'FERNET_KEY')
+                fernet = get_fernet(fernet_key)
                 return fernet.decrypt(bytes(self._val, 'utf-8')).decode()
             except InvalidFernetToken:
+                # 解密失败返回None
                 log.error("Can't decrypt _val for key={}, invalid token "
                           "or value".format(self.key))
                 return None
@@ -43,8 +48,11 @@ class Variable(Base, LoggingMixin):
             return self._val
 
     def set_val(self, value):
+        """设置常量的值 ."""
         if value:
-            fernet = get_fernet()
+            # 加密常量值
+            fernet_key = configuration.conf.get('core', 'FERNET_KEY')
+            fernet = get_fernet(fernet_key)
             self._val = fernet.encrypt(bytes(value, 'utf-8')).decode()
             self.is_encrypted = fernet.is_encrypted
 
@@ -74,6 +82,7 @@ class Variable(Base, LoggingMixin):
         # 如果是空的json对象
         if obj is default_sentinel:
             if default is not None:
+                # 注意：需要commit后才能生效
                 Variable.set(key, default, serialize_json=deserialize_json)
                 return default
             else:
@@ -101,7 +110,6 @@ class Variable(Base, LoggingMixin):
     @classmethod
     @provide_session
     def set(cls, key, value, serialize_json=False, session=None):
-
         if serialize_json:
             stored_value = json.dumps(value)
         else:
@@ -109,6 +117,6 @@ class Variable(Base, LoggingMixin):
 
         session.query(cls).filter(cls.key == key).delete()
         session.add(Variable(key=key, val=stored_value))
-        # TODO 写数据到数据库，但是不commit，其它的事务无法看到这个更新后的结果
+        # 写数据到数据库，但是不commit，其它的事务无法看到这个更新后的结果
         # 作用是防止其它事务获取到正在修改的值
         session.flush()

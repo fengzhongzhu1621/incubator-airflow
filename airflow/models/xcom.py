@@ -1,5 +1,9 @@
 # -*- coding: utf-8 -*-
 
+"""
+存储任务之间的中间结果
+"""
+
 import json
 import pickle
 
@@ -77,6 +81,7 @@ class XCom(Base, LoggingMixin):
               "pickling" will be removed in Airflow 2.0.
         :return: None
         """
+        # 调用底层,清除所有session实例
         session.expunge_all()
 
         enable_pickling = configuration.getboolean('core', 'enable_xcom_pickling')
@@ -85,6 +90,7 @@ class XCom(Base, LoggingMixin):
             value = pickle.dumps(value)
         else:
             try:
+                # 注意编码转换
                 value = json.dumps(value).encode('UTF-8')
             except ValueError:
                 log = LoggingMixin().log
@@ -121,12 +127,13 @@ class XCom(Base, LoggingMixin):
                 dag_id=None,
                 include_prior_dates=False,
                 session=None):
-        """获得一条中间结果
+        """获取一条中间结果
         Retrieve an XCom value, optionally meeting certain criteria.
         TODO: "pickling" has been deprecated and JSON is preferred.
               "pickling" will be removed in Airflow 2.0.
         :return: XCom value
         """
+        # 构造搜索条件
         filters = []
         if key:
             filters.append(cls.key == key)
@@ -151,6 +158,7 @@ class XCom(Base, LoggingMixin):
                 return pickle.loads(result.value)
             else:
                 try:
+                    # 注意编码转换
                     return json.loads(result.value.decode('UTF-8'))
                 except ValueError:
                     log = LoggingMixin().log
@@ -192,7 +200,6 @@ class XCom(Base, LoggingMixin):
                               .order_by(cls.execution_date.desc(), cls.timestamp.desc())
                               .limit(limit))
         results = query.all()
-        # 注意和get()方法的返回格式不一样
         return results
 
     @classmethod

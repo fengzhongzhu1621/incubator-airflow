@@ -29,12 +29,14 @@ BASE64(AESInstanceKey(Password))
 import os
 import base64
 
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 from xTool.misc import tob
+from xTool.utils.log.logging_mixin import LoggingMixin
+from xTool.exceptions import XToolException
 
 
 def generate_fernet_key():
@@ -103,3 +105,33 @@ def parseDbConfig(dbConfig, root_key=None, instance_key_cipher=None):
     if not database:
         database = dbConfig.get('db')
     return (host, database, user, password, 7 * 3600, 0, "+0:00", charset)
+
+
+InvalidFernetToken = InvalidToken
+_fernet = None
+
+
+def get_fernet(fernet_key):
+    """
+    Deferred load of Fernet key.
+
+    This function could fail either because Cryptography is not installed
+    or because the Fernet key is invalid.
+
+    :return: Fernet object
+    :raises: XToolException if there's a problem trying to load Fernet
+    """
+    global _fernet
+    if _fernet:
+        return _fernet
+
+    if not fernet_key:
+        log = LoggingMixin().log1
+        log.warning(
+            "empty cryptography key - values will not be stored encrypted."
+        )
+        raise XToolException("Could not create Fernet object")
+    else:
+        _fernet = Fernet(fernet_key.encode('utf-8'))
+        _fernet.is_encrypted = True
+        return _fernet
