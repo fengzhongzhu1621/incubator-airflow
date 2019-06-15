@@ -1,18 +1,19 @@
 # -*- coding: utf-8 -*-
 
-import pickle
 import json
+import pickle
 
-from sqlalchemy import Column, Integer, String, Float, PickleType, Index, LargeBinary
+from sqlalchemy import Column, Integer, String, Index, LargeBinary
 from sqlalchemy import DateTime
-from sqlalchemy.orm import reconstructor, relationship, synonym
-from sqlalchemy import func, or_, and_, true as sqltrue
+from sqlalchemy.orm import reconstructor
+from sqlalchemy import func, and_
 
 from airflow import configuration
-from airflow.models.base import Base, ID_LEN, XCOM_RETURN_KEY
+from airflow.models.base import Base, ID_LEN
 
-from xTool.utils.log.logging_mixin import LoggingMixin
 from xTool.decorators.db import provide_session
+from xTool.utils.log.logging_mixin import LoggingMixin
+from xTool.utils.helpers import as_tuple
 
 
 class XCom(Base, LoggingMixin):
@@ -100,7 +101,6 @@ class XCom(Base, LoggingMixin):
             cls.execution_date == execution_date,
             cls.task_id == task_id,
             cls.dag_id == dag_id).delete()
-
         session.commit()
 
         # insert new XCom
@@ -110,7 +110,6 @@ class XCom(Base, LoggingMixin):
             execution_date=execution_date,
             task_id=task_id,
             dag_id=dag_id))
-
         session.commit()
 
     @classmethod
