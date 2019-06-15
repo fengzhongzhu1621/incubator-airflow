@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from sqlalchemy import Column, Integer, String, Float, PickleType, Index
-from sqlalchemy import DateTime
+from sqlalchemy import Column, Integer, String
 
 from airflow.models.base import Base, ID_LEN
 
