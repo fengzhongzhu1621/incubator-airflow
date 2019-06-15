@@ -13,14 +13,13 @@ from datetime import datetime, timedelta
 import dill
 from sqlalchemy import Column, Integer, String, Float, PickleType, Index
 from sqlalchemy import DateTime
-from sqlalchemy.orm import reconstructor, relationship, synonym
+from sqlalchemy.orm import reconstructor
 
-from airflow.models.base import Base
+from airflow.models.base import Base, ID_LEN, XCOM_RETURN_KEY
 from airflow.models.xcom import XCom
 from airflow.models.log import Log
 from airflow.models.dagrun import DagRun
 from airflow import settings
-from airflow.models.base import Base, ID_LEN, XCOM_RETURN_KEY
 from airflow import configuration
 from airflow.ti_deps.dep_context import DepContext, QUEUE_DEPS, RUN_DEPS
 
@@ -77,24 +76,31 @@ class TaskInstance(Base, LoggingMixin):
         Index('ti_state_lkp', dag_id, task_id, execution_date, state),
         Index('ti_pool', pool, state, priority_weight),
         Index('ti_job_id', job_id),
+        Index('dag_id_execution_date', dag_id, execution_date),
+        Index('execution_date', execution_date),
     )
 
     def __init__(self, task, execution_date, state=None):
         self.dag_id = task.dag_id
         self.task_id = task.task_id
+        # 任务
         self.task = task
+        # 任务实例执行的日志配置
         self._log = logging.getLogger("airflow.task")
+        # 任务实例的调度时间
         self.execution_date = execution_date
 
+        # 任务队列名称
         self.queue = task.queue
         # 任务插槽，用于对任务实例的数量进行限制
         self.pool = task.pool
+        # 任务优先级
         self.priority_weight = task.priority_weight_total
         # 记录了第几次重试
         self.try_number = 0
-        # 最大重试次数
+        # 任务最大重试次数
         self.max_tries = self.task.retries
-        # 获得linux当前用户
+        # 任务实例执行的用户名
         self.unixname = getpass.getuser()
         # 任务设置的执行用户
         self.run_as_user = task.run_as_user
@@ -102,6 +108,7 @@ class TaskInstance(Base, LoggingMixin):
         if state:
             self.state = state
         self.hostname = ''
+        # 任务的输入配置参数
         self.executor_config = task.executor_config
         self.init_on_load()
         # Is this TaskInstance being currently running within `airflow run --raw`.
@@ -153,6 +160,7 @@ class TaskInstance(Base, LoggingMixin):
         installed. This command is part of the message sent to executors by
         the orchestrator.
         """
+        # 格式化dag文件路径，并返回构造的airflow run shell命令
         return " ".join(self.command_as_list(
             mark_success=mark_success,
             ignore_all_deps=ignore_all_deps,
@@ -179,7 +187,7 @@ class TaskInstance(Base, LoggingMixin):
             job_id=None,
             pool=None,
             cfg_path=None):
-        """
+        """格式化dag文件路径，并返回构造的airflow run命令数组
         Returns a command that can be executed anywhere where airflow is
         installed. This command is part of the message sent to executors by
         the orchestrator.
@@ -188,14 +196,15 @@ class TaskInstance(Base, LoggingMixin):
 
         # 如果没有设置pickle_id，则获取dag文件的绝对地址
         # 如果设置了pickle_id，则从其他存储介质中获取
+        path = None
         should_pass_filepath = not pickle_id and dag
-        if should_pass_filepath and dag.full_filepath != dag.filepath:
-            path = "DAGS_FOLDER/{}".format(dag.filepath)
-        elif should_pass_filepath and dag.full_filepath:
-            path = dag.full_filepath
-        else:
-            path = None
+        if should_pass_filepath:
+            if dag.full_filepath != dag.filepath:
+                path = "DAGS_FOLDER/{}".format(dag.filepath)
+            elif dag.full_filepath:
+                path = dag.full_filepath
 
+        # 构造airflow run命令数组
         return TaskInstance.generate_command(
             self.dag_id,
             self.task_id,
@@ -230,7 +239,7 @@ class TaskInstance(Base, LoggingMixin):
                          pool=None,
                          cfg_path=None
                          ):
-        """
+        """构造airflow run命令数组
         Generates the shell command required to execute this task instance.
 
         :param dag_id: DAG ID
@@ -344,7 +353,7 @@ class TaskInstance(Base, LoggingMixin):
 
     @provide_session
     def current_state(self, session=None):
-        """从DB中获取任务实例的当前状态
+        """根据主键，从DB中获取任务实例的当前状态
         Get the very latest state from the database, if a session is passed,
         we use and looking up the state becomes part of the session, otherwise
         a new session is used.
@@ -363,7 +372,7 @@ class TaskInstance(Base, LoggingMixin):
 
     @provide_session
     def error(self, session=None):
-        """将任务实例设置为失败状态
+        """修改DB中任务实例为失败状态
         Forces the task instance's state to FAILED in the database.
         """
         self.log.error("Recording the task instance as FAILED")
@@ -386,21 +395,20 @@ class TaskInstance(Base, LoggingMixin):
                 AND task_instance.dag_id = %s
                 AND task_instance.execution_date = %s LIMIT 1
         """
+        # 根据主键从DB中获取任务实例
         TI = TaskInstance
-
-        # 从DB中获取任务实例
         qry = session.query(TI).filter(
             TI.task_id == self.task_id,
             TI.dag_id == self.dag_id,
             TI.execution_date == self.execution_date)
 
-        # 添加行锁
+        # 是否添加添加行锁
         if lock_for_update:
             ti = qry.with_for_update().first()
         else:
             ti = qry.first()
 
-        # 如果实例存在，将db数据更新到orm
+        # 如果任务实例存在，将db数据更新到orm
         if ti:
             self.state = ti.state
             self.start_date = ti.start_date
@@ -413,12 +421,12 @@ class TaskInstance(Base, LoggingMixin):
             self.pid = ti.pid
             self.executor_config = ti.executor_config
         else:
-            # 如果任务实例不存在，设置任务实例状态为None
+            # 如果任务实例从DB中删除了，设置任务实例状态为None
             self.state = None
 
     @provide_session
     def clear_xcom_data(self, session=None):
-        """
+        """删除任务实例执行的中间数据
         Clears all XCom data from the database for the task instance
         """
         session.query(XCom).filter(
@@ -430,7 +438,7 @@ class TaskInstance(Base, LoggingMixin):
 
     @property
     def key(self):
-        """返回唯一键
+        """返回唯一键：DB主键 + try_number
         Returns a tuple that identifies the task instance uniquely
         """
         return self.dag_id, self.task_id, self.execution_date, self.try_number
@@ -455,7 +463,7 @@ class TaskInstance(Base, LoggingMixin):
 
     @provide_session
     def are_dependents_done(self, session=None):
-        """验证当前调度的任务实例的所有下游任务实例是否都执行完成
+        """验证当前调度的任务实例的所有下游任务实例是否都执行成功
         Checks whether the dependents of this task instance have all succeeded.
         This is meant to be used by wait_for_downstream.
 
@@ -466,7 +474,8 @@ class TaskInstance(Base, LoggingMixin):
         task = self.task
 
         # 判断任务是否有下游任务
-        if not task.downstream_task_ids:
+        downstream_task_ids = task.downstream_task_ids
+        if not downstream_task_ids:
             return True
 
         # 获得下游任务实例的状态为success的数量
@@ -478,7 +487,7 @@ class TaskInstance(Base, LoggingMixin):
         )
         count = ti[0][0]
         # 验证当前调度的任务实例的所有下游任务实例是否都执行完成
-        return count == len(task.downstream_task_ids)
+        return count == len(downstream_task_ids)
 
     @property
     @provide_session
@@ -491,6 +500,7 @@ class TaskInstance(Base, LoggingMixin):
             # 获得当前任务实例关联的dag_run，最多有一个
             dr = self.get_dagrun(session=session)
 
+            # 正常情况不会发生，仅用于单元测试
             # LEGACY: most likely running from unit tests
             if not dr:
                 # Means that this TI is NOT being run from a DR, but from a catchup
@@ -547,12 +557,12 @@ class TaskInstance(Base, LoggingMixin):
         for dep_status in self.get_failed_dep_statuses(
                 dep_context=dep_context,
                 session=session):
-            failed = True
-
             verbose_aware_logger(
                 "Dependencies not met for %s, dependency '%s' FAILED: %s",
                 self, dep_status.dep_name, dep_status.reason
             )
+            failed = True
+            break
 
         if failed:
             return False
@@ -572,7 +582,7 @@ class TaskInstance(Base, LoggingMixin):
         # 默认的依赖self.task.deps 为
         #            # 验证重试时间： 任务实例已经标记为重试，但是还没有到下一次重试时间，如果运行就会失败
         #            NotInRetryPeriodDep(),
-        #            # 验证任务实例是否依赖上一个周期的任务实例
+        #            # 验证任务实例是否依赖上一个周期的任务实例，即验证depends_on_past参数
         #            PrevDagrunDep(),
         #            # 验证上游依赖任务
         #            TriggerRuleDep(),
