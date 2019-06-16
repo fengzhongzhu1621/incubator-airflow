@@ -612,6 +612,7 @@ class TaskInstance(Base, LoggingMixin):
         Get datetime of the next retry if the task instance fails. For exponential
         backoff, retry_delay is used as base and will be converted to seconds.
         """
+        # 获得任务的重试间隔
         delay = self.task.retry_delay
         if self.task.retry_exponential_backoff:
             # 每次间隔的时间递增
@@ -636,6 +637,7 @@ class TaskInstance(Base, LoggingMixin):
                 timedelta.max.total_seconds() - 1
             )
             delay = timedelta(seconds=delay_backoff_in_seconds)
+            # 获得任务的最大重试间隔
             if self.task.max_retry_delay:
                 delay = min(self.task.max_retry_delay, delay)
         # 任务失败的时间 + 偏移
@@ -655,9 +657,9 @@ class TaskInstance(Base, LoggingMixin):
         Returns a boolean as to whether the slot pool has room for this
         task to run
         """
+        # 如果任务的pool没有设置，说明任务实例没有数量限制
         if not self.task.pool:
             return False
-
         pool = (
             session
             .query(Pool)
@@ -668,7 +670,6 @@ class TaskInstance(Base, LoggingMixin):
             return False
         # 判断任务实例可用的插槽数量
         open_slots = pool.open_slots(session=session)
-
         return open_slots <= 0
 
     @provide_session
@@ -679,11 +680,11 @@ class TaskInstance(Base, LoggingMixin):
         :param session:
         :return: DagRun
         """
+        # TODO 表结构设计有问题，没有将task_instance和dag_run关联
         dr = session.query(DagRun).filter(
             DagRun.dag_id == self.dag_id,
             DagRun.execution_date == self.execution_date
         ).first()
-
         return dr
 
     @provide_session
@@ -699,7 +700,7 @@ class TaskInstance(Base, LoggingMixin):
             job_id=None,
             pool=None,
             session=None):
-        """任务实例执行前的验证
+        """任务实例执行前的验证，如果满足执行条件则将任务实例的状态改为RUNNING
         Checks dependencies and then sets state to RUNNING if they are met. Returns
         True if and only if state is set to RUNNING, which implies that task should be
         executed, in preparation for _run_raw_task
@@ -737,6 +738,7 @@ class TaskInstance(Base, LoggingMixin):
         except XToolConfigException:
             callable_path = None        
         self.hostname = get_hostname(callable_path)
+        # 获得任务的类名
         self.operator = task.__class__.__name__
 
         if not ignore_all_deps and not ignore_ti_state and self.state == State.SUCCESS:
@@ -846,7 +848,7 @@ class TaskInstance(Base, LoggingMixin):
             job_id=None,
             pool=None,
             session=None):
-        """不经过调度器而直接执行operator
+        """不经过调度器而直接执行operator任务实例
         Immediately runs the task (without checking or changing db state
         before execution) and then sets the appropriate final state after
         completion and runs any post-execute callbacks. Meant to be called
@@ -892,14 +894,14 @@ class TaskInstance(Base, LoggingMixin):
                 self.clear_xcom_data()
 
                 # 渲染模板，设置任务属性
-                self.render_templates()
+                self.render_templates(context=context)
 
                 # 任务执行前的预处理操作hook
                 task_copy.pre_execute(context=context)
 
                 # If a timeout is specified for the task, make it fail
                 # if it goes beyond
-                # 判断任务是否执行超时
+                # 判断任务是否执行超时，超时后调用任务的on_kill()
                 result = None
                 if task_copy.execution_timeout:
                     try:
@@ -940,6 +942,7 @@ class TaskInstance(Base, LoggingMixin):
                 Stats.incr('operator_successes_{}'.format(
                     self.task.__class__.__name__), 1, 1)
                 Stats.incr('ti_successes')
+
             self.refresh_from_db(lock_for_update=True)
             self.state = State.SUCCESS
         except AirflowSkipException:
@@ -992,7 +995,7 @@ class TaskInstance(Base, LoggingMixin):
             job_id=None,
             pool=None,
             session=None):
-        # 任务执行前需要进行验证
+        # 任务实例执行前的验证，如果满足执行条件则将任务实例的状态改为RUNNING
         res = self._check_and_change_state_before_execution(
             verbose=verbose,
             ignore_all_deps=ignore_all_deps,
@@ -1123,6 +1126,7 @@ class TaskInstance(Base, LoggingMixin):
         ti_key_str = "{task.dag_id}__{task.task_id}__{ds_nodash}"
         ti_key_str = ti_key_str.format(**locals())
 
+        # 获得任务实例执行的输入参数
         params = {}
         run_id = ''
         dag_run = None
@@ -1220,9 +1224,12 @@ class TaskInstance(Base, LoggingMixin):
         if dag_run and dag_run.conf:
             params.update(dag_run.conf)
 
-    def render_templates(self):
+    def render_templates(self, context=None):
         task = self.task
-        jinja_context = self.get_template_context()
+        if not context:
+            jinja_context = self.get_template_context()
+        else:
+            jinja_context = context
         if hasattr(self, 'task') and hasattr(self.task, 'dag'):
             if self.task.dag.user_defined_macros:
                 jinja_context.update(
