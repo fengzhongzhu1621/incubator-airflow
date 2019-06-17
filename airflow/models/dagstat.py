@@ -3,11 +3,12 @@
 import itertools
 from datetime import datetime, timedelta
 
-from sqlalchemy import Column, Integer, String, Float, PickleType, Index, Boolean
-from sqlalchemy import DateTime
+from sqlalchemy import Column, Integer, String, Boolean
+from sqlalchemy import func
 
-from airflow.models.base import Base, ID_LEN, Stats
+from airflow.models.base import Base, ID_LEN
 from airflow.models.dagrun import DagRun
+from airflow import configuration
 
 from xTool.decorators.db import provide_session
 from xTool.utils.log.logging_mixin import LoggingMixin
@@ -89,7 +90,7 @@ class DagStat(Base):
                 return
 
             # 获得dag每个dagrun状态的记录数量
-            begin_time = datetime.now() - timedelta(days=configuration.conf.getint('core', 'sql_query_history_days'))
+            begin_time = datetime.now() - timedelta(days=configuration.getint('core', 'sql_query_history_days'))
             dagstat_states = set(itertools.product(dag_ids, State.dag_states))
             qry = (
                 session.query(DagRun.dag_id, DagRun.state, func.count('*'))
@@ -99,12 +100,9 @@ class DagStat(Base):
             )
             counts = {(dag_id, state): count for dag_id, state, count in qry}
 
-            # 计算笛卡尔积
+            # 修改每个dag_id的每个状态的dagrund的数量
             for dag_id, state in dagstat_states:
-                count = 0
-                if (dag_id, state) in counts:
-                    count = counts[(dag_id, state)]
-
+                count = counts.get((dag_id, state), 0)
                 session.merge(
                     DagStat(dag_id=dag_id, state=state, count=count, dirty=False)
                 )
@@ -127,16 +125,17 @@ class DagStat(Base):
         :param session: database session
         :return:
         """
-        # unfortunately sqlalchemy does not know upsert
+        # 获得DagStat中存在的状态
         qry = session.query(DagStat).filter(DagStat.dag_id == dag_id).all()
         states = {dag_stat.state for dag_stat in qry}
-        for state in State.dag_states:
-            if state not in states:
-                try:
-                    session.merge(DagStat(dag_id=dag_id, state=state))
-                    session.commit()
-                except Exception as e:
-                    session.rollback()
-                    log = LoggingMixin().log
-                    log.warning("Could not create stat record")
-                    log.exception(e)
+        # 遍历所有状态， 找出不再数据库中的状态
+        states_not_found = set(State.dag_states) - states
+        for state in states_not_found:
+            try:
+                session.merge(DagStat(dag_id=dag_id, state=state))
+                session.commit()
+            except Exception as e:
+                session.rollback()
+                log = LoggingMixin().log
+                log.warning("Could not create stat record")
+                log.exception(e)

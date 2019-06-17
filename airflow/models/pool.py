@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
 
+from datetime import datetime, timedelta
+
 from sqlalchemy import Column, Integer, String, Text
-from sqlalchemy import DateTime
 
 from airflow.models.base import Base
 from airflow.models.taskinstance import TaskInstance
+from airflow import configuration
 
 from xTool.decorators.db import provide_session
 from xTool.utils.state import State
@@ -35,9 +37,11 @@ class Pool(Base):
         """
         Returns the number of slots used at the moment
         """
+        begin_time = datetime.now() - timedelta(days=configuration.getint('core', 'sql_query_history_days'))
         running = (
             session
             .query(TaskInstance)
+            .filter(TaskInstance.execution_date > begin_time)
             .filter(TaskInstance.pool == self.pool)
             .filter(TaskInstance.state == State.RUNNING)
             .count()
@@ -49,9 +53,11 @@ class Pool(Base):
         """
         Returns the number of slots used at the moment
         """
+        begin_time = datetime.now() - timedelta(days=configuration.getint('core', 'sql_query_history_days'))
         return (
             session
             .query(TaskInstance)
+            .filter(TaskInstance.execution_date > begin_time)
             .filter(TaskInstance.pool == self.pool)
             .filter(TaskInstance.state == State.QUEUED)
             .count()

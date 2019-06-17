@@ -4,21 +4,18 @@ from datetime import datetime, timedelta
 
 import six
 from sqlalchemy import (
-    Column, Integer, String, Text, Boolean, ForeignKey, PickleType,
-    Index, Float, LargeBinary, UniqueConstraint)
-from sqlalchemy import func, or_, and_, true as sqltrue
-from sqlalchemy.ext.declarative import declarative_base, declared_attr
-from sqlalchemy.orm import reconstructor, relationship, synonym
+    Column, Integer, String, Boolean, PickleType,
+    Index, UniqueConstraint)
+from sqlalchemy import func, or_, and_
+from sqlalchemy.ext.declarative import declared_attr
+from sqlalchemy.orm import synonym
 from sqlalchemy import DateTime
 
 from airflow.models.base import Base, ID_LEN, Stats
 from airflow import configuration
 from airflow import settings
-from airflow.ti_deps.dep_context import DepContext, QUEUE_DEPS, RUN_DEPS
-from airflow.exceptions import (
-    AirflowDagCycleException, AirflowException, AirflowSkipException
-)
-
+from airflow.ti_deps.dep_context import DepContext
+from airflow.exceptions import AirflowException
 
 from xTool.utils.log.logging_mixin import LoggingMixin
 from xTool.utils.state import State
