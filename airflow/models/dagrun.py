@@ -20,6 +20,7 @@ from airflow.exceptions import AirflowException
 from xTool.utils.log.logging_mixin import LoggingMixin
 from xTool.utils.state import State
 from xTool.decorators.db import provide_session
+from xTool.exceptions import XToolException
 
 
 class DagRun(Base, LoggingMixin):
@@ -67,10 +68,13 @@ class DagRun(Base, LoggingMixin):
         return self._state
 
     def set_state(self, state):
+        """设置dagrun的状态 ."""
         if self._state != state:
             self._state = state
+            # 如果dagrun为完成状态，则需要修改结束时间
             self.end_date = datetime.now() if self._state in State.finished() else None
 
+            # 设置dirty标记，需要重新计算dag中每种状态的dagrun数量
             if self.dag_id is not None:
                 # FIXME: Due to the scoped_session factor we we don't get a clean
                 # session here, so something really weird goes on:
@@ -159,7 +163,6 @@ class DagRun(Base, LoggingMixin):
 
         # 按数据时间排序
         dr = qry.order_by(DR.execution_date).all()
-
         return dr
         
     @provide_session
@@ -201,14 +204,13 @@ class DagRun(Base, LoggingMixin):
 
         :param task_id: the task id
         """
-
+        from airflow.models.taskinstance import TaskInstance
         TI = TaskInstance
         ti = session.query(TI).filter(
             TI.dag_id == self.dag_id,
             TI.execution_date == self.execution_date,
             TI.task_id == task_id
         ).first()
-
         return ti
 
     def get_dag(self):
@@ -220,16 +222,16 @@ class DagRun(Base, LoggingMixin):
         if not self.dag:
             raise AirflowException("The DAG (.dag) for {} needs to be set"
                                    .format(self))
-
         return self.dag
 
     @provide_session
     def get_previous_dagrun(self, session=None):
-        """获得上一个dag实例
-        The previous DagRun, if there is one"""
-
+        """获得上一个dag实例 The previous DagRun, if there is one"""
+        begin_time = datetime.now() - timedelta(days=configuration.conf.getint('core', 'sql_query_history_days'))
+        
         return session.query(DagRun).filter(
             DagRun.dag_id == self.dag_id,
+            DagRun.execution_date > begin_time,
             DagRun.execution_date < self.execution_date
         ).order_by(
             DagRun.execution_date.desc()
@@ -237,8 +239,7 @@ class DagRun(Base, LoggingMixin):
 
     @provide_session
     def get_previous_scheduled_dagrun(self, session=None):
-        """获得上一个调度的dag实例
-        The previous, SCHEDULED DagRun, if there is one"""
+        """获得上一个调度的dag实例 The previous, SCHEDULED DagRun, if there is one"""
         dag = self.get_dag()
 
         return session.query(DagRun).filter(
@@ -255,7 +256,6 @@ class DagRun(Base, LoggingMixin):
 
         :return: State
         """
-
         # 获得dagrun中dag属性
         dag = self.get_dag()
 
@@ -265,7 +265,7 @@ class DagRun(Base, LoggingMixin):
             
         self.log.debug("Updating state for %s considering %s task(s)", self, len(tis))
 
-        # 根据任务实例获得任务，去掉已删除的任务实例
+        # 获得任务实例，去掉已删除的任务实例，获得未执行完毕的任务实例
         unfinished_tasks = []
         for ti in tis:
             # skip in db?
@@ -276,14 +276,12 @@ class DagRun(Base, LoggingMixin):
                 # 获得未完成的任务实例
                 if ti.state in State.unfinished():
                     unfinished_tasks.append(ti)
-            
-        # 获得未完成的任务实例
-        # pre-calculate
-        # db is faster
+
+        # 获得不依赖上个调度的未执行完毕的任务实例
         start_dttm = datetime.now()
         none_depends_on_past = all(not t.task.depends_on_past for t in unfinished_tasks)
 
-        # 未完成的任务实例中，都没有设置并发数限制
+        # 获得没有任务并发限制的任务实例
         none_task_concurrency = all(t.task.task_concurrency is None for t in unfinished_tasks)
         
         # 任务没有上游依赖，且没有阈值限制，则有可优化的空间 small speed up
@@ -371,6 +369,11 @@ class DagRun(Base, LoggingMixin):
         """根据dag实例，创建任务实例；验证任务实例，因为任务可能被删除或者新的任务没有被添加到DB中
         Verifies the DagRun by checking for removed tasks or tasks that are not in the
         database yet. It will set state to removed or add the task if required.
+
+        处理3中情况
+        1. task在dag中不存在，DB中存在              ：设置任务实例的状态为REMOVE
+        2. task在dag中存在，  DB中存在且状态为REMOVE ：设置任务实例的状态为None
+        3. task在dag中存在，  DB中不存在             ：在DB中新增加一个任务实例
         """
         # 获得dagmodel对象
         dag = self.get_dag()
@@ -390,7 +393,7 @@ class DagRun(Base, LoggingMixin):
             # 将不存在的任务标记为删除
             try:
                 task = dag.get_task(ti.task_id)
-            except (AirflowException, XToolException):
+            except XToolException:
                 # dag.task_dict中不存在这个任务
                 # 用户修改了dag文件，去掉了部分task声明
                 # 此时用户手工触发dag_run，它的调度时间刚好和系统正在调度的时间一致
@@ -407,7 +410,7 @@ class DagRun(Base, LoggingMixin):
                     # 标记任务实例为删除状态
                     ti.state = State.REMOVED
 
-            # 如果任务在dag.task_dict中存在，但是被标记为删除状态，需要变更任务状态为None
+            # 如果任务实例的状态为REMOVE, 且dag中重新添加了这个任务，则需要恢复这个任务，将其状态设置为None
             is_task_in_dag = task is not None
             should_restore_task = is_task_in_dag and ti.state == State.REMOVED
             if should_restore_task:
@@ -418,13 +421,16 @@ class DagRun(Base, LoggingMixin):
 
         # 添加缺失的任务实例： 例如dag变更后新增了任务
         # check for missing tasks
+        from airflow.models.taskinstance import TaskInstance
         for task in six.itervalues(dag.task_dict):
             # 如果任务类型是即席查询，则不会创建任务实例
             if task.adhoc:
                 continue
+            # 未到执行时间且非补录的任务是不会创建任务实例的
             if task.start_date > self.execution_date and not self.is_backfill:
                 continue
-            # 补齐确实的任务实例，ORM模型自动优化为批量插入
+            # 如果dag中新增加了任务，但是DB中还不存在，则需要在DB中新增任务实例
+            # ORM模型自动优化为批量插入
             if task.task_id not in task_ids:
                 ti = TaskInstance(task, self.execution_date)
                 session.add(ti)
@@ -433,7 +439,7 @@ class DagRun(Base, LoggingMixin):
 
     @staticmethod
     def get_run(session, dag_id, execution_date):
-        """
+        """根据dag_id和调度时间获得dagrun
         :param dag_id: DAG ID
         :type dag_id: unicode
         :param execution_date: execution date
