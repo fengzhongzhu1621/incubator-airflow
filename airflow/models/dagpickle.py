@@ -20,7 +20,7 @@
 import dill
 from sqlalchemy import Column, Integer, PickleType, Text
 from sqlalchemy import DateTime
-from sqlalchemy import func, or_, and_, true as sqltrue
+from sqlalchemy import func, true as sqltrue
 
 from airflow.models.base import Base
 

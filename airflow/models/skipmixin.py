@@ -26,7 +26,7 @@ from xTool.decorators.db import provide_session
 
 
 class SkipMixin(LoggingMixin):
-    """修改任务实例的状态为SKIPPED
+    """修改任务实例的状态为SKIPPED ."""
     @provide_session
     def skip(self, dag_run, execution_date, tasks, session=None):
         """

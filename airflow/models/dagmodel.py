@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 
 import six
-from sqlalchemy import Column, Integer, String, Float, PickleType, Index, Boolean
+from sqlalchemy import Column, Integer, String, Boolean
 from sqlalchemy import DateTime
-from sqlalchemy import func, or_, and_, true as sqltrue
+from sqlalchemy import func, or_
 
 from airflow.models.base import Base, ID_LEN
 from airflow.models.taskinstance import TaskInstance

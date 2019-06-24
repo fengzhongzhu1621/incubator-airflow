@@ -33,12 +33,14 @@ class KubeResourceVersion(Base):
     @staticmethod
     @provide_session
     def get_current_resource_version(session=None):
+        """获得资源你的版本 ."""
         (resource_version,) = session.query(KubeResourceVersion.resource_version).one()
         return resource_version
 
     @staticmethod
     @provide_session
     def checkpoint_resource_version(resource_version, session=None):
+        """更新资源的版本 ."""
         if resource_version:
             session.query(KubeResourceVersion).update({
                 KubeResourceVersion.resource_version: resource_version
@@ -48,6 +50,7 @@ class KubeResourceVersion(Base):
     @staticmethod
     @provide_session
     def reset_resource_version(session=None):
+        """重置所有资源的版本号 ."""
         session.query(KubeResourceVersion).update({
             KubeResourceVersion.resource_version: '0'
         })
@@ -65,13 +68,16 @@ class KubeWorkerIdentifier(Base):
     def get_or_create_current_kube_worker_uuid(session=None):
         (worker_uuid,) = session.query(KubeWorkerIdentifier.worker_uuid).one()
         if worker_uuid == '':
+            # 一个纯随机数，与机器无关, 相重的几率很小
             worker_uuid = str(uuid.uuid4())
+            # 更新uuid
             KubeWorkerIdentifier.checkpoint_kube_worker_uuid(worker_uuid, session)
         return worker_uuid
 
     @staticmethod
     @provide_session
     def checkpoint_kube_worker_uuid(worker_uuid, session=None):
+        """更新uuid ."""
         if worker_uuid:
             session.query(KubeWorkerIdentifier).update({
                 KubeWorkerIdentifier.worker_uuid: worker_uuid
