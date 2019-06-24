@@ -10,6 +10,7 @@ from collections import namedtuple
 import importlib
 
 import six
+from six import itervalues
 from croniter import (
     croniter, CroniterBadCronError, CroniterBadDateError, CroniterNotAlphaError
 )
@@ -70,6 +71,7 @@ class DagBag(BaseDagBag, LoggingMixin):
         # do not use default arg in signature, to fix import cycle on plugin load
         if executor is None:
             executor = GetDefaultExecutor()
+        self.executor = executor
         dag_folder = dag_folder or settings.DAGS_FOLDER
         self.log.info("Filling up the DagBag from %s", dag_folder)
         self.dag_folder = dag_folder
@@ -77,16 +79,16 @@ class DagBag(BaseDagBag, LoggingMixin):
         # the file's last modified timestamp when we last read it
         # 记录文件的最后修改时间
         self.file_last_changed = {}
-        self.executor = executor
         self.import_errors = {}
         self.has_logged = False
 
-        # 从目录中加载dag
+        # 从目录中加载dag示例
         if include_examples:
             example_dag_folder = os.path.join(
                 os.path.dirname(__file__),
                 'example_dags')
             self.collect_dags(example_dag_folder)
+        # 从文件夹中加载dag
         self.collect_dags(dag_folder)
 
     def size(self):
@@ -100,9 +102,9 @@ class DagBag(BaseDagBag, LoggingMixin):
         Gets the DAG out of the dictionary, and refreshes it if expired
         """
         # If asking for a known subdag, we want to refresh the parent
+        # 如果是子dag，则获取其父dag_id
         root_dag_id = dag_id
-        if dag_id in self.dags:
-            dag = self.dags[dag_id]
+        for dag in itervalues(self.dags):
             if dag.is_subdag:
                 root_dag_id = dag.parent_dag.dag_id
 
@@ -113,6 +115,9 @@ class DagBag(BaseDagBag, LoggingMixin):
         # 如果用户在界面上点击了刷新按钮，会将当前时间记录到last_expired字段
         # 如果刷新时间大于上次的文件加载时间，则重新加载文件
         # 这样就不需要等到下一次
+        # dag_id已经在DB中存在， 但是
+        #   1. dag_id没有从文件中加载
+        #   2. 或者用户点击了刷新按钮
         if orm_dag and (
                 root_dag_id not in self.dags or
                 (
@@ -120,21 +125,23 @@ class DagBag(BaseDagBag, LoggingMixin):
                     dag.last_loaded < orm_dag.last_expired
                 )
         ):
-            # Reprocess source file
+            # 重新加载dag
             found_dags = self.process_file(
                 filepath=orm_dag.fileloc, only_if_updated=False)
 
             # If the source file no longer exports `dag_id`, delete it from self.dags
             if found_dags and dag_id in [found_dag.dag_id for found_dag in found_dags]:
+                # 如果dagid所在的文件重新加载成功，且这个文件的dagid没有被修改
                 return self.dags[dag_id]
             elif dag_id in self.dags:
+                # 如果dagid所在的文件已经被删除，或者这个文件的dagid改变了，则删除此dag
                 del self.dags[dag_id]
         
         # 返回最新的dag，因为此dag可能会重新加载
         return self.dags.get(dag_id)
 
     def process_file(self, filepath, only_if_updated=True, safe_mode=True):
-        """根据文件的修改时间重新加载文件，
+        """根据文件的修改时间重新加载文件
         Given a path to a python module or zip file, this method imports
         the module and look for dag objects within it.
         """
@@ -147,28 +154,30 @@ class DagBag(BaseDagBag, LoggingMixin):
             return found_dags
 
         try:
-            # This failed before in what may have been a git sync
-            # race condition
             # 获得文件的修改时间
             file_last_changed_on_disk = datetime.fromtimestamp(os.path.getmtime(filepath))
-            # 判断文件最近是否被修改
+            # 判断文件最近是否被修改，最近未修改的文件不会被重新加载
             if only_if_updated \
                     and filepath in self.file_last_changed \
                     and file_last_changed_on_disk == self.file_last_changed[filepath]:
                 return found_dags
-
         except Exception as e:
             self.log.exception(e)
             return found_dags
 
+        # 用于存储已经加载的dag模块
         mods = []
+
+        # 判断是否是zip压缩文件
         is_zipfile = zipfile.is_zipfile(filepath)
         if not is_zipfile:
             # 判断文件是否是可解析的DAG文件
-            if safe_mode and os.path.isfile(filepath):
+            if safe_mode:
+                # 读取dag文件，dag文件中必须包含DAG且airflow字符串
                 with open(filepath, 'rb') as f:
                     content = f.read()
                     if not all([s in content for s in (b'DAG', b'airflow')]):
+                        # 保存文件最新修改时间
                         self.file_last_changed[filepath] = file_last_changed_on_disk
                         # Don't want to spam user with skip messages
                         if not self.has_logged:
@@ -181,10 +190,10 @@ class DagBag(BaseDagBag, LoggingMixin):
             self.log.debug("Importing %s", filepath)
             # 获得文件名和后缀名
             org_mod_name, _ = os.path.splitext(os.path.split(filepath)[-1])
+            # 获得模块名
             mod_name = ('unusual_prefix_' +
                         hashlib.sha1(filepath.encode('utf-8')).hexdigest() +
                         '_' + org_mod_name)
-
             if mod_name in sys.modules:
                 del sys.modules[mod_name]
 
@@ -196,6 +205,7 @@ class DagBag(BaseDagBag, LoggingMixin):
                 except Exception as e:
                     self.log.exception("Failed to import: %s", filepath)
                     self.import_errors[filepath] = str(e)
+                    # 加载模块失败也要保存最新修改时间
                     self.file_last_changed[filepath] = file_last_changed_on_disk
 
         else:
@@ -233,11 +243,13 @@ class DagBag(BaseDagBag, LoggingMixin):
                         self.import_errors[filepath] = str(e)
                         self.file_last_changed[filepath] = file_last_changed_on_disk
 
-        # 遍历加载的模块
+        # 遍历已经加载成功的模块
         for m in mods:
             for dag in list(m.__dict__.values()):
                 if isinstance(dag, DAG):
                     if not dag.full_filepath:
+                        # 设置dag文件的路径
+                        # full_filepath可以是后缀为.py的文件，或者后缀为.zip的文件路径
                         dag.full_filepath = filepath
                         if dag.fileloc != filepath and not is_zipfile:
                             dag.fileloc = filepath
@@ -245,8 +257,10 @@ class DagBag(BaseDagBag, LoggingMixin):
                         # 将dag重新加入到self.dags中
                         dag.is_subdag = False
                         self.bag_dag(dag, parent_dag=dag, root_dag=dag)
+                        # 判断dag的调度配置是否正确
                         if isinstance(dag._schedule_interval, six.string_types):
                             croniter(dag._schedule_interval)
+                        # 返回配置正确的dag
                         found_dags.append(dag)
                         found_dags += dag.subdags
                     except (CroniterBadCronError,
@@ -262,7 +276,7 @@ class DagBag(BaseDagBag, LoggingMixin):
                         self.import_errors[dag.full_filepath] = str(cycle_exception)
                         self.file_last_changed[dag.full_filepath] = \
                             file_last_changed_on_disk
-        # 记录所 加载文件的最近修改时间
+        # 记录所加载文件的最近修改时间
         self.file_last_changed[filepath] = file_last_changed_on_disk
         return found_dags
 
@@ -283,6 +297,8 @@ class DagBag(BaseDagBag, LoggingMixin):
         # SELECT task_instance.try_number AS task_instance_try_number, task_instance.task_id AS task_instance_task_id, task_instance.dag_id AS task_instance_dag_id, task_instance.execution_date AS task_instance_execution_date, task_instance.start_date AS task_instance_start_date, task_instance.end_date AS task_instance_end_date, task_instance.duration AS task_instance_duration, task_instance.state AS task_instance_state, task_instance.max_tries AS task_instance_max_tries, task_instance.hostname AS task_instance_hostname, task_instance.unixname AS task_instance_unixname, task_instance.job_id AS task_instance_job_id, task_instance.pool AS task_instance_pool, task_instance.queue AS task_instance_queue, task_instance.priority_weight AS task_instance_priority_weight, task_instance.operator AS task_instance_operator, task_instance.queued_dttm AS task_instance_queued_dttm, task_instance.pid AS task_instance_pid, task_instance.executor_config AS task_instance_executor_config 
         # FROM task_instance INNER JOIN job ON task_instance.job_id = job.id AND job.job_type IN (LocalTaskJob) 
         # WHERE task_instance.execution_date > %s AND task_instance.state = 'running' AND (job.latest_heartbeat < %s OR job.state != 'running')
+        # 1. 获取正在运行的任务实例
+        # 2. 或者 now > LJ.latest_heartbeat + scheduler_zombie_task_threshold
         tis = (
             session.query(TI)
             .join(LJ, TI.job_id == LJ.id)
@@ -296,15 +312,15 @@ class DagBag(BaseDagBag, LoggingMixin):
             .all()
         )
 
+        # 执行任务实例的失败处理函数
         for ti in tis:
-            if ti and ti.dag_id in self.dags:
+            if ti.dag_id in self.dags:
                 # 根据任务实例获取dag
                 dag = self.dags[ti.dag_id]
                 # 获得dag中所有的任务
                 if ti.task_id in dag.task_ids:
-                    # 获得任务模型
+                    # 获得任务
                     task = dag.get_task(ti.task_id)
-
                     # now set non db backed vars on ti
                     ti.task = task
                     ti.test_mode = configuration.getboolean('core', 'unit_test_mode')
@@ -317,11 +333,11 @@ class DagBag(BaseDagBag, LoggingMixin):
         session.commit()
 
     def bag_dag(self, dag, parent_dag, root_dag):
-        """
+        """ 将加载的dag模块加入到self.dags中
         Adds the DAG into the bag, recurses into sub dags.
         Throws AirflowDagCycleException if a cycle is detected in this dag or its subdags
         """
-        # 测试是否有环
+        # 测试dag中是否有环
         dag.test_cycle()  # throws if a task cycle is found
         # 从指定的属性中获取设置的模板文件名，渲染模板并将此属性的值设置为渲染后的模板的内容
         dag.resolve_template_files()
@@ -358,7 +374,7 @@ class DagBag(BaseDagBag, LoggingMixin):
             self,
             dag_folder=None,
             only_if_updated=True):
-        """根据dag文件夹路径加载dag
+        """根据dag文件夹路径加载所有的dags，把所有导入的模块都加入到self.dags中
         Given a file path or a folder, this method looks for python modules,
         imports them and adds them to the dagbag collection.
 
@@ -385,6 +401,7 @@ class DagBag(BaseDagBag, LoggingMixin):
         for filepath in known_file_paths:
             try:
                 ts = datetime.now()
+                # 加载dag文件
                 found_dags = self.process_file(
                     filepath, only_if_updated=only_if_updated)
 
@@ -432,7 +449,7 @@ class DagBag(BaseDagBag, LoggingMixin):
     @provide_session
     def deactivate_inactive_dags(self, session=None):
         """删除非活动的dag ."""
-        active_dag_ids = [dag.dag_id for dag in list(self.dags.values())]
+        active_dag_ids = [dag.dag_id for dag in itervalues(self.dags)]
         for dag in session.query(
                 DagModel).filter(~DagModel.dag_id.in_(active_dag_ids)).all():
             dag.is_active = False
