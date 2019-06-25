@@ -25,7 +25,6 @@ from __future__ import unicode_literals
 from xTool.utils import timezone
 from datetime import datetime, timedelta
 import datetime as dt
-from dateutil.relativedelta import relativedelta  # for doctest
 import six
 
 from croniter import croniter
