@@ -17,8 +17,6 @@
 # specific language governing permissions and limitations
 # under the License.
 
-from typing import Any
-from sqlalchemy import MetaData
 from sqlalchemy.ext.declarative import declarative_base
 
 from airflow import settings
@@ -30,3 +28,5 @@ ID_LEN = 250
 XCOM_RETURN_KEY = 'return_value'
 Stats = settings.Stats
 
+# Used by DAG context_managers
+_CONTEXT_MANAGER_DAG = None

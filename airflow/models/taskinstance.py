@@ -1126,7 +1126,7 @@ class TaskInstance(Base, LoggingMixin):
         ti_key_str = "{task.dag_id}__{task.task_id}__{ds_nodash}"
         ti_key_str = ti_key_str.format(**locals())
 
-        # 获得任务实例执行的输入参数
+        # 获得任务实例执行的输入参数，需要加上dag.params
         params = {}
         run_id = ''
         dag_run = None

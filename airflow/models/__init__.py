@@ -206,10 +206,6 @@ def get_fernet():
     return _fernet
 
 
-# Used by DAG context_managers
-_CONTEXT_MANAGER_DAG = None
-
-
 def clear_task_instances(tis,
                          session,
                          activate_dag_runs=True,

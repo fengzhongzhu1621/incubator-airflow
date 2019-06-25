@@ -10,12 +10,14 @@ from datetime import datetime, timedelta
 from collections import defaultdict
 
 import six
+from six import iterkeys, itervalues, iteritems
 from sqlalchemy import func, or_
 
 from airflow.models.dagmodel import DagModel
 from airflow.models.dagrun import DagRun
 from airflow.models.dagstat import DagStat
 from airflow.models.taskinstance import TaskInstance
+from airflow.models import base
 from airflow import settings
 from airflow import configuration
 from airflow.dag.base_dag import BaseDag
@@ -25,6 +27,8 @@ from xTool.utils.log.logging_mixin import LoggingMixin
 from xTool.utils.state import State
 from xTool.utils.helpers import validate_key
 from xTool.utils.dates import cron_presets, date_range as utils_date_range
+from xTool.algorithms.graphs.sort import topological_sort as graph_topological_sort
+from xTool.exceptions import XToolException
 
 
 @functools.total_ordering
@@ -266,14 +270,12 @@ class DAG(BaseDag, LoggingMixin):
     # Context Manager -----------------------------------------------
 
     def __enter__(self):
-        global _CONTEXT_MANAGER_DAG
-        self._old_context_manager_dag = _CONTEXT_MANAGER_DAG
-        _CONTEXT_MANAGER_DAG = self
+        self._old_context_manager_dag = base._CONTEXT_MANAGER_DAG
+        base._CONTEXT_MANAGER_DAG = self
         return self
 
     def __exit__(self, _type, _value, _tb):
-        global _CONTEXT_MANAGER_DAG
-        _CONTEXT_MANAGER_DAG = self._old_context_manager_dag
+        base._CONTEXT_MANAGER_DAG = self._old_context_manager_dag
 
     # /Context Manager ----------------------------------------------
 
@@ -286,7 +288,7 @@ class DAG(BaseDag, LoggingMixin):
             num=num, delta=self._schedule_interval)
 
     def is_fixed_time_schedule(self):
-        """
+        """判断调度时间是否是固定时间
         Figures out if the DAG schedule has a fixed time (e.g. 3 AM).
 
         :return: True if the schedule has a fixed time, False if not.
@@ -310,9 +312,8 @@ class DAG(BaseDag, LoggingMixin):
         :return:  datetime
         """
         if isinstance(self._schedule_interval, six.string_types):
-            # 创建cron
+            # 获得下一次调度时间
             cron = croniter(self._schedule_interval, dttm)
-            # 获得下一次调度时间，添加时区信息
             return cron.get_next(datetime)
         elif isinstance(self._schedule_interval, timedelta):
             return dttm + self._schedule_interval
@@ -325,7 +326,7 @@ class DAG(BaseDag, LoggingMixin):
         :return: datetime
         """
         if isinstance(self._schedule_interval, six.string_types):
-            # 创建cron
+            # 获得上一次调度时间
             cron = croniter(self._schedule_interval, dttm)
             return cron.get_prev(datetime)
         elif self._schedule_interval is not None:
@@ -380,6 +381,7 @@ class DAG(BaseDag, LoggingMixin):
         """获得下一次调度时间，需要处理临界点
         Returns dttm + interval unless dttm is first interval then it returns dttm
         """
+        # 获得下一次调度时间，如果是单次调度，因为self._schedule_interval为None，所以函数默认返回None
         following = self.following_schedule(dttm)
 
         # in case of @once
@@ -419,11 +421,9 @@ class DAG(BaseDag, LoggingMixin):
         # 是否获取外部触发的dagrun
         if not include_externally_triggered:
             qry = qry.filter(DR.external_trigger.__eq__(False))
-
+        # 按调度时间逆序
         qry = qry.order_by(DR.execution_date.desc())
-
         last = qry.first()
-
         return last
 
     @property
@@ -436,6 +436,7 @@ class DAG(BaseDag, LoggingMixin):
 
     @property
     def full_filepath(self):
+        """获得文件的绝对路径 ."""
         return self._full_filepath
 
     @full_filepath.setter
@@ -465,7 +466,7 @@ class DAG(BaseDag, LoggingMixin):
 
     @property
     def tasks(self):
-        """获得dag包含的所有任务 ."""
+        """获得dag包含的所有任务列表 ."""
         return list(self.task_dict.values())
 
     @tasks.setter
@@ -480,13 +481,13 @@ class DAG(BaseDag, LoggingMixin):
 
     @property
     def active_task_ids(self):
-        """获得dag包含的所有的有效任务Ids ."""
-        return list(k for k, v in self.task_dict.items() if not v.adhoc)
+        """获得dag包含的所有的有效任务Ids，不包括坐席任务 ."""
+        return list(task_id for task_id, task in iteritems(self.task_dict) if not task.adhoc)
 
     @property
     def active_tasks(self):
         """获得dag包含的所有的有效任务，不包含即席查询 ."""
-        return [t for t in self.tasks if not t.adhoc]
+        return [task for task in itervalues(self.task_dict) if not task.adhoc]
 
     @property
     def filepath(self):
@@ -508,7 +509,7 @@ class DAG(BaseDag, LoggingMixin):
     @property
     def owner(self):
         """获得所有任务的拥有者，用逗号加空格分割 ."""
-        return ", ".join(list(set([t.owner for t in self.tasks])))
+        return ", ".join(set([task.owner for task in itervalues(self.task_dict)]))
 
     @property
     @provide_session
@@ -643,18 +644,20 @@ class DAG(BaseDag, LoggingMixin):
         # https://github.com/airbnb/airflow/issues/1168
         from airflow.operators.subdag_operator import SubDagOperator
         subdag_lst = []
-        for task in self.tasks:
+        for task in itervalues(self.task_dict):
             if (isinstance(task, SubDagOperator) or
                     # TODO remove in Airflow 2.0
                     type(task).__name__ == 'SubDagOperator'):
                 subdag_lst.append(task.subdag)
+                # 递归
                 subdag_lst += task.subdag.subdags
         return subdag_lst
 
     def resolve_template_files(self):
         """删除所有任务的临时文件 ."""
-        for t in self.tasks:
-            t.resolve_template_files()
+        for task in itervalues(self.task_dict):
+            # 从指定的属性中获取设置的模板文件名，渲染模板并将此属性的值设置为渲染后的模板的内容
+            task.resolve_template_files()
 
     def get_template_env(self):
         """返回jinja2模板的env，在支持用户自定义宏和自定义过滤器
@@ -702,7 +705,7 @@ class DAG(BaseDag, LoggingMixin):
             TI.dag_id == self.dag_id,
             TI.execution_date >= start_date,
             TI.execution_date <= end_date,
-            TI.task_id.in_([t.task_id for t in self.tasks]),
+            TI.task_id.in_([task.task_id for task in itervalues(self.task_dict)]),
         )
         if state:
             tis = tis.filter(TI.state == state)
@@ -712,7 +715,7 @@ class DAG(BaseDag, LoggingMixin):
     @property
     def roots(self):
         """获得所有的叶子节点，即没有下游节点 ."""
-        return [t for t in self.tasks if not t.downstream_list]
+        return [task for task in itervalues(self.task_dict) if not task.downstream_list]
 
     def topological_sort(self):
         """拓扑排序
@@ -724,47 +727,12 @@ class DAG(BaseDag, LoggingMixin):
 
         :return: list of tasks in topological order
         """
-
-        # copy the the tasks so we leave it unmodified
-        graph_unsorted = self.tasks[:]
-
-        graph_sorted = []
-
-        # special case
-        if len(self.tasks) == 0:
-            return tuple(graph_sorted)
-
-        # Run until the unsorted graph is empty.
-        while graph_unsorted:
-            # Go through each of the node/edges pairs in the unsorted
-            # graph. If a set of edges doesn't contain any nodes that
-            # haven't been resolved, that is, that are still in the
-            # unsorted graph, remove the pair from the unsorted graph,
-            # and append it to the sorted graph. Note here that by using
-            # using the items() method for iterating, a copy of the
-            # unsorted graph is used, allowing us to modify the unsorted
-            # graph as we move through it. We also keep a flag for
-            # checking that that graph is acyclic, which is true if any
-            # nodes are resolved during each pass through the graph. If
-            # not, we need to bail out as the graph therefore can't be
-            # sorted.
-            acyclic = False
-            for node in list(graph_unsorted):
-                for edge in node.upstream_list:
-                    if edge in graph_unsorted:
-                        break
-                # no edges in upstream tasks
-                else:
-                    # 无环
-                    acyclic = True
-                    graph_unsorted.remove(node)
-                    graph_sorted.append(node)
-
-            if not acyclic:
-                raise AirflowException("A cyclic dependency occurred in dag: {}"
-                                       .format(self.dag_id))
-
-        return tuple(graph_sorted)
+        try
+            graph_sorted = graph_topological_sort(self.tasks)
+        except XToolException:
+            raise AirflowException("A cyclic dependency occurred in dag: {}"
+                                    .format(self.dag_id))
+        return graph_sorted
 
     @provide_session
     def set_dag_runs_state(
