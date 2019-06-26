@@ -14,7 +14,7 @@ from six import iterkeys, itervalues, iteritems
 from sqlalchemy import func, or_
 
 from airflow.models.dagmodel import DagModel
-from airflow.models.dagrun import DagRun
+from airflow.models.dagrun import DagRun, clear_task_instances
 from airflow.models.dagstat import DagStat
 from airflow.models.taskinstance import TaskInstance
 from airflow.models import base
@@ -742,7 +742,7 @@ class DAG(BaseDag, LoggingMixin):
             start_date=None,
             end_date=None,
     ):
-        """在dag中，将dagrun的状态设置为RUNNING ."""
+        """在dag中，将dagrun的状态设置为RUNNING，即重跑dagrun，并标记需要重新统计dagrun的数量 ."""
         # 更新dag每个状态的dag_run的数量，并设置dirty为False，实际上并没有执行
         query = session.query(DagRun).filter_by(dag_id=self.dag_id)
         if start_date:
@@ -751,13 +751,13 @@ class DAG(BaseDag, LoggingMixin):
             query = query.filter(DagRun.execution_date <= end_date)
         drs = query.all()
 
-        # 将dagrun的状态设置为RUNNING
+        # 批量更新dagrun的状态
         dirty_ids = []
         for dr in drs:
             dr.state = state
             dirty_ids.append(dr.dag_id)
 
-        # 添加统计信息
+        # 更新dag每个状态的dag_run的数量，并设置dirty为False
         DagStat.update(dirty_ids, session=session)
 
     @provide_session
@@ -788,6 +788,8 @@ class DAG(BaseDag, LoggingMixin):
         # 根据条件获得任务实例
         TI = TaskInstance
         tis = session.query(TI)
+
+        # 包含子dag
         if include_subdags:
             # Crafting the right filter for dag_id and task_ids combo
             conditions = []
@@ -801,8 +803,8 @@ class DAG(BaseDag, LoggingMixin):
             tis = session.query(TI).filter(TI.dag_id == self.dag_id)
             tis = tis.filter(TI.task_id.in_(self.task_ids))
 
+        # 包含父dag
         if include_parentdag and self.is_subdag:
-
             p_dag = self.parent_dag.sub_dag(
                 task_regex=self.dag_id.split('.')[1],
                 include_upstream=False,
@@ -829,10 +831,11 @@ class DAG(BaseDag, LoggingMixin):
         if only_running:
             tis = tis.filter(TI.state == State.RUNNING)
 
+        # 仅返回需要清除的任务实例模型
         if get_tis:
             return tis
 
-        # 模拟运行，用于判断是否存在任务实例
+        # 返回需要清理的任务实例，用于判断是否存在任务实例
         if dry_run:
             # 不会删除dag_run
             tis = tis.all()
@@ -858,17 +861,13 @@ class DAG(BaseDag, LoggingMixin):
         if do_it:
             # 将任务实例和job关闭，将dag_run设置为运行态
             # 会把subdag中的dagrun也设置为RUNNNING
-            # - 正在运行的任务改为关闭状态，相关的job设置为关闭状态
+            # - 正在运行的任务实例的消费者job已经启动，则设置为关闭状态
             # - 非正在运行的任务改为 None 状态，并修改任务实例的最大重试次数 max_tries
             # - 任务相关的dagrun设置为RUNNING状态
-            clear_task_instances(tis.all(),
-                                 session,
-                                 dag=self,
-                                 )
-            # 重置dagrun，不包含subdag
-            # TODO 重复操作
+            clear_task_instances(tis.all(), session, dag=self)
+            # 重跑dagrun，不包含subdag
             if reset_dag_runs:
-                # 在dag中，将dagrun的状态设置为RUNNING
+                # 在dag中，将dagrun的状态设置为RUNNING，即重跑dagrun，并标记需要重新统计dagrun的数量
                 self.set_dag_runs_state(session=session,
                                         start_date=start_date,
                                         end_date=end_date,
@@ -913,6 +912,7 @@ class DAG(BaseDag, LoggingMixin):
         if dry_run:
             return all_tis
 
+        # 获得待清理的任务实例的数量
         count = len(all_tis)
         do_it = True
         if count == 0:
@@ -968,31 +968,31 @@ class DAG(BaseDag, LoggingMixin):
         based on a regex that should match one or many tasks, and includes
         upstream and downstream neighbours based on the flag passed.
         """
-        # 拷贝dag，新的dag的任务列表为空
-        dag = copy.deepcopy(self)
-
         # 根据任务ID模糊匹配，获得匹配的任务
         regex_match = [
-            t for t in dag.tasks if re.findall(task_regex, t.task_id)]
+            task for task in dag.tasks if re.findall(task_regex, task.task_id)]
         also_include = []
-        for t in regex_match:
+        for task in regex_match:
             # 包含匹配任务的所有下游任务
             if include_downstream:
-                also_include += t.get_flat_relatives(upstream=False)
+                also_include += task.get_flat_relatives(upstream=False)
             # 包含匹配任务的所有上游任务
             if include_upstream:
-                also_include += t.get_flat_relatives(upstream=True)
+                also_include += task.get_flat_relatives(upstream=True)
 
-        # Compiling the unique list of tasks that made the cut
-        dag.task_dict = {t.task_id: t for t in regex_match + also_include}
+        # 拷贝dag，新的dag的任务列表为空
+        dag = copy.deepcopy(self)
+        # Compiling the unique list of tasks that made the cut        
+        dag.task_dict = {task.task_id: task for task in regex_match + also_include}
+        task_ids = iterkeys(dag.task_dict)
+
         # dag.tasks 其实就是 regex_match + also_include
-        for t in dag.tasks:
+        for task in itervalues(dag.task_dict):
             # Removing upstream/downstream references to tasks that did not
             # made the cut
             # 通过交集，去掉原有任务的上下游关联任务
-            t._upstream_task_ids = t._upstream_task_ids.intersection(dag.task_dict.keys())
-            t._downstream_task_ids = t._downstream_task_ids.intersection(
-                dag.task_dict.keys())
+            task._upstream_task_ids = task._upstream_task_ids.intersection(task_ids)
+            task._downstream_task_ids = task._downstream_task_ids.intersection(task_ids)
 
         # 如果dag子集的任务数量小于父集的数量，则标记子集的partial为True
         if len(dag.tasks) < len(self.tasks):
@@ -1001,12 +1001,13 @@ class DAG(BaseDag, LoggingMixin):
         return dag
 
     def has_task(self, task_id):
-        return task_id in (t.task_id for t in self.tasks)
+        return task_id in self.task_dict
 
     def get_task(self, task_id):
-        if task_id in self.task_dict:
-            return self.task_dict[task_id]
-        raise AirflowException("Task {task_id} not found".format(**locals()))
+        task = self.task_dict.get(task_id)
+        if not task:
+            raise AirflowException("Task {task_id} not found".format(**locals()))
+        return task
 
     @provide_session
     def pickle_info(self, session=None):
@@ -1048,14 +1049,14 @@ class DAG(BaseDag, LoggingMixin):
         def get_downstream(task, level=0):
             print((" " * level * 4) + str(task))
             level += 1
-            for t in task.upstream_list:
-                get_downstream(t, level)
+            for task in task.upstream_list:
+                get_downstream(task, level)
 
-        for t in self.roots:
-            get_downstream(t)
+        for task in self.roots:
+            get_downstream(task)
 
     def add_task(self, task):
-        """
+        """添加一个任务到dag中
         Add a task to the DAG
 
         :param task: the task you want to add
@@ -1083,6 +1084,7 @@ class DAG(BaseDag, LoggingMixin):
             task.end_date = min(task.end_date, self.end_date)
 
         if task.task_id in self.task_dict:
+            # 任务已经在dag中存在，则不需要添加
             # TODO: raise an error in Airflow 2.0
             warnings.warn(
                 'The requested task could not be added to the DAG because a '
@@ -1099,7 +1101,7 @@ class DAG(BaseDag, LoggingMixin):
         self.task_count = len(self.task_dict)
 
     def add_tasks(self, tasks):
-        """
+        """批量添加任务到dag中
         Add a list of tasks to the DAG
 
         :param tasks: a lit of tasks you want to add
@@ -1107,17 +1109,6 @@ class DAG(BaseDag, LoggingMixin):
         """
         for task in tasks:
             self.add_task(task)
-
-    @provide_session
-    def db_merge(self, session=None):
-        # 获得所有类型的任务
-        BO = BaseOperator
-        tasks = session.query(BO).filter(BO.dag_id == self.dag_id).all()
-        for t in tasks:
-            session.delete(t)
-        session.commit()
-        session.merge(self)
-        session.commit()
 
     def run(
             self,
@@ -1135,7 +1126,7 @@ class DAG(BaseDag, LoggingMixin):
             conf=None,
             rerun_failed_tasks=False,
     ):
-        """通过BackfillJob的方式运行一个dag
+        """通过BackfillJob补录的方式运行一个dag
         Runs the DAG.
 
         :param start_date: the start date of the range to run
@@ -1167,12 +1158,14 @@ class DAG(BaseDag, LoggingMixin):
         """
         # 获得执行器
         from airflow.jobs import BackfillJob
-        if not executor and local:
-            # 使用单机并发执行器 LocalExecutor
-            executor = LocalExecutor()
-        elif not executor:
-            executor = GetDefaultExecutor()
-        # 创建job
+        if not executor:
+            if local:
+                # 使用单机并发执行器 LocalExecutor，消费者进程使用
+                executor = LocalExecutor()
+            else:
+                # 使用默认调度器
+                executor = GetDefaultExecutor()
+        # 创建并运行补录job
         job = BackfillJob(
             self,
             # 开始调度时间 (>=)
@@ -1253,12 +1246,13 @@ class DAG(BaseDag, LoggingMixin):
         session.add(run)
         session.commit()
         
-        # 添加dag状态统计记录
+        # 给dagrun统计记录设置dirty标记
         DagStat.set_dirty(dag_id=self.dag_id, session=session)       
 
         # 因为dag_run中没有设置dag的外键，所以需要显式设置
         run.dag = self
 
+        # 创建任务实例
         if not only_create_dagrun:
             # create the associated task instances
             # state is None at the moment of creation
@@ -1316,7 +1310,7 @@ class DAG(BaseDag, LoggingMixin):
     @staticmethod
     @provide_session
     def deactivate_unknown_dags(active_dag_ids, session=None):
-        """除了指定的dagid外，其他的dag都删除
+        """除了指定的dagid外，其他的dag都设置为无效状态
         Given a list of known DAGs, deactivate any other DAGs that are
         marked as active in the ORM
 
@@ -1325,7 +1319,7 @@ class DAG(BaseDag, LoggingMixin):
         :return: None
         """
 
-        if len(active_dag_ids) == 0:
+        if not active_dag_ids:
             return
         for dag in session.query(
                 DagModel).filter(~DagModel.dag_id.in_(active_dag_ids)).all():
@@ -1346,6 +1340,7 @@ class DAG(BaseDag, LoggingMixin):
         :return: None
         """
         log = LoggingMixin().log
+        # 如果dag的上次运行时间小于过期时间，则标记为无效
         for dag in session.query(
                 DagModel).filter(DagModel.last_scheduler_run < expiration_date,
                                  DagModel.is_active).all():

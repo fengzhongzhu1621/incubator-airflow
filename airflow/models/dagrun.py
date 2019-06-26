@@ -23,6 +23,72 @@ from xTool.decorators.db import provide_session
 from xTool.exceptions import XToolException
 
 
+def clear_task_instances(tis,
+                         session,
+                         activate_dag_runs=True,
+                         dag=None,
+                         ):
+    """重置任务实例
+    - 正在运行的任务改为关闭状态，相关的job设置为关闭状态
+    - 非正在运行的任务改为 None 状态，并修改任务实例的最大重试次数 max_tries
+    - 任务相关的dagrun设置为RUNNING状态
+
+    Clears a set of task instances, but makes sure the running ones
+    get killed.
+
+    :param tis: a list of task instances
+    :param session: current session
+    :param activate_dag_runs: flag to check for active dag run
+    :param dag: DAG object
+    """
+    job_ids = []
+    for ti in tis:
+        if ti.state == State.RUNNING:
+            # 正在运行的任务实例的消费者job已经启动，则设置为关闭状态
+            if ti.job_id:
+                # 将任务实例状态改为SHUTDOWN
+                ti.state = State.SHUTDOWN
+                # 记录job实例
+                job_ids.append(ti.job_id)
+        else:
+            task_id = ti.task_id
+            if dag and dag.has_task(task_id):
+                # 获得任务
+                task = dag.get_task(task_id)
+                # 获得任务的重试次数
+                task_retries = task.retries
+                # 增加任务实例的最大重试次数
+                ti.max_tries = ti.try_number + task_retries - 1
+            else:
+                # DB中存在任务实例，但是dag中可能变更了代码，导致dag中不存在此任务了
+                # Ignore errors when updating max_tries if dag is None or
+                # task not found in dag since database records could be
+                # outdated. We make max_tries the maximum value of its
+                # original max_tries or the current task try number.
+                ti.max_tries = max(ti.max_tries, ti.try_number - 1)
+            # 将任务设置为None
+            ti.state = State.NONE
+            # 立即变更任务实例在DB中的状态
+            session.merge(ti)
+
+    # 正在运行的任务实例的消费者job的状态改为SHUTDOWN
+    if job_ids:
+        from airflow.jobs import BaseJob as BJ
+        for job in session.query(BJ).filter(BJ.id.in_(job_ids)).all():
+            job.state = State.SHUTDOWN
+
+    # 将dagrun重置为运行状态
+    if activate_dag_runs and tis:
+        drs = session.query(DagRun).filter(
+            DagRun.dag_id.in_({ti.dag_id for ti in tis}),
+            DagRun.execution_date.in_({ti.execution_date for ti in tis}),
+        ).all()
+        for dr in drs:
+            # 设置为运行态，并重置开始时间
+            dr.state = State.RUNNING
+            dr.start_date = datetime.now()
+
+
 class DagRun(Base, LoggingMixin):
     """
     DagRun describes an instance of a Dag. It can be created
@@ -388,12 +454,20 @@ class DagRun(Base, LoggingMixin):
         # 即系统触发的dag_run和用户外部触发的dag_run调度时间刚好一致，但是run_id不一样
         task_ids = []
         for ti in tis:
+            # 获得已经存在的任务ID
             task_ids.append(ti.task_id)
             task = None
-            # 将不存在的任务标记为删除
             try:
+                # 从dag中查询任务
                 task = dag.get_task(ti.task_id)
-            except XToolException:
+                # 如果任务实例的状态为REMOVE, 则需要恢复这个任务，将其状态设置为None
+                if ti.state == State.REMOVED:
+                    self.log.info("Restoring task '{}' which was previously "
+                                "removed from DAG '{}'".format(ti, dag))
+                    Stats.incr("task_restored_to_dag.{}".format(dag.dag_id), 1, 1)
+                    ti.state = State.NONE                
+            except AirflowException:
+                # 将不存在的任务标记为删除
                 # dag.task_dict中不存在这个任务
                 # 用户修改了dag文件，去掉了部分task声明
                 # 此时用户手工触发dag_run，它的调度时间刚好和系统正在调度的时间一致
@@ -410,15 +484,6 @@ class DagRun(Base, LoggingMixin):
                     # 标记任务实例为删除状态
                     ti.state = State.REMOVED
 
-            # 如果任务实例的状态为REMOVE, 且dag中重新添加了这个任务，则需要恢复这个任务，将其状态设置为None
-            is_task_in_dag = task is not None
-            should_restore_task = is_task_in_dag and ti.state == State.REMOVED
-            if should_restore_task:
-                self.log.info("Restoring task '{}' which was previously "
-                              "removed from DAG '{}'".format(ti, dag))
-                Stats.incr("task_restored_to_dag.{}".format(dag.dag_id), 1, 1)
-                ti.state = State.NONE
-
         # 添加缺失的任务实例： 例如dag变更后新增了任务
         # check for missing tasks
         from airflow.models.taskinstance import TaskInstance
@@ -429,8 +494,7 @@ class DagRun(Base, LoggingMixin):
             # 未到执行时间且非补录的任务是不会创建任务实例的
             if task.start_date > self.execution_date and not self.is_backfill:
                 continue
-            # 如果dag中新增加了任务，但是DB中还不存在，则需要在DB中新增任务实例
-            # ORM模型自动优化为批量插入
+            # 将不存在的任务实例创建到DB中
             if task.task_id not in task_ids:
                 ti = TaskInstance(task, self.execution_date)
                 session.add(ti)
