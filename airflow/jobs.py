@@ -24,11 +24,8 @@ from __future__ import unicode_literals
 
 import getpass
 import logging
-import multiprocessing
 import os
-import psutil
 import signal
-import six
 import sys
 import threading
 import time
@@ -69,8 +66,6 @@ from xTool.utils.log.logging_mixin import LoggingMixin, set_context, StreamLogWr
 from xTool.utils.net import get_hostname
 from xTool.utils.helpers import reduce_in_chunks
 from xTool.utils.state import State
-
-from xTool.misc import USE_WINDOWS
 
 Base = models.Base
 ID_LEN = models.ID_LEN
@@ -210,7 +205,6 @@ class BaseJob(Base, LoggingMixin):
                 0,
                 self.heartrate - (
                     datetime.now() - job.latest_heartbeat).total_seconds())
-
         sleep(sleep_for)
 
         # 睡眠之后会重新连接DB
@@ -246,6 +240,7 @@ class BaseJob(Base, LoggingMixin):
 
             # job执行完成后，记录完成时间和状态
             try:
+                # 执行job
                 self._execute()
                 # In case of max runs or max duration
                 self.state = State.SUCCESS

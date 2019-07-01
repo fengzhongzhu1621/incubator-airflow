@@ -95,9 +95,12 @@ class BashOperator(BaseOperator):
                 else:
                     def pre_exec():
                         # Restore default signal disposition and invoke setsid
+                        # SIG_DFL: 表示默认信号处理程序
                         for sig in ('SIGPIPE', 'SIGXFZ', 'SIGXFSZ'):
                             if hasattr(signal, sig):
                                 signal.signal(getattr(signal, sig), signal.SIG_DFL)
+                        # 创建一个新的会话。新建的会话无控制终端。
+                        # 帮助一个进程脱离从父进程继承而来的已打开的终端、隶属进程组和隶属的会话。 
                         os.setsid()
 
                 self.log.info("Running command: %s", self.bash_command)
@@ -107,15 +110,16 @@ class BashOperator(BaseOperator):
                     stdout=PIPE, stderr=STDOUT,
                     cwd=tmp_dir, env=self.env,
                     preexec_fn=pre_exec)
-
+                # 获取bash进程
                 self.sp = sp
-
+                # 获得bash进程的执行结果
                 self.log.info("Output:")
                 line = ''
                 for line in iter(sp.stdout.readline, b''):
                     line = line.decode(self.output_encoding).rstrip()
                     self.log.info(line)
                 sp.wait()
+                # 获得bash进程的错误码
                 self.log.info(
                     "Command exited with return code %s",
                     sp.returncode
@@ -128,5 +132,6 @@ class BashOperator(BaseOperator):
             return line
 
     def on_kill(self):
+        """杀死bash进程 ."""
         self.log.info('Sending SIGTERM signal to bash process group')
         os.killpg(os.getpgid(self.sp.pid), signal.SIGTERM)
