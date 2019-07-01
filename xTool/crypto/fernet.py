@@ -2,28 +2,6 @@
 
 """
 基于fernet的加解密算法
-
-用于对配置文件中的数据库口令进行加解密
-
-1)     写一个AES对称加密算法的密钥生成组件（KeyGen）；
-
-2)     使用密钥生成组件（KeyGen）生成一个密钥作为根密钥（RootKey）写入代码中，不再修改；
-
-3)     部署时使用密钥生成组件（KeyGen）生成一个密钥作为实例密钥（InstanceKey），再使用根密钥（RootKey）对实例密钥（InstanceKey）加密，经BASE64编码后写入配置文件中加密密钥字段；
-
-4)     使用实例密钥（InstanceKey）对口令（Password）加密，经BASE64编码后写入配置文件中口令字段；
-
-5)     创建数据库连接时，动态解密。
-
-以AES为例，配置文件中两个字段分别为：
-
-BASE64(AESRootKey(InstanceKey))
-
-BASE64(AESInstanceKey(Password))
-
-其中AESKey(Value)表示使用Key为密钥对Value进行AES加密。
-
-此做法支持多实例部署，每个部署实例使用不同的实例密钥。
 """
 
 import os
@@ -49,13 +27,11 @@ def generate_fernet_pbkdf2hmac_key():
     """密钥用PBKDF2算法处理，参数设置如下，计算后可以保证密钥（特别是弱口令）的安全性 ."""
     salt = os.urandom(16)
     password = os.urandom(64)
-    kdf = PBKDF2HMAC(
-            algorithm=hashes.SHA256(),
-            length=32,
-            salt=salt,
-            iterations=100000,
-            backend=default_backend()
-        )
+    kdf = PBKDF2HMAC(algorithm=hashes.SHA256(),
+                     length=32,
+                     salt=salt,
+                     iterations=100000,
+                     backend=default_backend())
     key = base64.urlsafe_b64encode(kdf.derive(password))
     return key
 

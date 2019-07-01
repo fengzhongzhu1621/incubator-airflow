@@ -2,6 +2,7 @@
 
 import importlib
 import socket
+from urllib.parse import unquote
 
 
 def get_hostname(callable_path=None):
@@ -15,5 +16,22 @@ def get_hostname(callable_path=None):
     module_path, attr_name = callable_path.split(':')
     module = importlib.import_module(module_path)
     callable = getattr(module, attr_name)
-	# 执行属性方法返回结果
+    # 执行属性方法返回结果
     return callable()
+
+
+def parse_netloc_to_hostname(uri_parts):
+    """获得urlparse解析后的主机名
+    Python automatically converts all letters to lowercase in hostname
+    See: https://issues.apache.org/jira/browse/AIRFLOW-3615
+    """
+    hostname = unquote(uri_parts.hostname or '')
+    if '/' in hostname:
+        hostname = uri_parts.netloc
+        if "@" in hostname:
+            hostname = hostname.rsplit("@", 1)[1]
+        if ":" in hostname:
+            hostname = hostname.split(":", 1)[0]
+        hostname = unquote(hostname)
+    return hostname
+ 

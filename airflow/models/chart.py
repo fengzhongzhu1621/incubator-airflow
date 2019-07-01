@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 
-from sqlalchemy import Column, Integer, String, Float, PickleType, Index, Boolean, ForeignKey, Text
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Text
 from sqlalchemy import DateTime
-from sqlalchemy import func, or_, and_, true as sqltrue
-from sqlalchemy.orm import reconstructor, relationship, synonym
+from sqlalchemy.orm import relationship
+from sqlalchemy import func
 
 from airflow.models.base import Base, ID_LEN
 

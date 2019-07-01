@@ -29,7 +29,7 @@ from xTool.utils.helpers import validate_key
 from xTool.utils.dates import cron_presets, date_range as utils_date_range
 from xTool.algorithms.graphs.sort import topological_sort as graph_topological_sort
 from xTool.exceptions import XToolException
-
+ 
 
 @functools.total_ordering
 class DAG(BaseDag, LoggingMixin):
@@ -1398,8 +1398,7 @@ class DAG(BaseDag, LoggingMixin):
 
         # default of int is 0 which corresponds to CYCLE_NEW
         visit_map = defaultdict(int)
-        for task_id in self.task_dict.keys():
-            # print('starting %s' % task_id)
+        for task_id in iterkeys(self.task_dict):
             if visit_map[task_id] == DagBag.CYCLE_NEW:
                 self._test_cycle_helper(visit_map, task_id)
         return False
@@ -1408,7 +1407,6 @@ class DAG(BaseDag, LoggingMixin):
         """
         Checks if a cycle exists from the input task using DFS traversal
         """
-        
         from airflow.models.dagbag import DagBag
         if visit_map[task_id] == DagBag.CYCLE_DONE:
             return False
@@ -1416,8 +1414,8 @@ class DAG(BaseDag, LoggingMixin):
         visit_map[task_id] = DagBag.CYCLE_IN_PROGRESS
 
         task = self.task_dict[task_id]
-        # 遍历任务的所有上游任务
-        for descendant_id in task.get_direct_relative_ids():
+        # 遍历任务的所有下游任务
+        for descendant_id in task.get_direct_relative_ids(upstream=False):
             if visit_map[descendant_id] == DagBag.CYCLE_IN_PROGRESS:
                 msg = "Cycle detected in DAG. Faulty task: {0} to {1}".format(
                     task_id, descendant_id)

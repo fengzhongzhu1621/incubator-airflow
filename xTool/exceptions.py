@@ -93,7 +93,7 @@ class XToolSensorTimeout(XToolException):
     pass
 
 
-class XToolTaskTimeout(XToolException):
+class XToolTaskTimeout(XToolException, AirflowTaskTimeout):
     pass
 
 

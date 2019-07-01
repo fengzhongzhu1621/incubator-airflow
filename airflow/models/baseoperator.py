@@ -7,14 +7,14 @@ import numbers
 from datetime import datetime, timedelta
 
 import six
-from sqlalchemy import Column, Integer, String, Float, PickleType, Index
-from sqlalchemy import DateTime
 
 from airflow.utils.decorators import apply_defaults
 from airflow import configuration
 from airflow.lineage import apply_lineage, prepare_lineage
+from airflow.models import base
 from airflow.models.base import XCOM_RETURN_KEY
 from airflow.models.dag import DAG
+from airflow.models.dagrun import clear_task_instances
 from airflow.ti_deps.deps.not_in_retry_period_dep import NotInRetryPeriodDep
 from airflow.ti_deps.deps.prev_dagrun_dep import PrevDagrunDep
 from airflow.ti_deps.deps.trigger_rule_dep import TriggerRuleDep
@@ -249,8 +249,10 @@ class BaseOperator(LoggingMixin):
             )
         # 任务ID格式化处理
         validate_key(task_id)
+        # 任务ID
         self.task_id = task_id
         self.owner = owner
+        # 邮件收件人
         self.email = email
         # 任务重试时发送邮件 task.email_on_retry and task.email:
         self.email_on_retry = email_on_retry
@@ -260,6 +262,7 @@ class BaseOperator(LoggingMixin):
         self.start_date = start_date
         if start_date and not isinstance(start_date, datetime):
             self.log.warning("start_date for %s isn't datetime.datetime", self)
+        # 任务结束时间
         self.end_date = end_date
         # 判断触发规则是否有效
         if not TriggerRule.is_valid(trigger_rule):
@@ -268,7 +271,6 @@ class BaseOperator(LoggingMixin):
                 "'{d}.{t}'; received '{tr}'."
                 .format(all_triggers=TriggerRule.all_triggers,
                         d=dag.dag_id if dag else "", t=task_id, tr=trigger_rule))
-
         self.trigger_rule = trigger_rule
         # 当前任务实例是否等待上一个调度的同一个任务的任务实例执行完成后才执行
         self.depends_on_past = depends_on_past
@@ -277,6 +279,7 @@ class BaseOperator(LoggingMixin):
         if wait_for_downstream:
             self.depends_on_past = True
 
+        # 任务不支持周期调度
         if schedule_interval:
             self.log.warning(
                 "schedule_interval is used for %s, though it has "
@@ -291,7 +294,7 @@ class BaseOperator(LoggingMixin):
         self.queue = queue
         self.pool = pool
         self.sla = sla
-        # 任务实例的执行超时时间，如果超时则抛出异常XToolTaskTimeout
+        # 任务实例的执行超时时间，如果超时则抛出异常AirflowTaskTimeout
         self.execution_timeout = execution_timeout
         # 成功或失败回调
         self.on_failure_callback = on_failure_callback
@@ -326,13 +329,14 @@ class BaseOperator(LoggingMixin):
             ram=configuration.conf.getint('operators', 'default_ram')
             disk=configuration.conf.getint('operators', 'default_disk')
             gpus=configuration.conf.getint('operators', 'default_gpus')
-            print(cpus, ram, disk, gpus)
             self.resources = Resources(cpus, ram, disk, gpus)
         else:
             self.resources = resources
+        # 任务实例运行的用户
         self.run_as_user = run_as_user
         # 任务并发数限制，State.RUNNING 状态的任务实例的数量不能超过此阈值，默认为None
         self.task_concurrency = task_concurrency
+        # 任务的执行参数
         self.executor_config = executor_config or {}
 
         # Private attributes
@@ -340,8 +344,8 @@ class BaseOperator(LoggingMixin):
         self._downstream_task_ids = set()
 
         # 用于上下文with dag
-        if not dag and _CONTEXT_MANAGER_DAG:
-            dag = _CONTEXT_MANAGER_DAG
+        if not dag and base._CONTEXT_MANAGER_DAG:
+            dag = base._CONTEXT_MANAGER_DAG
 
         # 将任务添加到DAG中
         if dag:
@@ -507,7 +511,7 @@ class BaseOperator(LoggingMixin):
         if self.has_dag():
             return self.dag.dag_id
         else:
-            # 任务有可能是孤立的，没有与DAG关联
+            # 任务有可能是孤立的，没有与DAG关联，比如坐席任务
             return 'adhoc_' + self.owner
 
     @property
@@ -540,6 +544,7 @@ class BaseOperator(LoggingMixin):
 
     @property
     def priority_weight_total(self):
+        """计算任务的总的权重 ."""
         if self.weight_rule == WeightRule.ABSOLUTE:
             return self.priority_weight
         elif self.weight_rule == WeightRule.DOWNSTREAM:
@@ -598,7 +603,7 @@ class BaseOperator(LoggingMixin):
         result = cls.__new__(cls)
         memo[id(self)] = result
 
-        for k, v in list(self.__dict__.items()):
+        for k, v in iteritems(self.__dict__):
             if k not in ('user_defined_macros', 'user_defined_filters',
                          'params', '_log'):
                 setattr(result, k, copy.deepcopy(v, memo))
@@ -616,7 +621,6 @@ class BaseOperator(LoggingMixin):
         这个状态在对象被反pickle时会被 __setstate__ 使用。 """
         state = dict(self.__dict__)
         del state['_log']
-
         return state
 
     def __setstate__(self, state):
@@ -698,20 +702,22 @@ class BaseOperator(LoggingMixin):
 
     @property
     def upstream_list(self):
-        """@property: list of tasks directly upstream"""
+        """获得所有的上游任务 ."""
         return [self.dag.get_task(tid) for tid in self._upstream_task_ids]
 
     @property
     def upstream_task_ids(self):
+        """获得所有的上游任务ID ."""
         return self._upstream_task_ids
 
     @property
     def downstream_list(self):
-        """@property: list of tasks directly downstream"""
+        """获得所有的下游任务 ."""
         return [self.dag.get_task(tid) for tid in self._downstream_task_ids]
 
     @property
     def downstream_task_ids(self):
+        """获得所有的下游任务ID ."""
         return self._downstream_task_ids
 
     @provide_session
@@ -735,18 +741,21 @@ class BaseOperator(LoggingMixin):
 
         tasks = [self.task_id]
 
+        # 获得所有的上游任务ID
         if upstream:
             tasks += [
                 t.task_id for t in self.get_flat_relatives(upstream=True)]
 
+        # 获得所有的下游任务ID
         if downstream:
             tasks += [
                 t.task_id for t in self.get_flat_relatives(upstream=False)]
-
+        
+        # 获得需要清除的任务实例
         qry = qry.filter(TI.task_id.in_(tasks))
-
         count = qry.count()
 
+        # 重置任务实例
         clear_task_instances(qry.all(), session, dag=self.dag)
 
         session.commit()
@@ -771,7 +780,6 @@ class BaseOperator(LoggingMixin):
         """递归获得当前任务的所有依赖任务
         Get a flat list of relatives' ids, either upstream or downstream.
         """
-
         if not found_descendants:
             found_descendants = set()
         # 获得上游任务ID集合，或下游任务ID集合

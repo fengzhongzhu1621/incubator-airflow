@@ -20,7 +20,6 @@ from airflow.exceptions import AirflowException
 from xTool.utils.log.logging_mixin import LoggingMixin
 from xTool.utils.state import State
 from xTool.decorators.db import provide_session
-from xTool.exceptions import XToolException
 
 
 def clear_task_instances(tis,
