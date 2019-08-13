@@ -74,7 +74,6 @@ def _read_default_config_file(file_name):
 class AirflowConfigParser(XToolConfigParser):
     env_prefix = "AIRFLOW"
 
-
     # These configuration elements can be fetched as the stdout of commands
     # following the "{section}__{name}__cmd" pattern, the idea behind this
     # is to not store password on boxes in text files.

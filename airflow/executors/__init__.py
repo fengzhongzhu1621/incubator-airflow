@@ -18,6 +18,7 @@
 # under the License.
 
 from airflow import configuration
+from airflow.executors.base_executor import BaseExecutor
 from airflow.executors.local_executor import LocalExecutor
 from airflow.executors.sequential_executor import SequentialExecutor
 from xTool.utils.log.logging_mixin import LoggingMixin
