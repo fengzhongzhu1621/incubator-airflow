@@ -727,7 +727,7 @@ class DAG(BaseDag, LoggingMixin):
 
         :return: list of tasks in topological order
         """
-        try
+        try:
             graph_sorted = graph_topological_sort(self.tasks)
         except XToolException:
             raise AirflowException("A cyclic dependency occurred in dag: {}"

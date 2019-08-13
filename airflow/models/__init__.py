@@ -25,6 +25,7 @@ from __future__ import unicode_literals
 from future.standard_library import install_aliases
 install_aliases()
 
+from airflow.models.base import Base, ID_LEN, XCOM_RETURN_KEY, Stats, _CONTEXT_MANAGER_DAG
 from airflow.models.dagpickle import DagPickle
 from airflow.models.errors import ImportError
 from airflow.models.kubernetes import KubeWorkerIdentifier, KubeResourceVersion
