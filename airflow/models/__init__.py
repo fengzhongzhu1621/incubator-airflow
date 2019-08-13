@@ -25,6 +25,8 @@ from __future__ import unicode_literals
 from future.standard_library import install_aliases
 install_aliases()
 
+from xTool.utils.state import State
+
 from airflow.models.base import Base, ID_LEN, XCOM_RETURN_KEY, Stats, _CONTEXT_MANAGER_DAG
 from airflow.models.dagpickle import DagPickle
 from airflow.models.errors import ImportError
@@ -35,7 +37,7 @@ from airflow.models.taskfail import TaskFail
 from airflow.models.pool import Pool
 from airflow.models.xcom import XCom
 from airflow.models.taskinstance import TaskInstance
-from airflow.models.dagrun import DagRun
+from airflow.models.dagrun import DagRun, clear_task_instances
 from airflow.models.dagstat import DagStat
 from airflow.models.variable import Variable
 from airflow.models.knownevent import KnownEventType, KnownEvent

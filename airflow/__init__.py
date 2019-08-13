@@ -36,6 +36,7 @@ from airflow import configuration as conf
 from airflow import settings
 from flask_admin import BaseView
 from importlib import import_module
+from airflow.models import DAG
 from airflow.exceptions import AirflowException
 from xTool.exceptions import XToolConfigException
 from airflow.exceptions import AirflowConfigException
