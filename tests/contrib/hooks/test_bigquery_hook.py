@@ -21,418 +21,419 @@
 import unittest
 import warnings
 
-from google.auth.exceptions import GoogleAuthError
-import mock
+if __name__ == '__main__':
 
-from airflow.contrib.hooks import bigquery_hook as hook
-from airflow.contrib.hooks.bigquery_hook import _cleanse_time_partitioning
+    from google.auth.exceptions import GoogleAuthError
+    import mock
 
-bq_available = True
+    from airflow.contrib.hooks import bigquery_hook as hook
+    from airflow.contrib.hooks.bigquery_hook import _cleanse_time_partitioning
 
-try:
-    hook.BigQueryHook().get_service()
-except GoogleAuthError:
-    bq_available = False
+    bq_available = True
 
-
-class TestBigQueryDataframeResults(unittest.TestCase):
-    def setUp(self):
-        self.instance = hook.BigQueryHook()
-
-    @unittest.skipIf(not bq_available, 'BQ is not available to run tests')
-    def test_output_is_dataframe_with_valid_query(self):
-        import pandas as pd
-        df = self.instance.get_pandas_df('select 1')
-        self.assertIsInstance(df, pd.DataFrame)
-
-    @unittest.skipIf(not bq_available, 'BQ is not available to run tests')
-    def test_throws_exception_with_invalid_query(self):
-        with self.assertRaises(Exception) as context:
-            self.instance.get_pandas_df('from `1`')
-        self.assertIn('Reason: ', str(context.exception), "")
-
-    @unittest.skipIf(not bq_available, 'BQ is not available to run tests')
-    def test_suceeds_with_explicit_legacy_query(self):
-        df = self.instance.get_pandas_df('select 1', dialect='legacy')
-        self.assertEqual(df.iloc(0)[0][0], 1)
-
-    @unittest.skipIf(not bq_available, 'BQ is not available to run tests')
-    def test_suceeds_with_explicit_std_query(self):
-        df = self.instance.get_pandas_df(
-            'select * except(b) from (select 1 a, 2 b)', dialect='standard')
-        self.assertEqual(df.iloc(0)[0][0], 1)
-
-    @unittest.skipIf(not bq_available, 'BQ is not available to run tests')
-    def test_throws_exception_with_incompatible_syntax(self):
-        with self.assertRaises(Exception) as context:
-            self.instance.get_pandas_df(
-                'select * except(b) from (select 1 a, 2 b)', dialect='legacy')
-        self.assertIn('Reason: ', str(context.exception), "")
+    try:
+        hook.BigQueryHook().get_service()
+    except GoogleAuthError:
+        bq_available = False
 
 
-class TestBigQueryTableSplitter(unittest.TestCase):
-    def test_internal_need_default_project(self):
-        with self.assertRaises(Exception) as context:
-            hook._split_tablename('dataset.table', None)
+    class TestBigQueryDataframeResults(unittest.TestCase):
+        def setUp(self):
+            self.instance = hook.BigQueryHook()
 
-        self.assertIn('INTERNAL: No default project is specified',
-                      str(context.exception), "")
+        @unittest.skipIf(not bq_available, 'BQ is not available to run tests')
+        def test_output_is_dataframe_with_valid_query(self):
+            import pandas as pd
+            df = self.instance.get_pandas_df('select 1')
+            self.assertIsInstance(df, pd.DataFrame)
 
-    def test_split_dataset_table(self):
-        project, dataset, table = hook._split_tablename('dataset.table',
-                                                        'project')
-        self.assertEqual("project", project)
-        self.assertEqual("dataset", dataset)
-        self.assertEqual("table", table)
+        @unittest.skipIf(not bq_available, 'BQ is not available to run tests')
+        def test_throws_exception_with_invalid_query(self):
+            with self.assertRaises(Exception) as context:
+                self.instance.get_pandas_df('from `1`')
+            self.assertIn('Reason: ', str(context.exception), "")
 
-    def test_split_project_dataset_table(self):
-        project, dataset, table = hook._split_tablename('alternative:dataset.table',
-                                                        'project')
-        self.assertEqual("alternative", project)
-        self.assertEqual("dataset", dataset)
-        self.assertEqual("table", table)
+        @unittest.skipIf(not bq_available, 'BQ is not available to run tests')
+        def test_suceeds_with_explicit_legacy_query(self):
+            df = self.instance.get_pandas_df('select 1', dialect='legacy')
+            self.assertEqual(df.iloc(0)[0][0], 1)
 
-    def test_sql_split_project_dataset_table(self):
-        project, dataset, table = hook._split_tablename('alternative.dataset.table',
-                                                        'project')
-        self.assertEqual("alternative", project)
-        self.assertEqual("dataset", dataset)
-        self.assertEqual("table", table)
+        @unittest.skipIf(not bq_available, 'BQ is not available to run tests')
+        def test_suceeds_with_explicit_std_query(self):
+            df = self.instance.get_pandas_df(
+                'select * except(b) from (select 1 a, 2 b)', dialect='standard')
+            self.assertEqual(df.iloc(0)[0][0], 1)
 
-    def test_colon_in_project(self):
-        project, dataset, table = hook._split_tablename('alt1:alt.dataset.table',
-                                                        'project')
-
-        self.assertEqual('alt1:alt', project)
-        self.assertEqual("dataset", dataset)
-        self.assertEqual("table", table)
-
-    def test_valid_double_column(self):
-        project, dataset, table = hook._split_tablename('alt1:alt:dataset.table',
-                                                        'project')
-
-        self.assertEqual('alt1:alt', project)
-        self.assertEqual("dataset", dataset)
-        self.assertEqual("table", table)
-
-    def test_invalid_syntax_triple_colon(self):
-        with self.assertRaises(Exception) as context:
-            hook._split_tablename('alt1:alt2:alt3:dataset.table',
-                                  'project')
-
-        self.assertIn('Use either : or . to specify project',
-                      str(context.exception), "")
-        self.assertFalse('Format exception for' in str(context.exception))
-
-    def test_invalid_syntax_triple_dot(self):
-        with self.assertRaises(Exception) as context:
-            hook._split_tablename('alt1.alt.dataset.table',
-                                  'project')
-
-        self.assertIn('Expect format of (<project.|<project:)<dataset>.<table>',
-                      str(context.exception), "")
-        self.assertFalse('Format exception for' in str(context.exception))
-
-    def test_invalid_syntax_column_double_project_var(self):
-        with self.assertRaises(Exception) as context:
-            hook._split_tablename('alt1:alt2:alt.dataset.table',
-                                  'project', 'var_x')
-
-        self.assertIn('Use either : or . to specify project',
-                      str(context.exception), "")
-        self.assertIn('Format exception for var_x:',
-                      str(context.exception), "")
-
-    def test_invalid_syntax_triple_colon_project_var(self):
-        with self.assertRaises(Exception) as context:
-            hook._split_tablename('alt1:alt2:alt:dataset.table',
-                                  'project', 'var_x')
-
-        self.assertIn('Use either : or . to specify project',
-                      str(context.exception), "")
-        self.assertIn('Format exception for var_x:',
-                      str(context.exception), "")
-
-    def test_invalid_syntax_triple_dot_var(self):
-        with self.assertRaises(Exception) as context:
-            hook._split_tablename('alt1.alt.dataset.table',
-                                  'project', 'var_x')
-
-        self.assertIn('Expect format of (<project.|<project:)<dataset>.<table>',
-                      str(context.exception), "")
-        self.assertIn('Format exception for var_x:',
-                      str(context.exception), "")
+        @unittest.skipIf(not bq_available, 'BQ is not available to run tests')
+        def test_throws_exception_with_incompatible_syntax(self):
+            with self.assertRaises(Exception) as context:
+                self.instance.get_pandas_df(
+                    'select * except(b) from (select 1 a, 2 b)', dialect='legacy')
+            self.assertIn('Reason: ', str(context.exception), "")
 
 
-class TestBigQueryHookSourceFormat(unittest.TestCase):
-    def test_invalid_source_format(self):
-        with self.assertRaises(Exception) as context:
-            hook.BigQueryBaseCursor("test", "test").run_load(
-                "test.test", "test_schema.json", ["test_data.json"], source_format="json"
-            )
+    class TestBigQueryTableSplitter(unittest.TestCase):
+        def test_internal_need_default_project(self):
+            with self.assertRaises(Exception) as context:
+                hook._split_tablename('dataset.table', None)
 
-        # since we passed 'json' in, and it's not valid, make sure it's present in the
-        # error string.
-        self.assertIn("JSON", str(context.exception))
+            self.assertIn('INTERNAL: No default project is specified',
+                          str(context.exception), "")
+
+        def test_split_dataset_table(self):
+            project, dataset, table = hook._split_tablename('dataset.table',
+                                                            'project')
+            self.assertEqual("project", project)
+            self.assertEqual("dataset", dataset)
+            self.assertEqual("table", table)
+
+        def test_split_project_dataset_table(self):
+            project, dataset, table = hook._split_tablename('alternative:dataset.table',
+                                                            'project')
+            self.assertEqual("alternative", project)
+            self.assertEqual("dataset", dataset)
+            self.assertEqual("table", table)
+
+        def test_sql_split_project_dataset_table(self):
+            project, dataset, table = hook._split_tablename('alternative.dataset.table',
+                                                            'project')
+            self.assertEqual("alternative", project)
+            self.assertEqual("dataset", dataset)
+            self.assertEqual("table", table)
+
+        def test_colon_in_project(self):
+            project, dataset, table = hook._split_tablename('alt1:alt.dataset.table',
+                                                            'project')
+
+            self.assertEqual('alt1:alt', project)
+            self.assertEqual("dataset", dataset)
+            self.assertEqual("table", table)
+
+        def test_valid_double_column(self):
+            project, dataset, table = hook._split_tablename('alt1:alt:dataset.table',
+                                                            'project')
+
+            self.assertEqual('alt1:alt', project)
+            self.assertEqual("dataset", dataset)
+            self.assertEqual("table", table)
+
+        def test_invalid_syntax_triple_colon(self):
+            with self.assertRaises(Exception) as context:
+                hook._split_tablename('alt1:alt2:alt3:dataset.table',
+                                      'project')
+
+            self.assertIn('Use either : or . to specify project',
+                          str(context.exception), "")
+            self.assertFalse('Format exception for' in str(context.exception))
+
+        def test_invalid_syntax_triple_dot(self):
+            with self.assertRaises(Exception) as context:
+                hook._split_tablename('alt1.alt.dataset.table',
+                                      'project')
+
+            self.assertIn('Expect format of (<project.|<project:)<dataset>.<table>',
+                          str(context.exception), "")
+            self.assertFalse('Format exception for' in str(context.exception))
+
+        def test_invalid_syntax_column_double_project_var(self):
+            with self.assertRaises(Exception) as context:
+                hook._split_tablename('alt1:alt2:alt.dataset.table',
+                                      'project', 'var_x')
+
+            self.assertIn('Use either : or . to specify project',
+                          str(context.exception), "")
+            self.assertIn('Format exception for var_x:',
+                          str(context.exception), "")
+
+        def test_invalid_syntax_triple_colon_project_var(self):
+            with self.assertRaises(Exception) as context:
+                hook._split_tablename('alt1:alt2:alt:dataset.table',
+                                      'project', 'var_x')
+
+            self.assertIn('Use either : or . to specify project',
+                          str(context.exception), "")
+            self.assertIn('Format exception for var_x:',
+                          str(context.exception), "")
+
+        def test_invalid_syntax_triple_dot_var(self):
+            with self.assertRaises(Exception) as context:
+                hook._split_tablename('alt1.alt.dataset.table',
+                                      'project', 'var_x')
+
+            self.assertIn('Expect format of (<project.|<project:)<dataset>.<table>',
+                          str(context.exception), "")
+            self.assertIn('Format exception for var_x:',
+                          str(context.exception), "")
 
 
-class TestBigQueryExternalTableSourceFormat(unittest.TestCase):
-    def test_invalid_source_format(self):
-        with self.assertRaises(Exception) as context:
-            hook.BigQueryBaseCursor("test", "test").create_external_table(
-                external_project_dataset_table='test.test',
-                schema_fields='test_schema.json',
-                source_uris=['test_data.json'],
-                source_format='json'
-            )
+    class TestBigQueryHookSourceFormat(unittest.TestCase):
+        def test_invalid_source_format(self):
+            with self.assertRaises(Exception) as context:
+                hook.BigQueryBaseCursor("test", "test").run_load(
+                    "test.test", "test_schema.json", ["test_data.json"], source_format="json"
+                )
 
-        # since we passed 'csv' in, and it's not valid, make sure it's present in the
-        # error string.
-        self.assertIn("JSON", str(context.exception))
+            # since we passed 'json' in, and it's not valid, make sure it's present in the
+            # error string.
+            self.assertIn("JSON", str(context.exception))
 
 
-# Helpers to test_cancel_queries that have mock_poll_job_complete returning false,
-# unless mock_job_cancel was called with the same job_id
-mock_canceled_jobs = []
+    class TestBigQueryExternalTableSourceFormat(unittest.TestCase):
+        def test_invalid_source_format(self):
+            with self.assertRaises(Exception) as context:
+                hook.BigQueryBaseCursor("test", "test").create_external_table(
+                    external_project_dataset_table='test.test',
+                    schema_fields='test_schema.json',
+                    source_uris=['test_data.json'],
+                    source_format='json'
+                )
+
+            # since we passed 'csv' in, and it's not valid, make sure it's present in the
+            # error string.
+            self.assertIn("JSON", str(context.exception))
 
 
-def mock_poll_job_complete(job_id):
-    return job_id in mock_canceled_jobs
+    # Helpers to test_cancel_queries that have mock_poll_job_complete returning false,
+    # unless mock_job_cancel was called with the same job_id
+    mock_canceled_jobs = []
 
 
-def mock_job_cancel(projectId, jobId):
-    mock_canceled_jobs.append(jobId)
-    return mock.Mock()
+    def mock_poll_job_complete(job_id):
+        return job_id in mock_canceled_jobs
 
 
-class TestBigQueryBaseCursor(unittest.TestCase):
-    def test_invalid_schema_update_options(self):
-        with self.assertRaises(Exception) as context:
-            hook.BigQueryBaseCursor("test", "test").run_load(
-                "test.test",
-                "test_schema.json",
-                ["test_data.json"],
-                schema_update_options=["THIS IS NOT VALID"]
-            )
-        self.assertIn("THIS IS NOT VALID", str(context.exception))
+    def mock_job_cancel(projectId, jobId):
+        mock_canceled_jobs.append(jobId)
+        return mock.Mock()
 
-    @mock.patch.object(hook.BigQueryBaseCursor, 'run_with_configuration')
-    def test_bql_deprecation_warning(self, mock_rwc):
-        with warnings.catch_warnings(record=True) as w:
-            hook.BigQueryBaseCursor("test", "test").run_query(
-                bql='select * from test_table'
-            )
-        self.assertIn(
-            'Deprecated parameter `bql`',
-            w[0].message.args[0])
 
-    def test_nobql_nosql_param_error(self):
-        with self.assertRaises(TypeError) as context:
-            hook.BigQueryBaseCursor("test", "test").run_query(
-                sql=None,
-                bql=None
-            )
-        self.assertIn(
-            'missing 1 required positional',
-            str(context.exception))
+    class TestBigQueryBaseCursor(unittest.TestCase):
+        def test_invalid_schema_update_options(self):
+            with self.assertRaises(Exception) as context:
+                hook.BigQueryBaseCursor("test", "test").run_load(
+                    "test.test",
+                    "test_schema.json",
+                    ["test_data.json"],
+                    schema_update_options=["THIS IS NOT VALID"]
+                )
+            self.assertIn("THIS IS NOT VALID", str(context.exception))
 
-    def test_invalid_schema_update_and_write_disposition(self):
-        with self.assertRaises(Exception) as context:
-            hook.BigQueryBaseCursor("test", "test").run_load(
-                "test.test",
-                "test_schema.json",
-                ["test_data.json"],
-                schema_update_options=['ALLOW_FIELD_ADDITION'],
-                write_disposition='WRITE_EMPTY'
-            )
-        self.assertIn("schema_update_options is only", str(context.exception))
+        @mock.patch.object(hook.BigQueryBaseCursor, 'run_with_configuration')
+        def test_bql_deprecation_warning(self, mock_rwc):
+            with warnings.catch_warnings(record=True) as w:
+                hook.BigQueryBaseCursor("test", "test").run_query(
+                    bql='select * from test_table'
+                )
+            self.assertIn(
+                'Deprecated parameter `bql`',
+                w[0].message.args[0])
 
-    @mock.patch("airflow.contrib.hooks.bigquery_hook.LoggingMixin")
-    @mock.patch("airflow.contrib.hooks.bigquery_hook.time")
-    def test_cancel_queries(self, mocked_time, mocked_logging):
-        project_id = 12345
-        running_job_id = 3
+        def test_nobql_nosql_param_error(self):
+            with self.assertRaises(TypeError) as context:
+                hook.BigQueryBaseCursor("test", "test").run_query(
+                    sql=None,
+                    bql=None
+                )
+            self.assertIn(
+                'missing 1 required positional',
+                str(context.exception))
 
-        mock_jobs = mock.Mock()
-        mock_jobs.cancel = mock.Mock(side_effect=mock_job_cancel)
-        mock_service = mock.Mock()
-        mock_service.jobs = mock.Mock(return_value=mock_jobs)
+        def test_invalid_schema_update_and_write_disposition(self):
+            with self.assertRaises(Exception) as context:
+                hook.BigQueryBaseCursor("test", "test").run_load(
+                    "test.test",
+                    "test_schema.json",
+                    ["test_data.json"],
+                    schema_update_options=['ALLOW_FIELD_ADDITION'],
+                    write_disposition='WRITE_EMPTY'
+                )
+            self.assertIn("schema_update_options is only", str(context.exception))
 
-        bq_hook = hook.BigQueryBaseCursor(mock_service, project_id)
-        bq_hook.running_job_id = running_job_id
-        bq_hook.poll_job_complete = mock.Mock(side_effect=mock_poll_job_complete)
+        @mock.patch("airflow.contrib.hooks.bigquery_hook.LoggingMixin")
+        @mock.patch("airflow.contrib.hooks.bigquery_hook.time")
+        def test_cancel_queries(self, mocked_time, mocked_logging):
+            project_id = 12345
+            running_job_id = 3
 
-        bq_hook.cancel_query()
+            mock_jobs = mock.Mock()
+            mock_jobs.cancel = mock.Mock(side_effect=mock_job_cancel)
+            mock_service = mock.Mock()
+            mock_service.jobs = mock.Mock(return_value=mock_jobs)
 
-        mock_jobs.cancel.assert_called_with(projectId=project_id, jobId=running_job_id)
+            bq_hook = hook.BigQueryBaseCursor(mock_service, project_id)
+            bq_hook.running_job_id = running_job_id
+            bq_hook.poll_job_complete = mock.Mock(side_effect=mock_poll_job_complete)
 
-    @mock.patch.object(hook.BigQueryBaseCursor, 'run_with_configuration')
-    def test_run_query_sql_dialect_default(self, run_with_config):
-        cursor = hook.BigQueryBaseCursor(mock.Mock(), "project_id")
-        cursor.run_query('query')
-        args, kwargs = run_with_config.call_args
-        self.assertIs(args[0]['query']['useLegacySql'], True)
+            bq_hook.cancel_query()
 
-    @mock.patch.object(hook.BigQueryBaseCursor, 'run_with_configuration')
-    def test_run_query_sql_dialect_override(self, run_with_config):
-        for bool_val in [True, False]:
+            mock_jobs.cancel.assert_called_with(projectId=project_id, jobId=running_job_id)
+
+        @mock.patch.object(hook.BigQueryBaseCursor, 'run_with_configuration')
+        def test_run_query_sql_dialect_default(self, run_with_config):
             cursor = hook.BigQueryBaseCursor(mock.Mock(), "project_id")
-            cursor.run_query('query', use_legacy_sql=bool_val)
-            args, kwargs = run_with_config.call_args
-            self.assertIs(args[0]['query']['useLegacySql'], bool_val)
-
-
-class TestLabelsInRunJob(unittest.TestCase):
-    @mock.patch.object(hook.BigQueryBaseCursor, 'run_with_configuration')
-    def test_run_query_with_arg(self, mocked_rwc):
-        project_id = 12345
-
-        def run_with_config(config):
-            self.assertEqual(
-                config['labels'], {'label1': 'test1', 'label2': 'test2'}
-            )
-        mocked_rwc.side_effect = run_with_config
-
-        bq_hook = hook.BigQueryBaseCursor(mock.Mock(), project_id)
-        bq_hook.run_query(
-            sql='select 1',
-            destination_dataset_table='my_dataset.my_table',
-            labels={'label1': 'test1', 'label2': 'test2'}
-        )
-
-        mocked_rwc.assert_called_once()
-
-
-class TestTimePartitioningInRunJob(unittest.TestCase):
-
-    @mock.patch("airflow.contrib.hooks.bigquery_hook.LoggingMixin")
-    @mock.patch("airflow.contrib.hooks.bigquery_hook.time")
-    @mock.patch.object(hook.BigQueryBaseCursor, 'run_with_configuration')
-    def test_run_load_default(self, mocked_rwc, mocked_time, mocked_logging):
-        project_id = 12345
-
-        def run_with_config(config):
-            self.assertIsNone(config['load'].get('timePartitioning'))
-        mocked_rwc.side_effect = run_with_config
-
-        bq_hook = hook.BigQueryBaseCursor(mock.Mock(), project_id)
-        bq_hook.run_load(
-            destination_project_dataset_table='my_dataset.my_table',
-            schema_fields=[],
-            source_uris=[],
-        )
-
-        mocked_rwc.assert_called_once()
-
-    @mock.patch("airflow.contrib.hooks.bigquery_hook.LoggingMixin")
-    @mock.patch("airflow.contrib.hooks.bigquery_hook.time")
-    @mock.patch.object(hook.BigQueryBaseCursor, 'run_with_configuration')
-    def test_run_load_with_arg(self, mocked_rwc, mocked_time, mocked_logging):
-        project_id = 12345
-
-        def run_with_config(config):
-            self.assertEqual(
-                config['load']['timePartitioning'],
-                {
-                    'field': 'test_field',
-                    'type': 'DAY',
-                    'expirationMs': 1000
-                }
-            )
-        mocked_rwc.side_effect = run_with_config
-
-        bq_hook = hook.BigQueryBaseCursor(mock.Mock(), project_id)
-        bq_hook.run_load(
-            destination_project_dataset_table='my_dataset.my_table',
-            schema_fields=[],
-            source_uris=[],
-            time_partitioning={'type': 'DAY', 'field': 'test_field', 'expirationMs': 1000}
-        )
-
-        mocked_rwc.assert_called_once()
-
-    @mock.patch("airflow.contrib.hooks.bigquery_hook.LoggingMixin")
-    @mock.patch("airflow.contrib.hooks.bigquery_hook.time")
-    @mock.patch.object(hook.BigQueryBaseCursor, 'run_with_configuration')
-    def test_run_query_default(self, mocked_rwc, mocked_time, mocked_logging):
-        project_id = 12345
-
-        def run_with_config(config):
-            self.assertIsNone(config['query'].get('timePartitioning'))
-        mocked_rwc.side_effect = run_with_config
-
-        bq_hook = hook.BigQueryBaseCursor(mock.Mock(), project_id)
-        bq_hook.run_query(sql='select 1')
-
-        mocked_rwc.assert_called_once()
-
-    @mock.patch("airflow.contrib.hooks.bigquery_hook.LoggingMixin")
-    @mock.patch("airflow.contrib.hooks.bigquery_hook.time")
-    @mock.patch.object(hook.BigQueryBaseCursor, 'run_with_configuration')
-    def test_run_query_with_arg(self, mocked_rwc, mocked_time, mocked_logging):
-        project_id = 12345
-
-        def run_with_config(config):
-            self.assertEqual(
-                config['query']['timePartitioning'],
-                {
-                    'field': 'test_field',
-                    'type': 'DAY',
-                    'expirationMs': 1000
-                }
-            )
-        mocked_rwc.side_effect = run_with_config
-
-        bq_hook = hook.BigQueryBaseCursor(mock.Mock(), project_id)
-        bq_hook.run_query(
-            sql='select 1',
-            destination_dataset_table='my_dataset.my_table',
-            time_partitioning={'type': 'DAY',
-                               'field': 'test_field', 'expirationMs': 1000}
-        )
-
-        mocked_rwc.assert_called_once()
-
-    def test_dollar_makes_partition(self):
-        tp_out = _cleanse_time_partitioning('test.teast$20170101', {})
-        expect = {
-            'type': 'DAY'
-        }
-        self.assertEqual(tp_out, expect)
-
-    def test_extra_time_partitioning_options(self):
-        tp_out = _cleanse_time_partitioning(
-            'test.teast',
-            {'type': 'DAY', 'field': 'test_field', 'expirationMs': 1000}
-        )
-
-        expect = {
-            'type': 'DAY',
-            'field': 'test_field',
-            'expirationMs': 1000
-        }
-        self.assertEqual(tp_out, expect)
-
-
-class TestBigQueryHookLegacySql(unittest.TestCase):
-    """Ensure `use_legacy_sql` param in `BigQueryHook` propagates properly."""
-
-    @mock.patch.object(hook.BigQueryBaseCursor, 'run_with_configuration')
-    def test_hook_uses_legacy_sql_by_default(self, run_with_config):
-        with mock.patch.object(hook.BigQueryHook, 'get_service'):
-            bq_hook = hook.BigQueryHook()
-            bq_hook.get_first('query')
+            cursor.run_query('query')
             args, kwargs = run_with_config.call_args
             self.assertIs(args[0]['query']['useLegacySql'], True)
 
-    @mock.patch.object(hook.BigQueryBaseCursor, 'run_with_configuration')
-    def test_legacy_sql_override_propagates_properly(self, run_with_config):
-        with mock.patch.object(hook.BigQueryHook, 'get_service'):
-            bq_hook = hook.BigQueryHook(use_legacy_sql=False)
-            bq_hook.get_first('query')
-            args, kwargs = run_with_config.call_args
-            self.assertIs(args[0]['query']['useLegacySql'], False)
+        @mock.patch.object(hook.BigQueryBaseCursor, 'run_with_configuration')
+        def test_run_query_sql_dialect_override(self, run_with_config):
+            for bool_val in [True, False]:
+                cursor = hook.BigQueryBaseCursor(mock.Mock(), "project_id")
+                cursor.run_query('query', use_legacy_sql=bool_val)
+                args, kwargs = run_with_config.call_args
+                self.assertIs(args[0]['query']['useLegacySql'], bool_val)
 
 
-if __name__ == '__main__':
+    class TestLabelsInRunJob(unittest.TestCase):
+        @mock.patch.object(hook.BigQueryBaseCursor, 'run_with_configuration')
+        def test_run_query_with_arg(self, mocked_rwc):
+            project_id = 12345
+
+            def run_with_config(config):
+                self.assertEqual(
+                    config['labels'], {'label1': 'test1', 'label2': 'test2'}
+                )
+            mocked_rwc.side_effect = run_with_config
+
+            bq_hook = hook.BigQueryBaseCursor(mock.Mock(), project_id)
+            bq_hook.run_query(
+                sql='select 1',
+                destination_dataset_table='my_dataset.my_table',
+                labels={'label1': 'test1', 'label2': 'test2'}
+            )
+
+            mocked_rwc.assert_called_once()
+
+
+    class TestTimePartitioningInRunJob(unittest.TestCase):
+
+        @mock.patch("airflow.contrib.hooks.bigquery_hook.LoggingMixin")
+        @mock.patch("airflow.contrib.hooks.bigquery_hook.time")
+        @mock.patch.object(hook.BigQueryBaseCursor, 'run_with_configuration')
+        def test_run_load_default(self, mocked_rwc, mocked_time, mocked_logging):
+            project_id = 12345
+
+            def run_with_config(config):
+                self.assertIsNone(config['load'].get('timePartitioning'))
+            mocked_rwc.side_effect = run_with_config
+
+            bq_hook = hook.BigQueryBaseCursor(mock.Mock(), project_id)
+            bq_hook.run_load(
+                destination_project_dataset_table='my_dataset.my_table',
+                schema_fields=[],
+                source_uris=[],
+            )
+
+            mocked_rwc.assert_called_once()
+
+        @mock.patch("airflow.contrib.hooks.bigquery_hook.LoggingMixin")
+        @mock.patch("airflow.contrib.hooks.bigquery_hook.time")
+        @mock.patch.object(hook.BigQueryBaseCursor, 'run_with_configuration')
+        def test_run_load_with_arg(self, mocked_rwc, mocked_time, mocked_logging):
+            project_id = 12345
+
+            def run_with_config(config):
+                self.assertEqual(
+                    config['load']['timePartitioning'],
+                    {
+                        'field': 'test_field',
+                        'type': 'DAY',
+                        'expirationMs': 1000
+                    }
+                )
+            mocked_rwc.side_effect = run_with_config
+
+            bq_hook = hook.BigQueryBaseCursor(mock.Mock(), project_id)
+            bq_hook.run_load(
+                destination_project_dataset_table='my_dataset.my_table',
+                schema_fields=[],
+                source_uris=[],
+                time_partitioning={'type': 'DAY', 'field': 'test_field', 'expirationMs': 1000}
+            )
+
+            mocked_rwc.assert_called_once()
+
+        @mock.patch("airflow.contrib.hooks.bigquery_hook.LoggingMixin")
+        @mock.patch("airflow.contrib.hooks.bigquery_hook.time")
+        @mock.patch.object(hook.BigQueryBaseCursor, 'run_with_configuration')
+        def test_run_query_default(self, mocked_rwc, mocked_time, mocked_logging):
+            project_id = 12345
+
+            def run_with_config(config):
+                self.assertIsNone(config['query'].get('timePartitioning'))
+            mocked_rwc.side_effect = run_with_config
+
+            bq_hook = hook.BigQueryBaseCursor(mock.Mock(), project_id)
+            bq_hook.run_query(sql='select 1')
+
+            mocked_rwc.assert_called_once()
+
+        @mock.patch("airflow.contrib.hooks.bigquery_hook.LoggingMixin")
+        @mock.patch("airflow.contrib.hooks.bigquery_hook.time")
+        @mock.patch.object(hook.BigQueryBaseCursor, 'run_with_configuration')
+        def test_run_query_with_arg(self, mocked_rwc, mocked_time, mocked_logging):
+            project_id = 12345
+
+            def run_with_config(config):
+                self.assertEqual(
+                    config['query']['timePartitioning'],
+                    {
+                        'field': 'test_field',
+                        'type': 'DAY',
+                        'expirationMs': 1000
+                    }
+                )
+            mocked_rwc.side_effect = run_with_config
+
+            bq_hook = hook.BigQueryBaseCursor(mock.Mock(), project_id)
+            bq_hook.run_query(
+                sql='select 1',
+                destination_dataset_table='my_dataset.my_table',
+                time_partitioning={'type': 'DAY',
+                                   'field': 'test_field', 'expirationMs': 1000}
+            )
+
+            mocked_rwc.assert_called_once()
+
+        def test_dollar_makes_partition(self):
+            tp_out = _cleanse_time_partitioning('test.teast$20170101', {})
+            expect = {
+                'type': 'DAY'
+            }
+            self.assertEqual(tp_out, expect)
+
+        def test_extra_time_partitioning_options(self):
+            tp_out = _cleanse_time_partitioning(
+                'test.teast',
+                {'type': 'DAY', 'field': 'test_field', 'expirationMs': 1000}
+            )
+
+            expect = {
+                'type': 'DAY',
+                'field': 'test_field',
+                'expirationMs': 1000
+            }
+            self.assertEqual(tp_out, expect)
+
+
+    class TestBigQueryHookLegacySql(unittest.TestCase):
+        """Ensure `use_legacy_sql` param in `BigQueryHook` propagates properly."""
+
+        @mock.patch.object(hook.BigQueryBaseCursor, 'run_with_configuration')
+        def test_hook_uses_legacy_sql_by_default(self, run_with_config):
+            with mock.patch.object(hook.BigQueryHook, 'get_service'):
+                bq_hook = hook.BigQueryHook()
+                bq_hook.get_first('query')
+                args, kwargs = run_with_config.call_args
+                self.assertIs(args[0]['query']['useLegacySql'], True)
+
+        @mock.patch.object(hook.BigQueryBaseCursor, 'run_with_configuration')
+        def test_legacy_sql_override_propagates_properly(self, run_with_config):
+            with mock.patch.object(hook.BigQueryHook, 'get_service'):
+                bq_hook = hook.BigQueryHook(use_legacy_sql=False)
+                bq_hook.get_first('query')
+                args, kwargs = run_with_config.call_args
+                self.assertIs(args[0]['query']['useLegacySql'], False)
+
+
     unittest.main()
