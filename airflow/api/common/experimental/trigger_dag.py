@@ -34,8 +34,6 @@ def _trigger_dag(
         execution_date,
         replace_microseconds,
 ):
-    print("*" * 100)
-    print("dag_bag.dags = ", dag_bag.dags)
     if dag_id not in dag_bag.dags:
         raise DagNotFound("Dag id {} not found".format(dag_id))
 

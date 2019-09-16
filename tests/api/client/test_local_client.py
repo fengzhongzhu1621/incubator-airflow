@@ -19,7 +19,7 @@
 
 import json
 import unittest
-
+from datetime import datetime
 from freezegun import freeze_time
 from mock import patch
 
@@ -30,7 +30,8 @@ from airflow import settings
 from airflow.utils import timezone
 from airflow.utils.state import State
 
-EXECDATE = timezone.utcnow()
+# EXECDATE = timezone.utcnow()
+EXECDATE = datetime.now()
 EXECDATE_NOFRACTIONS = EXECDATE.replace(microsecond=0)
 EXECDATE_ISO = EXECDATE_NOFRACTIONS.isoformat()
 
@@ -60,6 +61,7 @@ class TestLocalClient(unittest.TestCase):
     def test_trigger_dag(self, mock):
         client = self.client
         test_dag_id = "example_bash_operator"
+        # 加载dag文件
         models.DagBag(include_examples=True)
 
         # non existent
@@ -69,6 +71,7 @@ class TestLocalClient(unittest.TestCase):
         with freeze_time(EXECDATE):
             # no execution date, execution date should be set automatically
             client.trigger_dag(dag_id=test_dag_id)
+            # 检查测试对象是否正确的调用了mock方法，当同样的方法调用超过一次时，会进行报错
             mock.assert_called_once_with(run_id="manual__{0}".format(EXECDATE_ISO),
                                          execution_date=EXECDATE_NOFRACTIONS,
                                          state=State.RUNNING,
