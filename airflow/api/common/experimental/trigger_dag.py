@@ -22,7 +22,7 @@ import json
 
 from airflow.exceptions import DagRunAlreadyExists, DagNotFound
 from airflow.models import DagRun, DagBag
-from xTool.utils.state import State
+from airflow.utils.state import State
 
 
 def _trigger_dag(
@@ -34,6 +34,8 @@ def _trigger_dag(
         execution_date,
         replace_microseconds,
 ):
+    print("*" * 100)
+    print("dag_bag.dags = ", dag_bag.dags)
     if dag_id not in dag_bag.dags:
         raise DagNotFound("Dag id {} not found".format(dag_id))
 
@@ -84,7 +86,8 @@ def _trigger_dag(
         if dag.subdags:
             dags_to_trigger.extend(dag.subdags)
     return triggers
-    # 创建dag_run，并返回此实例
+
+
 def trigger_dag(
         dag_id,
         run_id=None,
@@ -92,6 +95,7 @@ def trigger_dag(
         execution_date=None,
         replace_microseconds=True,
 ):
+    """创建dag_run，并返回此实例 ."""
     dagbag = DagBag()
     dag_run = DagRun()
     triggers = _trigger_dag(

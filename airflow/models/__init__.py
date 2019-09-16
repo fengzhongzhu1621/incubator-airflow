@@ -25,7 +25,8 @@ from __future__ import unicode_literals
 from future.standard_library import install_aliases
 install_aliases()
 
-from xTool.utils.state import State
+from airflow.utils.state import State
+from airflow.utils.trigger_rule import TriggerRule
 
 from airflow.models.base import Base, ID_LEN, XCOM_RETURN_KEY, Stats, _CONTEXT_MANAGER_DAG
 from airflow.models.dagpickle import DagPickle
