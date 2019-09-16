@@ -151,3 +151,4 @@ metastore_db
 .project
 .pydevproject
 .settings/
+*.stackdump
