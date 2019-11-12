@@ -306,6 +306,7 @@ def do_setup():
             'unicodecsv>=0.14.1',
             'werkzeug>=0.14.1, <0.15.0',
             'zope.deprecation>=4.0, <5.0',
+            'xTool',
         ],
         setup_requires=[
             'docutils>=0.14, <1.0',
